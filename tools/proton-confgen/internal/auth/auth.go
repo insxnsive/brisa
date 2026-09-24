@@ -819,7 +819,7 @@ func (c *Client) sendAuthRequestContext(ctx context.Context, authReq map[string]
 	if err != nil {
 		return nil, err
 	}
-	api.SetHumanVerification(req, c.config.HVToken, constants.HVMethodCaptcha)
+	api.SetHumanVerification(req, c.config.HVToken, c.config.HumanVerificationMethod())
 
 	var session api.Session
 	status, err := doAuthJSON(ctx, c.httpClient, req, "authentication", &session)
@@ -875,15 +875,51 @@ func (c *Client) sendAuthRequestContext(ctx context.Context, authReq map[string]
 // it serves), and that combined string is what the API accepts back. Replaying
 // the bare challenge token just earns a fresh challenge.
 func captchaError(session *api.Session, apiURL string, replayed bool) error {
+	return NewHumanVerificationError(session.Details, apiURL, replayed)
+}
+
+// NewHumanVerificationError builds the shared typed challenge used by both
+// authentication and authenticated VPN endpoints. It contains only the
+// challenge URL; the solved response is never retained in the error.
+func NewHumanVerificationError(details api.ErrorDetails, apiURL string, replayed bool) error {
 	code := "CAPTCHA_REQUIRED"
 	msg := "O Proton solicitou uma verificação de segurança."
 	if replayed {
 		code = "CAPTCHA_INVALID"
-		msg = "A verificação de segurança expirou ou foi recusada. Resolva o novo CAPTCHA para tentar novamente."
+		msg = "A verificação de segurança expirou ou foi recusada. Conclua a nova verificação para tentar novamente."
 	}
-	challenge := session.Details.HumanVerificationToken
+	methods := details.HumanVerificationMethods
+	hasCaptcha := len(methods) == 0
+	ownershipMethods := make([]string, 0, len(methods))
+	seenOwnership := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		switch method {
+		case constants.HVMethodCaptcha:
+			hasCaptcha = true
+		case constants.HVMethodOwnershipEmail, constants.HVMethodOwnershipSMS:
+			if _, seen := seenOwnership[method]; !seen {
+				seenOwnership[method] = struct{}{}
+				ownershipMethods = append(ownershipMethods, method)
+			}
+		}
+	}
+
+	if !hasCaptcha && len(ownershipMethods) == 0 {
+		return HumanVerificationError{
+			Code:      "HUMAN_VERIFICATION_UNSUPPORTED",
+			Retryable: false,
+			Message:   "O Proton solicitou um método de verificação humana não suportado por esta versão.",
+		}
+	}
+
+	challenge := details.HumanVerificationToken
 	if challenge == "" {
 		return HumanVerificationError{Code: code, Retryable: true, Message: msg}
+	}
+	if !hasCaptcha {
+		verificationURL := "https://verify.proton.me/?token=" + url.QueryEscape(challenge) +
+			"&methods=" + url.QueryEscape(strings.Join(ownershipMethods, ",")) + "&embed=1&vpn=1"
+		return HumanVerificationError{Code: code, CaptchaURL: verificationURL, Retryable: true, Message: msg}
 	}
 	base, err := url.Parse(apiURL + constants.CaptchaPath)
 	if err != nil {

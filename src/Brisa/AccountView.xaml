@@ -1,0 +1,27 @@
+<UserControl x:Class="Brisa.AccountView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel><TextBlock x:Name="Subtitle" Style="{StaticResource SecondaryText}" Margin="0,0,0,16" Text="Sign in to Proton VPN."/></StackPanel>
+    <Border Grid.Row="1" Style="{StaticResource SettingsSurface}">
+      <Grid>
+        <Grid x:Name="SignedOutPanel" VerticalAlignment="Top">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="Username"/>
+          <TextBox x:Name="UsernameBox" Grid.Row="1" Margin="0,6,0,18" AutomationProperties.Name="Proton username"/>
+          <TextBlock Grid.Row="2" Text="Password"/>
+          <PasswordBox x:Name="PasswordInput" Grid.Row="3" Margin="0,6,0,0" AutomationProperties.Name="Proton password"/>
+          <StackPanel x:Name="TwoFactorPanel" Grid.Row="4" Margin="0,18,0,0" Visibility="Collapsed"><TextBlock Text="Two-factor code"/><PasswordBox x:Name="TwoFactorInput" Margin="0,6,0,0" AutomationProperties.Name="Two-factor code" MaxLength="12"/></StackPanel>
+        </Grid>
+        <StackPanel x:Name="SignedInPanel" Visibility="Collapsed">
+          <TextBlock Style="{StaticResource SecondaryText}" Text="Signed in as"/>
+          <TextBlock x:Name="UsernameText" Margin="0,7,0,0" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+          <TextBlock Style="{StaticResource SecondaryText}" Margin="0,18,0,0" Text="Credentials and sessions are stored only in the native app’s isolated data folder."/>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="2" Margin="0,20,0,0">
+      <Button x:Name="ActionButton" Style="{StaticResource PrimaryAction}" HorizontalAlignment="Right" Click="Action_Click" Content="Sign In" IsDefault="True"/>
+    </Grid>
+  </Grid>
+</UserControl>

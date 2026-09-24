@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"protonvpn-wg-confgen/internal/api"
+	"protonvpn-wg-confgen/internal/auth"
 	"protonvpn-wg-confgen/internal/config"
 	"protonvpn-wg-confgen/internal/constants"
 	"protonvpn-wg-confgen/internal/timeutil"
@@ -32,18 +33,37 @@ func NewClient(cfg *config.Config, session *api.Session) *Client {
 
 // doJSON performs an authenticated request and decodes the JSON response into out.
 func (c *Client) doJSON(method, url string, body, out any) error {
+	_, err := c.doJSONWithStatus(method, url, body, out, false)
+	return err
+}
+
+func (c *Client) doJSONWithStatus(method, url string, body, out any, humanVerification bool) (int, error) {
 	req, err := api.NewRequest(method, url, body, c.session)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return api.Do(c.httpClient, req, out)
+	if humanVerification {
+		api.SetHumanVerification(req, c.config.HVToken, c.config.HumanVerificationMethod())
+	}
+	return api.DoWithStatus(c.httpClient, req, out)
 }
 
 // requestCertificate posts a certificate request and validates the response code.
 func (c *Client) requestCertificate(certReq map[string]any) (*api.VPNInfo, error) {
 	var vpnInfo api.VPNInfo
-	if err := c.doJSON(http.MethodPost, c.config.APIURL+constants.CertificatePath, certReq, &vpnInfo); err != nil {
-		return nil, err
+	status, err := c.doJSONWithStatus(http.MethodPost, c.config.APIURL+constants.CertificatePath, certReq, &vpnInfo, true)
+	if err != nil {
+		return nil, &auth.TemporarySessionError{Err: err, Operation: "certificate request"}
+	}
+
+	if vpnInfo.Code == auth.CodeCaptchaRequired {
+		return nil, auth.NewHumanVerificationError(vpnInfo.Details, c.config.APIURL, c.config.HVToken != "")
+	}
+	if status == http.StatusRequestTimeout || status == http.StatusTooEarly || status == http.StatusTooManyRequests || status >= 500 {
+		return nil, &auth.TemporarySessionError{Err: fmt.Errorf("HTTP %d", status), Operation: "certificate request"}
+	}
+	if status < 200 || status >= 300 {
+		return nil, &auth.ProtocolError{Operation: "certificate request", StatusCode: status}
 	}
 
 	if !constants.IsSuccessCode(vpnInfo.Code) {

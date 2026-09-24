@@ -19,11 +19,13 @@ func TestSendAuthRequestHumanVerification(t *testing.T) {
 	tests := []struct {
 		name      string
 		hvToken   string
+		hvMethod  string
 		wantToken string
 		wantType  string
 	}{
 		{name: "unset"},
 		{name: "set", hvToken: "TOKEN-XYZ", wantToken: "TOKEN-XYZ", wantType: "captcha"},
+		{name: "ownership email", hvToken: "OPAQUE-TOKEN", hvMethod: "ownership-email", wantToken: "OPAQUE-TOKEN", wantType: "ownership-email"},
 	}
 
 	for _, tt := range tests {
@@ -37,7 +39,7 @@ func TestSendAuthRequestHumanVerification(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c := NewClient(&config.Config{APIURL: srv.URL, HVToken: tt.hvToken})
+			c := NewClient(&config.Config{APIURL: srv.URL, HVToken: tt.hvToken, HVMethod: tt.hvMethod})
 			if _, err := c.sendAuthRequest(map[string]any{usernameField: "u"}); err != nil {
 				t.Fatalf("sendAuthRequest: %v", err)
 			}
@@ -82,5 +84,57 @@ func TestCaptchaError(t *testing.T) {
 	bare := &api.Session{Code: 9001}
 	if err := captchaError(bare, "https://vpn-api.proton.me", true); err.(HumanVerificationError).Code != "CAPTCHA_INVALID" {
 		t.Fatal("replayed captcha should be invalid")
+	}
+}
+
+func TestHumanVerificationErrorSelectsOfferedMethod(t *testing.T) {
+	tests := []struct {
+		name      string
+		methods   []string
+		wantURL   string
+		wantCode  string
+		wantRetry bool
+	}{
+		{
+			name:      "ownership only",
+			methods:   []string{"ownership-email", "ownership-sms"},
+			wantURL:   "https://verify.proton.me/?token=opaque%2Ftoken%3Fvalue&methods=ownership-email%2Cownership-sms&embed=1&vpn=1",
+			wantCode:  "CAPTCHA_REQUIRED",
+			wantRetry: true,
+		},
+		{
+			name:      "captcha offered",
+			methods:   []string{"ownership-email", "captcha"},
+			wantURL:   "https://vpn-api.proton.me/core/v4/captcha?Token=opaque%2Ftoken%3Fvalue",
+			wantCode:  "CAPTCHA_REQUIRED",
+			wantRetry: true,
+		},
+		{
+			name:      "methods absent keeps legacy captcha",
+			wantURL:   "https://vpn-api.proton.me/core/v4/captcha?Token=opaque%2Ftoken%3Fvalue",
+			wantCode:  "CAPTCHA_REQUIRED",
+			wantRetry: true,
+		},
+		{
+			name:     "unsupported explicit methods",
+			methods:  []string{"security-key"},
+			wantCode: "HUMAN_VERIFICATION_UNSUPPORTED",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewHumanVerificationError(api.ErrorDetails{
+				HumanVerificationToken:   "opaque/token?value",
+				HumanVerificationMethods: tt.methods,
+			}, "https://vpn-api.proton.me", false)
+			hv := err.(HumanVerificationError)
+			if hv.CaptchaURL != tt.wantURL || hv.Code != tt.wantCode || hv.Retryable != tt.wantRetry {
+				t.Fatalf("challenge = %+v; want URL %q, code %q, retryable %v", hv, tt.wantURL, tt.wantCode, tt.wantRetry)
+			}
+			if tt.wantCode == "HUMAN_VERIFICATION_UNSUPPORTED" && !strings.Contains(strings.ToLower(hv.Message), "suport") {
+				t.Fatalf("unsupported method error is unclear: %q", hv.Message)
+			}
+		})
 	}
 }

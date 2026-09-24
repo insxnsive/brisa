@@ -1,0 +1,266 @@
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using UserControl = System.Windows.Controls.UserControl;
+using System.Windows.Input;
+using Button = System.Windows.Controls.Button;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Brisa.Models;
+using Brisa.Security;
+using Brisa.Services;
+
+namespace Brisa;
+
+public partial class MainWindow : Window
+{
+    private readonly IBackendClient _backend;
+    private readonly SettingsStore _settings;
+    private readonly string? _smokeOutput;
+    private readonly IUpdateService? _updates;
+    private readonly SemaphoreSlim _operation = new(1, 1);
+    private HomeState _state = new(ConnectionPhase.Loading, null);
+    private CancellationTokenSource _lifetime = new();
+    private bool _closing, _canClose, _explicitExit, _navigationBusy, _applyUpdateOnExit;
+    private UserControl? _currentPage;
+    private Task? _returnHomeTask;
+
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null)
+    {
+        InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
+        Closing += OnClosing;
+        PreviewKeyDown += OnNavigationKeyDown;
+    }
+
+    public async Task InitializeAsync()
+    {
+        try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); }
+        catch (Exception ex) { SetState(new(ConnectionPhase.Error, null, SafeMessage(ex))); }
+        if (_smokeOutput is not null) await RunSmokeAsync(_smokeOutput);
+    }
+
+    private void SetState(HomeState state)
+    {
+        _state = state; StatusText.Text = state.StatusText; DetailText.Text = state.Detail ?? "";
+        PrimaryButton.Content = state.PrimaryLabel;
+        UpdateActionAvailability();
+
+        RouteText.Text = state.Snapshot?.Route is { } route ? $"{route.Country} · {route.Server}" : "Automatic";
+        StatusIcon.Text = state.Phase == ConnectionPhase.Connected ? "\uE73E" : state.Phase == ConnectionPhase.Blocked ? "\uE783" : "\uE785";
+    }
+
+    private async void Primary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPage is not null || _navigationBusy || _closing || !await _operation.WaitAsync(0)) return;
+        try
+        {
+            var command = _state.Phase == ConnectionPhase.Connected ? "disconnect" : "connect";
+            SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, Detail = null });
+            var result = await ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
+            if (!result.Success) MessageBox.Show(this, result.Message ?? "The operation could not be completed.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync()));
+        }
+        catch (OperationCanceledException) { if (!_closing) { try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch { SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable.")); } } }
+        catch (Exception ex) { SetState(new(ConnectionPhase.Error, _state.Snapshot, SafeMessage(ex))); }
+        finally { _operation.Release(); }
+    }
+
+    public async Task<CommandResult> ExecuteWithVerificationAsync(string command, Func<string?, string?, object> payloadFactory, CancellationToken cancellationToken = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        string? token = null, method = null;
+        try
+        {
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                var result = await _backend.CommandAsync(command, payloadFactory(token, method), timeout.Token);
+                if (result.Success || result.CaptchaUrl is null) return result;
+                if (!VerificationPolicy.TryParseChallenge(result.CaptchaUrl, out var challenge) || challenge is null)
+                    return result with { Message = "The verification address was rejected." };
+                var dialog = new VerificationWindow(challenge, timeout.Token) { Owner = this };
+                dialog.Show();
+                var answer = await dialog.Completion;
+                if (answer is null) throw new OperationCanceledException(timeout.Token);
+                token = answer.Token; method = answer.Method;
+            }
+            return new(false, "VERIFICATION_LIMIT", "Verification could not be completed after two retries.");
+        }
+        catch (OperationCanceledException) { await _backend.CancelAsync(); throw; }
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPage is not null || _navigationBusy || _closing) return;
+        var view = new SettingsView(_settings, _updates, RequestUpdateRestart, () => Advanced_Click(this, new RoutedEventArgs()));
+        view.CloseRequested += async (_, _) => await ReturnHomeAsync();
+        ShowPage(view, "Settings");
+    }
+    private void Account_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPage is not null || _navigationBusy || _closing || !AccountButton.IsEnabled) return;
+        ShowPage(new AccountView(_backend, this, _state.Snapshot), "Account");
+    }
+    private void ShowPage(UserControl page, string title)
+    {
+        _currentPage = page; PageHost.Content = page;
+        PageTitle.Text = title;
+        HomeContent.Visibility = HomeActions.Visibility = Visibility.Collapsed;
+        PageHost.Visibility = BackButton.Visibility = Visibility.Visible;
+        BackButton.Focus();
+    }
+    private async void Back_Click(object sender, RoutedEventArgs e) => await ReturnHomeAsync();
+    private async void OnNavigationKeyDown(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (_currentPage is null || !(key == Key.Escape || key == Key.Left && Keyboard.Modifiers == ModifierKeys.Alt)) return;
+        e.Handled = true;
+        await ReturnHomeAsync();
+    }
+    private Task ReturnHomeAsync()
+    {
+        if (_returnHomeTask is { IsCompleted: false }) return _returnHomeTask;
+        return _returnHomeTask = ReturnHomeCoreAsync();
+    }
+    private async Task ReturnHomeCoreAsync()
+    {
+        if (_currentPage is null || _navigationBusy || _closing) return;
+        var page = _currentPage;
+        _navigationBusy = true; BackButton.IsEnabled = false; page.IsEnabled = false;
+        UpdateActionAvailability();
+        try
+        {
+            if (page is IAsyncDisposable disposable) await disposable.DisposeAsync();
+            if (_closing) return;
+            PageHost.Content = null; _currentPage = null;
+            PageHost.Visibility = BackButton.Visibility = Visibility.Collapsed;
+            HomeContent.Visibility = HomeActions.Visibility = Visibility.Visible;
+            PageTitle.Text = "Connection";
+            using var refresh = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            refresh.CancelAfter(TimeSpan.FromSeconds(5));
+            try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync(refresh.Token))); }
+            catch { if (!_closing) SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable.")); }
+        }
+        catch { if (!_closing) MessageBox.Show(this, "The account operation is still stopping. Please try going back again.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        finally
+        {
+            _navigationBusy = false; BackButton.IsEnabled = true; UpdateActionAvailability();
+            if (_currentPage is null && !_closing) (page is SettingsView ? SettingsButton : AccountButton).Focus();
+        }
+    }
+    private void UpdateActionAvailability()
+    {
+        var available = !_navigationBusy && !_closing;
+        PrimaryButton.IsEnabled = available && _state.PrimaryEnabled;
+        RouteButton.IsEnabled = available && _state.Phase == ConnectionPhase.Disconnected && _state.Snapshot is { ExternalTunnel: false, Reliable: true, Connected: false };
+        AccountButton.IsEnabled = available && _state.Phase is not (ConnectionPhase.Connecting or ConnectionPhase.Disconnecting);
+        SettingsButton.IsEnabled = available;
+    }
+    private async void Route_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new RouteWindow(this) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        if (!await _operation.WaitAsync(0)) return;
+        try
+        {
+            var result = await ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
+            if (!result.Success) MessageBox.Show(this, result.Message ?? "Route optimization failed.", "Route", MessageBoxButton.OK, MessageBoxImage.Warning);
+            SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync()));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { MessageBox.Show(this, SafeMessage(ex), "Route", MessageBoxButton.OK, MessageBoxImage.Error); }
+        finally { _operation.Release(); }
+    }
+    private async void Advanced_Click(object sender, RoutedEventArgs e)
+    {
+        new AdvancedWindow(_backend, _state.Snapshot) { Owner = this }.ShowDialog();
+        try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch { }
+    }
+
+    private async Task RunSmokeAsync(string output)
+    {
+        await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        if (ActualWidth < 440 || ActualHeight < 520 || PrimaryButton is null || RouteButton is null) throw new InvalidOperationException("Loaded-window assertions failed.");
+        var directory = Path.GetDirectoryName(output); if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+        void Capture(Window view, string file)
+        {
+            view.UpdateLayout();
+            var dpi = VisualTreeHelper.GetDpi(view);
+            var bitmap = new RenderTargetBitmap((int)(view.ActualWidth * dpi.DpiScaleX), (int)(view.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            bitmap.Render(view); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = File.Create(file); encoder.Save(stream);
+        }
+        Capture(this, output);
+        foreach (var button in new[] { SettingsButton, AccountButton })
+        {
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            if (_currentPage is null || System.Windows.Application.Current.Windows.Count != 1 || HomeContent.IsVisible)
+                throw new InvalidOperationException("Inline navigation must use the same window.");
+            Capture(this, Path.Combine(directory ?? ".", Path.GetFileNameWithoutExtension(output) + "-" + _currentPage.GetType().Name + ".png"));
+            await ReturnHomeAsync();
+        }
+        var surfaces = new Window[] { new RouteWindow(this), new AdvancedWindow(_backend, _state.Snapshot) };
+        foreach (var view in surfaces)
+        {
+            view.Owner = this; view.Show();
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            if (view.ActualWidth < 200 || view.ActualHeight < 100) throw new InvalidOperationException("Secondary window failed to load.");
+            Capture(view, Path.Combine(directory ?? ".", Path.GetFileNameWithoutExtension(output) + "-" + view.GetType().Name + ".png"));
+            view.Close();
+        }
+        RequestExit();
+    }
+    public void RequestExit() { _explicitExit = true; Close(); }
+    public void RequestUpdateRestart()
+    {
+        if (_updates?.HasPendingUpdate != true || _closing) return;
+        _applyUpdateOnExit = true;
+        _explicitExit = true;
+        Close();
+    }
+
+    private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (_canClose) return;
+        e.Cancel = true;
+        if (_settings.Current.CloseToTray && !_explicitExit && _smokeOutput is null)
+        {
+            if (_currentPage is AccountView || _returnHomeTask is { IsCompleted: false }) await ReturnHomeAsync();
+            Hide(); return;
+        }
+        if (_closing) return;
+        _closing = true;
+        var mayBeActive = _state.Snapshot?.Connected == true || _state.Phase == ConnectionPhase.Connecting;
+        _lifetime.Cancel();
+        var acquired = false;
+        try
+        {
+            if (_currentPage is IAsyncDisposable disposable) await disposable.DisposeAsync();
+            // ExitGuard performs the final native cancel only after active work has joined.
+            acquired = await _operation.WaitAsync(TimeSpan.FromSeconds(15));
+            if (!acquired) throw new InvalidOperationException("The current operation is still stopping. Please try exiting again.");
+            await ExitGuard.StopOwnedAsync(_backend, mayBeActive);
+            await _backend.DisposeAsync();
+            if (_updates is not null) await _updates.DisposeAsync();
+            if (_updates?.HasPendingUpdate == true)
+            {
+                // The updater process is launched only after account work, tunnel
+                // ownership checks, and backend disposal have all completed.
+                try { _updates?.PrepareApply(restart: _applyUpdateOnExit); } catch { }
+            }
+            _canClose = true;
+            _ = Dispatcher.BeginInvoke(Close);
+        }
+        catch (Exception ex)
+        {
+            _closing = false; _explicitExit = false; _applyUpdateOnExit = false;
+            _lifetime.Dispose(); _lifetime = new();
+            MessageBox.Show(this, ex is InvalidOperationException ? ex.Message : "The service has not finished stopping. Please try exiting again.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { if (acquired) _operation.Release(); }
+    }
+
+    private static string SafeMessage(Exception ex) => ex is FileNotFoundException ? "The native backend is not installed with this build." : "The native service could not complete this action. Check the connection status before retrying.";
+}

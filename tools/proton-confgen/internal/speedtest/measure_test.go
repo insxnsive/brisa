@@ -55,6 +55,18 @@ func TestMeasureHTTPTransfersAndRejectsTruncation(t *testing.T) {
 	}
 }
 
+func TestTransferMbpsHandlesSubTickDurations(t *testing.T) {
+	for _, elapsed := range []time.Duration{0, -time.Nanosecond, time.Nanosecond} {
+		got := transferMbps(1000, elapsed)
+		if got != 8 || math.IsInf(got, 0) || math.IsNaN(got) {
+			t.Fatalf("elapsed=%v throughput=%v, want finite 8 Mbps at minimum 1ms resolution", elapsed, got)
+		}
+	}
+	if got := transferMbps(1000, time.Second); got != 0.008 {
+		t.Fatalf("normal duration changed: %v", got)
+	}
+}
+
 func TestRankingPrioritizesRealThroughputAndUpload(t *testing.T) {
 	results := []Result{
 		{Server: api.LogicalServer{Name: "low-ping"}, Measurement: Measurement{DownloadMbps: 2, UploadMbps: 1, LatencyMs: 15}},

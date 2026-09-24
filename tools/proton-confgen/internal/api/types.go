@@ -45,18 +45,19 @@ type ErrorDetails struct {
 
 // VPNInfo represents VPN certificate information
 type VPNInfo struct {
-	Code                 int    `json:"Code"`
-	Error                string `json:"Error,omitempty"`
-	SerialNumber         string `json:"SerialNumber"`
-	ClientKeyFingerprint string `json:"ClientKeyFingerprint"`
-	ClientKey            string `json:"ClientKey"`
-	Certificate          string `json:"Certificate"`
-	ExpirationTime       int64  `json:"ExpirationTime"`
-	RefreshTime          int64  `json:"RefreshTime"`
-	Mode                 string `json:"Mode"`
-	DeviceName           string `json:"DeviceName"`
-	ServerPublicKeyMode  string `json:"ServerPublicKeyMode"`
-	ServerPublicKey      string `json:"ServerPublicKey"`
+	Code                 int          `json:"Code"`
+	Error                string       `json:"Error,omitempty"`
+	Details              ErrorDetails `json:"Details"`
+	SerialNumber         string       `json:"SerialNumber"`
+	ClientKeyFingerprint string       `json:"ClientKeyFingerprint"`
+	ClientKey            string       `json:"ClientKey"`
+	Certificate          string       `json:"Certificate"`
+	ExpirationTime       int64        `json:"ExpirationTime"`
+	RefreshTime          int64        `json:"RefreshTime"`
+	Mode                 string       `json:"Mode"`
+	DeviceName           string       `json:"DeviceName"`
+	ServerPublicKeyMode  string       `json:"ServerPublicKeyMode"`
+	ServerPublicKey      string       `json:"ServerPublicKey"`
 	Features             struct {
 		Bouncing       bool `json:"bouncing"`
 		ModerateNAT    bool `json:"moderate-nat"`

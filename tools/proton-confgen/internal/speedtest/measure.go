@@ -131,6 +131,13 @@ func request(ctx context.Context, client *http.Client, method, url string, body 
 	return time.Since(start), nil
 }
 
+// transferMbps floors sub-tick durations to the same 1ms resolution as latency.
+// Windows clocks can report zero for a completed localhost/cache transfer;
+// division by that value produces Inf, breaks ranking and cannot encode as JSON.
+func transferMbps(bytes int64, elapsed time.Duration) float64 {
+	return float64(bytes) * 8 / max(elapsed, time.Millisecond).Seconds() / 1e6
+}
+
 func measureHTTP(ctx context.Context, client *http.Client, base string, downBytes, upBytes int64) (Measurement, error) {
 	// Warm up WireGuard, DNS and TLS; do not count their setup as transfer RTT.
 	if _, err := request(ctx, client, http.MethodGet, base+"/__down?bytes=0", nil, 0); err != nil {
@@ -157,7 +164,7 @@ func measureHTTP(ctx context.Context, client *http.Client, base string, downByte
 	if err != nil {
 		return Measurement{}, err
 	}
-	return Measurement{DownloadMbps: float64(downBytes) * 8 / down.Seconds() / 1e6, UploadMbps: float64(upBytes) * 8 / up.Seconds() / 1e6, LatencyMs: latencies[1]}, nil
+	return Measurement{DownloadMbps: transferMbps(downBytes, down), UploadMbps: transferMbps(upBytes, up), LatencyMs: latencies[1]}, nil
 }
 
 func capacity(m Measurement) float64 {

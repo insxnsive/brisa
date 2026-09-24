@@ -1,5 +1,11 @@
 package config
 
+import (
+	"strings"
+
+	"protonvpn-wg-confgen/internal/constants"
+)
+
 // Config holds all configuration options
 type Config struct {
 	// Authentication
@@ -55,11 +61,15 @@ type Config struct {
 	// Non-persistent mode (do not register on account)
 	NoSave bool
 
-	// Human verification token replayed after solving a CAPTCHA out of band
-	HVToken string
+	// Human verification replay selected by a Proton code 9001 challenge.
+	HVToken  string
+	HVMethod string
+
+	// hvMethodExplicit preserves CLI precedence over the private stdin envelope.
+	hvMethodExplicit bool
 
 	// StdinSecrets enables the private JSON credential handoff used by the plugin.
-	// It keeps passwords, 2FA codes and CAPTCHA tokens out of the process arguments.
+	// It keeps passwords, 2FA codes and verification tokens out of process arguments.
 	StdinSecrets bool
 
 	// Automated GUI & Ping extensions
@@ -83,4 +93,13 @@ type Config struct {
 	RoutePoolSize      int
 	RoutePoolOutputDir string
 	ExcludedServers    []string
+}
+
+// HumanVerificationMethod returns the selected replay method while preserving
+// the historical captcha default for Config values created outside Parse.
+func (c *Config) HumanVerificationMethod() string {
+	if c == nil || strings.TrimSpace(c.HVMethod) == "" {
+		return constants.HVMethodCaptcha
+	}
+	return strings.TrimSpace(c.HVMethod)
 }

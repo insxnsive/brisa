@@ -1,10 +1,48 @@
 package config
 
 import (
+	"flag"
+	"io"
+	"os"
 	"testing"
 
 	"protonvpn-wg-confgen/internal/constants"
 )
+
+func TestParseHumanVerificationMethod(t *testing.T) {
+	originalArgs := os.Args
+	originalFlags := flag.CommandLine
+	t.Cleanup(func() {
+		os.Args = originalArgs
+		flag.CommandLine = originalFlags
+	})
+
+	tests := []struct {
+		name       string
+		args       []string
+		wantMethod string
+		wantErr    bool
+	}{
+		{name: "default captcha", args: []string{"protonvpn-wg", "-check-session"}, wantMethod: constants.HVMethodCaptcha},
+		{name: "selected ownership", args: []string{"protonvpn-wg", "-check-session", "-hv-method", constants.HVMethodOwnershipEmail}, wantMethod: constants.HVMethodOwnershipEmail},
+		{name: "invalid", args: []string{"protonvpn-wg", "-check-session", "-hv-method", "security-key"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag.CommandLine = flag.NewFlagSet(tt.args[0], flag.ContinueOnError)
+			flag.CommandLine.SetOutput(io.Discard)
+			os.Args = tt.args
+			cfg, err := Parse()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Parse() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && cfg.HVMethod != tt.wantMethod {
+				t.Fatalf("HVMethod = %q, want %q", cfg.HVMethod, tt.wantMethod)
+			}
+		})
+	}
+}
 
 func TestValidateFeatureFlags(t *testing.T) {
 	tests := []struct {
@@ -15,6 +53,10 @@ func TestValidateFeatureFlags(t *testing.T) {
 		{name: "defaults", cfg: Config{Duration: constants.DefaultCertDuration}},
 		{name: "port forwarding", cfg: Config{Duration: constants.DefaultCertDuration, PortForwarding: true}},
 		{name: "moderate NAT", cfg: Config{Duration: constants.DefaultCertDuration, ModerateNAT: true}},
+		{name: "captcha verification", cfg: Config{Duration: constants.DefaultCertDuration, HVMethod: "captcha"}},
+		{name: "email ownership verification", cfg: Config{Duration: constants.DefaultCertDuration, HVMethod: "ownership-email"}},
+		{name: "sms ownership verification", cfg: Config{Duration: constants.DefaultCertDuration, HVMethod: "ownership-sms"}},
+		{name: "unsupported verification method", cfg: Config{Duration: constants.DefaultCertDuration, HVMethod: "security-key"}, wantErr: true},
 		{
 			name:    "mutually exclusive features",
 			cfg:     Config{Duration: constants.DefaultCertDuration, PortForwarding: true, ModerateNAT: true},

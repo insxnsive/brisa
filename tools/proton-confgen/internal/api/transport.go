@@ -10,6 +10,8 @@ import (
 	"protonvpn-wg-confgen/internal/constants"
 )
 
+const maxResponseBytes int64 = 16 << 20
+
 // NewRequest builds a Proton API request with the headers every endpoint expects.
 // A nil body sends no payload. A nil session omits the credentials, which is
 // what the pre-authentication endpoints need.
@@ -69,27 +71,32 @@ func SetHumanVerification(req *http.Request, token, method string) {
 // useful than the HTTP status. Callers are expected to check the decoded Code.
 // The status is only surfaced when the body is not JSON at all.
 func Do(client *http.Client, req *http.Request, out any) error {
+	_, err := DoWithStatus(client, req, out)
+	return err
+}
+
+// DoWithStatus is Do's status-aware form. Response bodies are bounded and
+// never copied into errors because Proton failures can contain challenge data.
+func DoWithStatus(client *http.Client, req *http.Request, out any) (int, error) {
 	// The request URL is built from the operator's own -api-url flag, so it is
 	// not attacker-controlled input.
 	resp, err := client.Do(req) //nolint:gosec // G704: URL is operator-supplied, not remote input
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return err
+		return resp.StatusCode, err
+	}
+	defer clear(body)
+	if int64(len(body)) > maxResponseBytes {
+		return resp.StatusCode, fmt.Errorf("unexpected response (HTTP %d): body exceeds limit", resp.StatusCode)
 	}
 
 	if err := json.Unmarshal(body, out); err != nil {
-		// Not JSON - a gateway error page or similar. Echo a snippet, otherwise
-		// this surfaces as an opaque "invalid character '<'".
-		snippet := string(body)
-		if len(snippet) > 200 {
-			snippet = snippet[:200] + "..."
-		}
-		return fmt.Errorf("unexpected response (HTTP %d): %s", resp.StatusCode, snippet)
+		return resp.StatusCode, fmt.Errorf("unexpected response (HTTP %d): invalid JSON", resp.StatusCode)
 	}
-	return nil
+	return resp.StatusCode, nil
 }

@@ -1,7 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +43,42 @@ func TestSetHumanVerification(t *testing.T) {
 				t.Errorf("%s = %q, want %q", hvTokenTypeHeader, got, tt.wantType)
 			}
 		})
+	}
+}
+
+func TestDoDoesNotEchoMalformedResponseBody(t *testing.T) {
+	const sensitive = "synthetic-challenge-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = fmt.Fprintf(w, "not-json %s", sensitive)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = Do(server.Client(), req, &map[string]any{})
+	if err == nil || strings.Contains(err.Error(), sensitive) {
+		t.Fatalf("Do() error = %q; want a body-redacted protocol error", err)
+	}
+}
+
+func TestDoRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"Code":1000,"Padding":"`)
+		_, _ = fmt.Fprint(w, strings.Repeat("x", 17<<20))
+		_, _ = fmt.Fprint(w, `"}`)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = Do(server.Client(), req, &map[string]any{})
+	if err == nil {
+		t.Fatal("Do() accepted an oversized response")
 	}
 }

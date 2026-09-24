@@ -44,3 +44,19 @@ func TestJSONErrorResponseDoesNotExposeWrappedCredentialDetail(t *testing.T) {
 		t.Fatal("response unexpectedly exposed credential detail")
 	}
 }
+
+func TestJSONErrorResponsePreservesWrappedCertificateChallenge(t *testing.T) {
+	wrapped := fmt.Errorf("failed to get VPN certificate: %w", auth.HumanVerificationError{
+		Code:       "CAPTCHA_REQUIRED",
+		CaptchaURL: "https://vpn-api.proton.me/core/v4/captcha?Token=synthetic",
+		Retryable:  true,
+		Message:    "human verification required",
+	})
+	response := jsonErrorResponse(wrapped)
+	if response["code"] != "CAPTCHA_REQUIRED" || response["retryable"] != true {
+		t.Fatalf("response = %v; want retryable CAPTCHA_REQUIRED", response)
+	}
+	if response["captchaUrl"] != "https://vpn-api.proton.me/core/v4/captcha?Token=synthetic" {
+		t.Fatalf("captchaUrl = %v", response["captchaUrl"])
+	}
+}

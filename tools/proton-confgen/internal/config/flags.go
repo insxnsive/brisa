@@ -63,7 +63,8 @@ func Parse() (*Config, error) {
 	flag.StringVar(&cfg.SessionDuration, "session-duration", "0", "Session cache duration (e.g., 12h, 24h, 7d). 0 = no expiration")
 
 	// Human verification
-	flag.StringVar(&cfg.HVToken, "hv-token", "", "Human verification token to replay after solving a CAPTCHA (see the code 9001 error)")
+	flag.StringVar(&cfg.HVToken, "hv-token", "", "Human verification token to replay after completing a code 9001 challenge")
+	flag.StringVar(&cfg.HVMethod, "hv-method", constants.HVMethodCaptcha, "Human verification token type: captcha, ownership-email, or ownership-sms")
 	flag.BoolVar(&cfg.StdinSecrets, "stdin-secrets", false, "Read plugin authentication secrets from a private JSON object on stdin")
 
 	// Advanced configuration
@@ -106,6 +107,8 @@ func Parse() (*Config, error) {
 	flag.StringVar(&excludedServersFlag, "exclude-servers", "", "Exclude server names from automatic selection (comma-separated)")
 
 	flag.Parse()
+	cfg.hvMethodExplicit = isFlagSet("hv-method")
+	cfg.HVMethod = strings.TrimSpace(cfg.HVMethod)
 
 	// Session certificates max out at 7 days, so fall back to that instead of
 	// the 365d persistent default when -duration was not given explicitly.
@@ -217,9 +220,10 @@ func Parse() (*Config, error) {
 }
 
 type stdinSecrets struct {
-	Password               string `json:"password"`
-	TwoFactorCode          string `json:"twoFactorCode"`
-	HumanVerificationToken string `json:"humanVerificationToken"`
+	Password                string `json:"password"`
+	TwoFactorCode           string `json:"twoFactorCode"`
+	HumanVerificationToken  string `json:"humanVerificationToken"`
+	HumanVerificationMethod string `json:"humanVerificationMethod"`
 }
 
 // ReadStdinSecrets consumes the private credential envelope used by the Discord
@@ -249,13 +253,27 @@ func readStdinSecrets(reader io.Reader, cfg *Config) error {
 	if cfg.HVToken == "" {
 		cfg.HVToken = input.HumanVerificationToken
 	}
-	if cfg.Password == "" {
+	if input.HumanVerificationMethod != "" {
+		hvMethod := strings.TrimSpace(input.HumanVerificationMethod)
+		if err := validateHumanVerificationMethod(hvMethod); err != nil {
+			return fmt.Errorf("private authentication input contains an invalid human verification method")
+		}
+		if !cfg.hvMethodExplicit {
+			cfg.HVMethod = hvMethod
+		}
+	}
+	// Certificate replay uses the saved session and intentionally carries only
+	// a solved challenge. Interactive login still requires its password.
+	if cfg.Password == "" && (cfg.LoginOnly || cfg.HVToken == "") {
 		return fmt.Errorf("private authentication input does not contain a password")
 	}
 	return nil
 }
 
 func validateFeatureFlags(cfg *Config) error {
+	if err := validateHumanVerificationMethod(cfg.HVMethod); err != nil {
+		return err
+	}
 	if cfg.PortForwarding && cfg.ModerateNAT {
 		return fmt.Errorf("port-forwarding and moderate-nat cannot be enabled together")
 	}
@@ -271,6 +289,15 @@ func validateFeatureFlags(cfg *Config) error {
 		return fmt.Errorf("require-discord can only be used with -speed-test")
 	}
 	return validateDuration(cfg)
+}
+
+func validateHumanVerificationMethod(method string) error {
+	switch strings.TrimSpace(method) {
+	case "", constants.HVMethodCaptcha, constants.HVMethodOwnershipEmail, constants.HVMethodOwnershipSMS:
+		return nil
+	default:
+		return fmt.Errorf("human verification method must be captcha, ownership-email, or ownership-sms")
+	}
 }
 
 // validateDuration enforces the API's certificate duration bounds up front, so

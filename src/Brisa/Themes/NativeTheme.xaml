@@ -1,0 +1,58 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Keep Microsoft's Fluent templates and their hover/focus/disabled states.
+         Implicit styles without these bases fall back to legacy Aero controls. -->
+    <Style TargetType="Window" BasedOn="{StaticResource DefaultWindowStyle}">
+      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Background" Value="{DynamicResource NativeBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource NativeForeground}"/>
+      <Setter Property="UseLayoutRounding" Value="True"/>
+    </Style>
+    <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+    <Style x:Key="PrimaryAction" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+      <Setter Property="Padding" Value="18,7"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="MinWidth" Value="90"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+    <Style x:Key="ToolbarAction" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+      <Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="FontSize" Value="16"/>
+    </Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+      <Setter Property="MinHeight" Value="34"/><Setter Property="Padding" Value="10,7"/>
+    </Style>
+    <Style TargetType="PasswordBox" BasedOn="{StaticResource DefaultPasswordBoxStyle}">
+      <Setter Property="MinHeight" Value="34"/><Setter Property="Padding" Value="10,7"/>
+    </Style>
+    <Style TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}"/>
+    <Style TargetType="ComboBoxItem" BasedOn="{StaticResource DefaultComboBoxItemStyle}"/>
+    <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}"/>
+    <Style TargetType="RadioButton" BasedOn="{StaticResource DefaultRadioButtonStyle}"/>
+    <Style TargetType="ListBox" BasedOn="{StaticResource DefaultListBoxStyle}"/>
+    <Style TargetType="ListBoxItem" BasedOn="{StaticResource DefaultListBoxItemStyle}">
+      <Setter Property="MinHeight" Value="38"/><Setter Property="Padding" Value="12,8"/>
+    </Style>
+    <Style x:Key="SettingsSurface" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource NativeSurface}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource NativeStroke}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16"/>
+    </Style>
+    <Style x:Key="PageTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="22"/><Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="SecondaryText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource NativeSecondary}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+</ResourceDictionary>

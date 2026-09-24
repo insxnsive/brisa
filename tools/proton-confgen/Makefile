@@ -1,6 +1,6 @@
 .PHONY: build build-all clean test fmt vet lint install vendor run dev show-version
 
-BINARY_NAME=protonvpn-wg-confgen
+BINARY_NAME=proton-confgen.exe
 BUILD_DIR=build
 CMD_DIR=cmd/protonvpn-wg
 MODULE=protonvpn-wg-confgen
@@ -26,7 +26,7 @@ LDFLAGS=-ldflags "-X '$(MODULE)/internal/constants.AppVersion=linux-vpn@$(PROTON
 build:
 	@echo "Building $(BINARY_NAME) with ProtonVPN client version $(PROTON_VERSION)..."
 	@mkdir -p $(BUILD_DIR)
-	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)/main.go
+	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./$(CMD_DIR)
 
 # Build for multiple platforms
 build-all:
