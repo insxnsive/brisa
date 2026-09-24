@@ -48,7 +48,7 @@ After packaging, `python packaging/update_smoke.py` checks a real update between
 See [release instructions](releasing.md) before publishing a version. After publication, check the public feed without GitHub credentials:
 
 ```powershell
-dotnet run --project tests/Brisa.Update.Integration.Tests -c Release -- github 0.0.1 0.1.0-beta.1 artifacts/public-update-check
+dotnet run --project tests/Brisa.Update.Integration.Tests -c Release -- github 0.0.1 0.1.0-beta.2 artifacts/public-update-check
 ```
 
 Use the actual target version in that command. It downloads and verifies the update without applying it or opening the live app.

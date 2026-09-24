@@ -86,7 +86,16 @@ def gh(*args):
 
 
 def verify_uploaded(root, tag, prerelease, draft):
-    release = json.loads(gh('api', f'repos/{REPOSITORY}/releases/tags/{tag}'))
+    endpoint = f'repos/{REPOSITORY}/releases'
+    if draft:
+        recent = json.loads(gh('api', endpoint + '?per_page=100'))
+        matches = [item for item in recent if item['tag_name'] == tag and item['draft']]
+        if len(matches) != 1:
+            raise ValueError('Expected one matching draft release')
+        endpoint += '/' + str(int(matches[0]['id']))
+    else:
+        endpoint += '/tags/' + tag
+    release = json.loads(gh('api', endpoint))
     if release['tag_name'] != tag or release['prerelease'] != prerelease or release['draft'] != draft:
         raise ValueError('GitHub release state does not match the requested version/channel')
     expected = {p.name: p for p in root.iterdir() if p.is_file()}

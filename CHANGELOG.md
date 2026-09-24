@@ -1,6 +1,6 @@
 # Changes
 
-## 0.1.0-beta.1
+## 0.1.0-beta.2
 
 First Brisa preview, forked from GoLiveBypass 2.0.9.
 

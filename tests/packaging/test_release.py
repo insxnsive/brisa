@@ -50,6 +50,23 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(ValueError): self.release.verify_feed(root, '0.1.0-beta.1')
                 asset[key] = old
 
+    def test_draft_upload_verification_reads_the_release_id(self):
+        import json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root/'asset.zip').write_bytes(b'fixture')
+            release = {'id': 7, 'tag_name': 'v0.1.0-beta.2', 'prerelease': True, 'draft': True,
+                'html_url': 'https://example.invalid/draft', 'assets': [{'name': 'asset.zip', 'size': 7,
+                'digest': 'sha256:'+hashlib.sha256(b'fixture').hexdigest()}]}
+            base = 'repos/insxnsive/brisa/releases'
+            def fake_gh(*args):
+                if args == ('api', base+'?per_page=100'): return json.dumps([release])
+                if args == ('api', base+'/7'): return json.dumps(release)
+                raise AssertionError('Drafts must be looked up by ID, not the published-tag endpoint')
+            with patch.object(self.release, 'gh', side_effect=fake_gh):
+                self.assertEqual(self.release.verify_uploaded(root, release['tag_name'], True, True), release['html_url'])
+
     def test_release_rejects_manifest_entries_missing_from_package(self):
         import io
         import json
