@@ -50,6 +50,34 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(ValueError): self.release.verify_feed(root, '0.1.0-beta.1')
                 asset[key] = old
 
+    def test_release_rejects_manifest_entries_missing_from_package(self):
+        import io
+        import json
+        import zipfile
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            version = '0.1.0-beta.1'
+            source_data = io.BytesIO()
+            with zipfile.ZipFile(source_data, 'w') as source:
+                for name in ('src/Brisa/Brisa.csproj', 'backend/package-lock.json',
+                             'tools/proton-confgen/go.mod', 'tools/proton-confgen/vendor/modules.txt',
+                             'packaging/package.py', 'LICENSE', 'README.md'):
+                    source.writestr(name, 'synthetic test source')
+            (root/f'Brisa-{version}-source.zip').write_bytes(source_data.getvalue())
+            for name in ('Brisa-win-Setup.exe', 'Brisa-win-Portable.zip'):
+                (root/name).write_bytes(b'synthetic test asset')
+            package = root/f'Brisa-{version}-full.nupkg'
+            with zipfile.ZipFile(package, 'w') as archive:
+                archive.writestr('lib/app/source.zip', source_data.getvalue())
+                archive.writestr('lib/app/build-info.json', json.dumps({'version': version, 'repository': 'https://github.com/insxnsive/brisa'}))
+                archive.writestr('lib/app/manifest.sha256.json', json.dumps({'Brisa.pdb': {'bytes': 1, 'sha256': '0'*64}}))
+            data = package.read_bytes()
+            (root/'releases.win.json').write_text(json.dumps({'Assets': [{'PackageId': 'Brisa', 'Version': version,
+                'Type': 'Full', 'FileName': package.name, 'Size': len(data), 'SHA256': hashlib.sha256(data).hexdigest()}]}))
+            (root/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in sorted(root.iterdir())))
+            with self.assertRaisesRegex(ValueError, 'manifest'):
+                self.release.verify_release(root, version)
+
     def test_checksums_reject_traversal_and_duplicate_entries(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

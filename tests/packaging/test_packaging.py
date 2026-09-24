@@ -83,6 +83,13 @@ class PackagingTests(unittest.TestCase):
             (root/'SOURCE-INFO.json').write_text(json.dumps({'sourceCommit': 'not a commit'}))
             with self.assertRaises(ValueError): self.package.source_commit(root)
 
+    def test_manifest_excludes_debug_files_stripped_by_velopack(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ('Brisa.exe', 'Brisa.pdb', 'createdump.exe'):
+                (root/name).write_bytes(b'synthetic fixture')
+            self.assertEqual(set(self.package.file_manifest(root)), {'Brisa.exe'})
+
     def test_manifest_hashes_actual_bytes_and_portable_paths(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

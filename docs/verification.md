@@ -2,7 +2,7 @@
 
 The first Brisa preview has passed these local checks:
 
-- 21 packaging, release and UI contract tests.
+- 23 packaging, release and UI contract tests.
 - 19 Node backend tests and the retained Go helper test suites.
 - 20 native core tests, 47 navigation assertions and 94 loaded-window appearance assertions.
 - C# to Node request/response integration checks.

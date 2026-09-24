@@ -61,6 +61,13 @@ def verify_release(root, version):
         if not (root / name).is_file():
             raise ValueError('Missing release asset: ' + name)
     with zipfile.ZipFile(root / f'Brisa-{version}-full.nupkg') as package:
+        manifest = json.loads(package.read('lib/app/manifest.sha256.json'))
+        for name, expected in manifest.items():
+            if 'lib/app/' + name not in package.namelist():
+                raise ValueError('Package manifest names a missing file: ' + name)
+            data = package.read('lib/app/' + name)
+            if len(data) != expected['bytes'] or hashlib.sha256(data).hexdigest() != expected['sha256']:
+                raise ValueError('Package manifest hash/size mismatch: ' + name)
         if hashlib.sha256(package.read('lib/app/source.zip')).digest() != hashlib.sha256(source.read_bytes()).digest():
             raise ValueError('Distributed source must match the archive bundled in the update')
         info = json.loads(package.read('lib/app/build-info.json'))

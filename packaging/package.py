@@ -34,7 +34,8 @@ def source_files(root):
 def file_manifest(root):
     return {p.relative_to(root).as_posix(): {'bytes': p.stat().st_size,
             'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
-            for p in sorted(root.rglob('*')) if p.is_file()}
+            for p in sorted(root.rglob('*')) if p.is_file()
+            and p.suffix.lower() != '.pdb' and p.name.lower() != 'createdump.exe'}
 
 
 def validate_publish(root):
