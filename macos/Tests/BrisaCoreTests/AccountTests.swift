@@ -26,6 +26,15 @@ final class AccountTests: XCTestCase {
         return url
     }
 
+    func testRepeatedRepliesAreComplete() async throws {
+        let helper = try fixture("read input\nprintf '%20000s\\n' ''\nprintf '%20000s\\n' ''\necho '{\"success\":true,\"username\":\"fixture\"}'\n")
+        let client = AccountClient(helper: helper, sessionFile: fixtureSession(), timeout: 2)
+        for _ in 0..<100 {
+            let result = try await client.signIn(username: "fixture", password: "synthetic-password")
+            XCTAssertEqual(result, .signedIn("fixture"))
+        }
+    }
+
     func testSignedOutAndTunnelUnavailable() {
         let state = AccountState()
         XCTAssertFalse(state.signedIn)

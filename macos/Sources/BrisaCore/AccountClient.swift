@@ -3,9 +3,11 @@ import Darwin
 
 private func stopOwnedHelper(_ process: Process) {
     guard process.isRunning else { return }
+    let pid = process.processIdentifier
+    guard pid > 1 else { return }
     process.terminate()
     DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-        if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGKILL) }
+        if process.isRunning && process.processIdentifier == pid { _ = Darwin.kill(pid, SIGKILL) }
     }
 }
 

@@ -37,7 +37,7 @@ Development ZIPs are **not Developer ID signed or notarized**, and ad-hoc signin
 
 ## Verification boundaries
 
-The Mac workflow runs on native Apple Silicon and Intel runners. It tests the account subprocess protocol, timeout/cancellation, secret transport and disposable Keychain encryption, then builds and packages the real app. Native UI acceptance launches the packaged executable directly and through Launch Services, renders light/dark Home, Account and Settings, and uses native accessibility controls for navigation and field input. It must produce screenshots and a passing JSON report; an early process exit is not startup acceptance.
+The Mac workflow runs on native Apple Silicon and Intel runners. It tests the account subprocess protocol, timeout/cancellation, secret transport and disposable Keychain encryption, then builds and packages the real app. Native UI acceptance launches the packaged executable directly and through Launch Services, renders light/dark Home, Account and Settings, and uses real AppKit buttons and field editors for navigation and text input. It must produce screenshots and a passing JSON report; an early process exit is not startup acceptance.
 
 CI never signs into a real account or changes networking. Keychain tests use randomly named disposable items and synthetic session data. Development artifacts do not publish a GitHub Release, touch the Windows updater feed or bump an application release version.
 

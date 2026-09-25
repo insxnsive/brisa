@@ -1,8 +1,7 @@
 import AppKit
 import Foundation
 
-/// CI-only in-process accessibility acceptance of the actual rendered SwiftUI window.
-/// It never submits credentials or invokes the account/network helper.
+/// CI acceptance of the actual native window. No account/network action is submitted.
 @MainActor
 enum NativeSmoke {
     private static var started = false
@@ -13,7 +12,6 @@ enum NativeSmoke {
         started = true
         guard CommandLine.arguments.indices.contains(index + 1) else { exit(64) }
         let output = URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
-        // A dead event loop must never turn into an unbounded CI hang.
         DispatchQueue.global().asyncAfter(deadline: .now() + 35) { exit(70) }
         Task {
             do {
@@ -35,60 +33,50 @@ enum NativeSmoke {
     private static func require(_ condition: Bool, _ message: String) throws {
         if !condition { throw Failure.assertion(message) }
     }
-    private struct Element {
-        let object: NSObject
-        func value(_ name: String) -> Any? {
-            let selector = NSSelectorFromString(name)
-            guard object.responds(to: selector) else { return nil }
-            return object.perform(selector)?.takeUnretainedValue()
-        }
-        var identifier: String? { value("accessibilityIdentifier") as? String }
-        func boolean(_ name: String) throws -> Bool {
-            let selector = NSSelectorFromString(name)
-            guard object.responds(to: selector) else { throw Failure.assertion("Missing native method \(name)") }
-            typealias Function = @convention(c) (AnyObject, Selector) -> Bool
-            return unsafeBitCast(object.method(for: selector), to: Function.self)(object, selector)
-        }
-        func setValue(_ text: String) throws {
-            let selector = NSSelectorFromString("setAccessibilityValue:")
-            guard object.responds(to: selector) else { throw Failure.assertion("Native field is not editable") }
-            typealias Function = @convention(c) (AnyObject, Selector, AnyObject) -> Void
-            unsafeBitCast(object.method(for: selector), to: Function.self)(object, selector, text as NSString)
-        }
+    private static func views(in window: NSWindow) -> [NSView] {
+        func visit(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(visit) }
+        guard let root = window.contentView else { return [] }
+        return visit(root).filter { !$0.isHiddenOrHasHiddenAncestor && $0.bounds.width > 0 && $0.bounds.height > 0 }
     }
-    private static func elements(_ root: Any) -> [Element] {
-        var seen = Set<ObjectIdentifier>()
-        func visit(_ value: Any) -> [Element] {
-            guard let object = value as? NSObject,
-                  seen.insert(ObjectIdentifier(object)).inserted, seen.count < 2000 else { return [] }
-            let item = Element(object: object)
-            var children = item.value("accessibilityChildren") as? [Any] ?? []
-            if let window = object as? NSWindow, let content = window.contentView { children.append(content) }
-            if let view = object as? NSView { children.append(contentsOf: view.subviews) }
-            return [item] + children.flatMap(visit)
-        }
-        return visit(root)
+    private static func readingOrder(_ left: NSView, _ right: NSView) -> Bool {
+        let a = left.convert(left.bounds, to: nil), b = right.convert(right.bounds, to: nil)
+        return abs(a.midY - b.midY) < 2 ? a.minX < b.minX : a.midY > b.midY
     }
-    private static func element(_ id: String, in window: NSWindow) throws -> Element {
-        if let found = elements(window).first(where: { $0.identifier == id }) { return found }
-        let identifiers = elements(window).prefix(80).map { item in
-            "\(type(of: item.object)): id=\(item.identifier ?? "-") role=\(item.value("accessibilityRole") ?? "-") title=\(item.value("title") ?? "-") label=\(item.value("accessibilityLabel") ?? "-")"
+    private static func button(_ id: String, in window: NSWindow) throws -> NSButton {
+        // SwiftUI exports its AX nodes lazily on headless runners. Exercise the real
+        // underlying AppKit controls instead; do not invoke model actions directly.
+        let controls = views(in: window).compactMap { $0 as? NSButton }.sorted(by: readingOrder)
+        let indices = ["connect": 0, "nav-account": 1, "nav-settings": 2, "back": 0]
+        guard let index = indices[id], controls.indices.contains(index) else {
+            throw Failure.assertion("Missing native button \(id); found \(controls.count)")
         }
-        throw Failure.assertion("Missing native control \(id); found \(identifiers)")
+        return controls[index]
     }
     private static func press(_ id: String, in window: NSWindow) throws {
-        try require(try element(id, in: window).boolean("accessibilityPerformPress"), "Native button did not activate: \(id)")
+        let control = try button(id, in: window)
+        try require(control.isEnabled, "Native button is disabled: \(id)")
+        control.performClick(nil)
+    }
+    private static func type(_ text: String, into index: Int, window: NSWindow) throws {
+        let fields = views(in: window).compactMap { $0 as? NSTextField }.filter { $0.isEditable }.sorted(by: readingOrder)
+        try require(fields.indices.contains(index), "Missing native text field")
+        let field = fields[index]
+        field.selectText(nil)
+        guard let editor = field.currentEditor() as? NSTextView else { throw Failure.assertion("Native field did not accept focus") }
+        editor.selectAll(nil)
+        editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+        window.makeFirstResponder(nil)
     }
     private static func capture(_ name: String, window: NSWindow, output: URL) throws {
-        guard let view = window.contentView else { throw Failure.assertion("Missing window content") }
-        view.layoutSubtreeIfNeeded()
-        view.displayIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.contentView?.displayIfNeeded()
         guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow,
                                                   CGWindowID(window.windowNumber), [.boundsIgnoreFraming, .bestResolution]) else {
             throw Failure.assertion("No image for the owned application window")
         }
-        let bitmap = NSBitmapImageRep(cgImage: image)
-        guard let data = bitmap.representation(using: .png, properties: [:]) else { throw Failure.assertion("PNG encoding failed") }
+        guard let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            throw Failure.assertion("PNG encoding failed")
+        }
         try data.write(to: output.appendingPathComponent(name + ".png"))
     }
     private static func run(model: AppModel, output: URL) async throws {
@@ -108,7 +96,7 @@ enum NativeSmoke {
             window.appearance = NSAppearance(named: appearance)
             try await pause()
             try require(model.page == .home, "Home page did not render")
-            try require(!(try element("connect", in: window).boolean("isAccessibilityEnabled")), "Unavailable VPN must not be enabled")
+            try require(!(try button("connect", in: window)).isEnabled, "Unavailable VPN must not be enabled")
             try capture(theme + "-home", window: window, output: output)
             screens.append(theme + "-home")
             try press("nav-account", in: window)
@@ -116,8 +104,8 @@ enum NativeSmoke {
             try require(model.page == .account, "Account button did not navigate")
             try capture(theme + "-account", window: window, output: output)
             screens.append(theme + "-account")
-            try element("username", in: window).setValue("fixture")
-            try element("password", in: window).setValue("synthetic-fixture-only")
+            try type("fixture", into: 0, window: window)
+            try type("synthetic-fixture-only", into: 1, window: window)
             try await pause()
             try require(model.username == "fixture" && model.password == "synthetic-fixture-only", "Native text input did not update bindings")
             try press("back", in: window)
@@ -133,7 +121,7 @@ enum NativeSmoke {
         }
         try require(NSApplication.shared.windows.filter { $0.isVisible }.count == 1, "Navigation created another window")
         let report: [String: Any] = ["passed": true, "windowCount": 1, "screens": screens,
-                                     "navigationViaAccessibility": true, "secretsClearedOnBack": true]
+                                     "navigationViaNativeControls": true, "secretsClearedOnBack": true]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted])
             .write(to: output.appendingPathComponent("results.json"))
     }

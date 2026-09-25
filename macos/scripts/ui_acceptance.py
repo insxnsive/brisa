@@ -25,7 +25,7 @@ for mode in ('direct', 'launch-services'):
     data = json.loads(report.read_text())
     assert data['passed'] and data['windowCount'] == 1, data
     assert data['screens'] == ['light-home', 'light-account', 'light-settings', 'dark-home', 'dark-account', 'dark-settings'], data
-    assert data['navigationViaAccessibility'] and data['secretsClearedOnBack'], data
+    assert data['navigationViaNativeControls'] and data['secretsClearedOnBack'], data
     for name in data['screens']:
         image = (evidence / (name + '.png')).read_bytes()
         assert image.startswith(b'\x89PNG\r\n\x1a\n') and len(image) > 1000, name
