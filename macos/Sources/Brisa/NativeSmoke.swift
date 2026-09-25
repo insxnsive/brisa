@@ -17,7 +17,7 @@ enum NativeSmoke {
             do {
                 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
                 try await run(model: model, output: output)
-                NSApplication.shared.terminate(nil)
+                try requestQuit()
             } catch {
                 let report: [String: Any] = ["passed": false, "error": String(describing: error)]
                 if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted]) {
@@ -30,6 +30,21 @@ enum NativeSmoke {
     }
 
     private static func pause() async throws { try await Task.sleep(nanoseconds: 180_000_000) }
+    private static func requestQuit() throws {
+        guard let window = NSApplication.shared.keyWindow else { throw Failure.assertion("No key window for Command-Q") }
+        // terminateLater runs a nested AppKit loop. Invoke Quit from a real event,
+        // not this main-actor task, so its asynchronous cleanup can be scheduled.
+        for kind in [NSEvent.EventType.keyDown, .keyUp] {
+            guard let event = NSEvent.keyEvent(with: kind, location: .zero, modifierFlags: .command,
+                                               timestamp: ProcessInfo.processInfo.systemUptime,
+                                               windowNumber: window.windowNumber, context: nil,
+                                               characters: "q", charactersIgnoringModifiers: "q",
+                                               isARepeat: false, keyCode: 12) else {
+                throw Failure.assertion("Could not create Command-Q event")
+            }
+            NSApplication.shared.postEvent(event, atStart: false)
+        }
+    }
     private static func require(_ condition: Bool, _ message: String) throws {
         if !condition { throw Failure.assertion(message) }
     }
@@ -91,10 +106,19 @@ enum NativeSmoke {
                                                   CGWindowID(window.windowNumber), [.boundsIgnoreFraming, .bestResolution]) else {
             throw Failure.assertion("No image for the owned application window")
         }
-        guard let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else {
             throw Failure.assertion("PNG encoding failed")
         }
         try data.write(to: output.appendingPathComponent(name + ".png"))
+        if name.hasPrefix("light-") || name.hasPrefix("dark-") {
+            guard let surface = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh * 3 / 4)?.usingColorSpace(.sRGB) else {
+                throw Failure.assertion("Could not inspect rendered surface for \(name)")
+            }
+            let luminance = surface.redComponent * 0.2126 + surface.greenComponent * 0.7152 + surface.blueComponent * 0.0722
+            try require(name.hasPrefix("dark-") ? luminance < 0.35 : luminance > 0.65,
+                        "Rendered surface does not match \(name) appearance: \(luminance)")
+        }
     }
     private static func run(model: AppModel, output: URL) async throws {
         for _ in 0..<25 {
@@ -110,7 +134,8 @@ enum NativeSmoke {
         try? capture("startup-debug", window: window, output: output)
         var screens: [String] = []
         for (theme, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
-            window.appearance = NSAppearance(named: appearance)
+            NSApplication.shared.appearance = NSAppearance(named: appearance)
+            window.appearance = nil
             try await pause()
             try require(model.page == .home, "Home page did not render")
             try require(!(try button("connect", in: window)).isEnabled, "Unavailable VPN must not be enabled")
