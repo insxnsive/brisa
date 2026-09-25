@@ -15,7 +15,7 @@ PROJECT = REPO / 'src/Brisa/Brisa.csproj'
 PRIVATE_NAMES = {'.env', 'proton-session.json', 'session.json', 'state.json', 'settings.json', 'wireguard.conf', 'native-wiresock.conf', 'imported.conf'}
 GENERATED = {'bin', 'obj', 'artifacts', 'dist', 'node_modules', '__pycache__', '.git', '.tools', '.hermes', 'build', 'vendor'}
 PRIVATE_SUFFIXES = {'.conf', '.key', '.pem', '.pfx', '.p12'}
-SOURCE_ROOTS = ('src', 'backend', 'tools/proton-confgen', 'tests', 'packaging', 'docs', '.github', '.config')
+SOURCE_ROOTS = ('src', 'backend', 'tools/proton-confgen', 'tests', 'packaging', 'scripts', 'docs', '.github', '.config')
 SOURCE_FILES = ('README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'CHANGELOG.md', 'AGENTS.md', '.gitignore', '.gitattributes')
 VERSION_PATTERN = re.compile(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:alpha|beta|rc)\.(0|[1-9]\d*))?$')
 

@@ -3,14 +3,23 @@ import path from "node:path";
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
 const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
 
-const cleanText = (value, fallback = "Operation failed.", secrets = []) => {
-  let text = typeof value === "string" ? value : fallback;
-  text = text.replace(/[\r\n\t]+/g, " ").replace(/(PrivateKey\s*=\s*)\S+/gi, "$1<redacted>")
-    .replace(/(password|token|secret|authorization|session)\s*[:=]\s*\S+/gi, "$1=<redacted>");
-  for (const secret of secrets) if (typeof secret === "string" && secret.length >= 3) text = text.split(secret).join("<redacted>");
-  text = text.trim().slice(0, 400);
-  return text || fallback;
-};
+// Helper and vendor prose is untrusted. No pattern-based redactor can reliably
+// recognize a bare credential, path, username, or token URL in that prose.
+const FAILURE_MESSAGES = Object.freeze({
+  INVALID_CREDENTIALS: "The Proton username or password was rejected.",
+  TWO_FACTOR_REQUIRED: "Enter your Proton two-factor code and try again.",
+  TWO_FACTOR_INVALID: "The Proton two-factor code was rejected or expired.",
+  CAPTCHA_REQUIRED: "Complete Proton's security check and try again.",
+  CAPTCHA_INVALID: "The security check was rejected or expired. Open a new one and try again.",
+  CAPTCHA_CANCELLED: "Operation cancelled.",
+  NETWORK_ERROR: "Could not reach Proton. Check your connection and try again.",
+  TIMEOUT: "Proton did not respond in time. Try again.",
+  MISSING_EXECUTABLE: "The packaged Proton helper is unavailable.",
+  SESSION_PERSISTENCE: "The Proton session could not be saved. Close other Brisa instances and try again.",
+  CONFIGURATION_ERROR: "The WireGuard profile could not be generated. Try another route.",
+  UNKNOWN: "The Proton operation failed. Try again.",
+});
+const safeFailure = code => FAILURE_MESSAGES[code] || "Operation failed. Try again.";
 
 const safeCaptchaUrl = value => {
   if (typeof value !== "string" || value.length > 8192) return undefined;
@@ -26,20 +35,26 @@ const safeRoute = value => {
   if (!value || typeof value !== "object") return null;
   const server = typeof value.server === "string" ? value.server.trim().slice(0, 120) : "";
   const country = typeof value.country === "string" ? value.country.trim().toUpperCase().slice(0, 2) : "";
+  if ((server && !/^[A-Za-z0-9#_. -]+$/.test(server)) || (country && !/^[A-Z]{2}$/.test(country))) return null;
   if (!server && !country) return null;
   const route = { server, country };
   if (Number.isFinite(value.pingMs) && value.pingMs >= 0 && value.pingMs <= 60_000) route.pingMs = Math.round(value.pingMs);
   return route;
 };
 
-const actionResult = (value, secrets = []) => {
+const actionResult = value => {
   const result = { success: value?.success === true };
-  if (typeof value?.code === "string" && /^[A-Z0-9_]{1,64}$/.test(value.code)) result.code = value.code;
-  if (typeof value?.message === "string" || typeof value?.error === "string") result.message = cleanText(value.message || value.error, "Operation failed.", secrets);
-  const captchaUrl = safeCaptchaUrl(value?.captchaUrl);
-  if (captchaUrl) result.captchaUrl = captchaUrl;
-  const route = safeRoute(value?.route || value);
-  if (route) result.route = route;
+  if (typeof value?.code === "string" && Object.hasOwn(FAILURE_MESSAGES, value.code)) result.code = value.code;
+  if (!result.success) result.message = safeFailure(result.code);
+  else if (typeof value?.message === "string") result.message = "Operation completed.";
+  if (result.code === "CAPTCHA_REQUIRED" || result.code === "CAPTCHA_INVALID") {
+    const captchaUrl = safeCaptchaUrl(value?.captchaUrl);
+    if (captchaUrl) result.captchaUrl = captchaUrl;
+  }
+  if (result.success) {
+    const route = safeRoute(value?.route || value);
+    if (route) result.route = route;
+  }
   return result;
 };
 
@@ -181,7 +196,7 @@ export function createBackend(deps, paths) {
       humanVerificationMethod: payload.humanVerificationMethod,
     });
     if (!operation.isCurrent()) return cancelled();
-    const normalized = actionResult(generated, [payload.humanVerificationToken]);
+    const normalized = actionResult(generated);
     if (normalized.success) {
       const previousState = { mode: state.mode, route: state.route };
       const nextState = { mode: "proton", route: safeRoute(generated) };
@@ -270,7 +285,7 @@ export function createBackend(deps, paths) {
           `Mode: ${state.mode}.`,
           `Packaged Proton helper: ${deps.helperAvailable() ? "available" : "missing"}.`,
         ];
-        return { text: cleanText(lines.join("\n"), "Diagnostics unavailable.", []) };
+        return { text: lines.join("\n") };
       }
 
       if (mutationBusy) return { success: false, message: "Another native backend operation is still running." };
@@ -289,7 +304,7 @@ export function createBackend(deps, paths) {
           const result = await deps.login(paths.dataDir, payload.username, payload.password, payload.twoFactorCode,
             payload.humanVerificationToken, { signal: operation.controller.signal, isCurrent: operation.isCurrent }, payload.humanVerificationMethod);
           if (!operation.isCurrent()) return cancelled();
-          return actionResult(result, [payload.username, payload.password, payload.twoFactorCode, payload.humanVerificationToken]);
+          return actionResult(result);
         } finally { finish(operation); }
       }
 
@@ -308,7 +323,7 @@ export function createBackend(deps, paths) {
         if (guarded.status.active) return { success: false, message: "Disconnect before optimizing; active tunnels are never switched automatically." };
         const operation = begin();
         try { return await generate(payload, operation); }
-        catch (error) { return operation.isCurrent() ? { success: false, message: cleanText(error) } : cancelled(); }
+        catch { return operation.isCurrent() ? { success: false, message: safeFailure() } : cancelled(); }
         finally { finish(operation); }
       }
 
@@ -321,7 +336,7 @@ export function createBackend(deps, paths) {
         try { raw = await deps.files.readExplicit(selected); }
         catch { return { success: false, message: "The selected WireGuard file could not be read." }; }
         const validation = deps.validateConfig(raw);
-        if (!validation?.valid) return { success: false, message: cleanText(validation?.error, "The WireGuard profile is invalid.") };
+        if (!validation?.valid) return { success: false, message: "The WireGuard profile is invalid." };
         const apps = await discordApps();
         const sanitized = deps.sanitizeConfig(raw, apps.join(", "));
         await deps.files.writeOwned(paths.importedProfilePath, sanitized);
@@ -350,7 +365,7 @@ export function createBackend(deps, paths) {
           try {
             const result = await generate(payload, operation);
             if (!result.success) return result;
-          } catch (error) { return operation.isCurrent() ? { success: false, message: cleanText(error) } : cancelled(); }
+          } catch { return operation.isCurrent() ? { success: false, message: safeFailure() } : cancelled(); }
           if (!operation.isCurrent()) return cancelled();
         }
         const apps = await discordApps();

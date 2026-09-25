@@ -20,6 +20,12 @@ function Test-WebView2Runtime {
 
 function Invoke-VisibleInstaller([string]$FilePath) {
     $process = Start-Process -FilePath $FilePath -Wait -PassThru
+    if ($process.ExitCode -eq 1602) {
+        throw 'Installation was cancelled. Run the command again when you are ready.'
+    }
+    if ($process.ExitCode -in @(1641, 3010)) {
+        Write-Host 'Restart Windows before opening Brisa or connecting.'
+    }
     if ($process.ExitCode -notin @(0, 1641, 3010)) {
         throw "Installer failed with exit code $($process.ExitCode)."
     }
@@ -36,7 +42,7 @@ try {
     if (-not (Test-WebView2Runtime)) {
         Write-Host 'WebView2 Runtime was not found. Downloading the official Microsoft installer...'
         $webViewInstaller = Join-Path $work 'MicrosoftEdgeWebView2Setup.exe'
-        Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $webViewInstaller -UseBasicParsing
+        Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $webViewInstaller -UseBasicParsing -TimeoutSec 180
         $signature = Get-AuthenticodeSignature -FilePath $webViewInstaller
         if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(^|,\s*)CN=Microsoft Corporation(,|$)') {
             throw 'The WebView2 installer signature could not be verified as Microsoft-signed.'
@@ -55,28 +61,32 @@ try {
         'User-Agent' = 'Brisa-Quick-Install'
         'X-GitHub-Api-Version' = '2022-11-28'
     }
-    $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/insxnsive/brisa/releases?per_page=30' -Headers $headers
+    $releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/insxnsive/brisa/releases?per_page=30' -Headers $headers -TimeoutSec 30
     $release = $null
     foreach ($candidate in $releases) {
         if ($candidate.draft) { continue }
-        $setupAsset = $candidate.assets | Where-Object { $_.name -eq 'Brisa-win-Setup.exe' } | Select-Object -First 1
-        if ($setupAsset -and $setupAsset.digest -match '^sha256:[0-9a-fA-F]{64}$') {
-            $release = $candidate
-            break
+        $setupAssets = @($candidate.assets | Where-Object { $_.name -eq 'Brisa-win-Setup.exe' })
+        if ($setupAssets.Count -eq 0) { continue }
+        if ($setupAssets.Count -ne 1 -or $setupAssets[0].digest -notmatch '^sha256:[0-9a-fA-F]{64}$') {
+            throw 'The published Brisa installer metadata is ambiguous or missing a SHA-256 digest.'
         }
+        $release = $candidate
+        break
     }
     if (-not $release) { throw 'Could not find a published Brisa installer with a SHA-256 digest.' }
 
     $setupAsset = $release.assets | Where-Object { $_.name -eq 'Brisa-win-Setup.exe' } | Select-Object -First 1
-    $assetUri = [Uri]$setupAsset.browser_download_url
-    if ($assetUri.Scheme -ne 'https' -or $assetUri.Host -ne 'github.com' -or
-        -not $assetUri.AbsolutePath.StartsWith('/insxnsive/brisa/releases/download/', [StringComparison]::Ordinal)) {
-        throw 'The release installer URL is not an approved Brisa GitHub release asset.'
+    if ($release.tag_name -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|beta|rc)\.(0|[1-9]\d*))?$') {
+        throw 'The Brisa release tag is not a supported version.'
+    }
+    $expectedUrl = 'https://github.com/insxnsive/brisa/releases/download/' + $release.tag_name + '/Brisa-win-Setup.exe'
+    if (-not [string]::Equals($setupAsset.browser_download_url, $expectedUrl, [StringComparison]::Ordinal)) {
+        throw 'The installer URL does not match the selected Brisa release.'
     }
 
     Write-Host ("Downloading Brisa " + $release.tag_name + ' from its official GitHub release...')
     $setupPath = Join-Path $work 'Brisa-win-Setup.exe'
-    Invoke-WebRequest -Uri $setupAsset.browser_download_url -OutFile $setupPath -UseBasicParsing
+    Invoke-WebRequest -Uri $setupAsset.browser_download_url -OutFile $setupPath -UseBasicParsing -TimeoutSec 180
     $actualHash = (Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $expectedHash = $setupAsset.digest.Substring(7).ToLowerInvariant()
     if ($actualHash -ne $expectedHash) {

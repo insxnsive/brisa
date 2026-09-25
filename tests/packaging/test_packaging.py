@@ -90,6 +90,20 @@ class PackagingTests(unittest.TestCase):
                 (root/name).write_bytes(b'synthetic fixture')
             self.assertEqual(set(self.package.file_manifest(root)), {'Brisa.exe'})
 
+    def test_source_archive_includes_quick_install_script(self):
+        import zipfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/install.ps1').write_text('# isolated installer fixture')
+            (root / 'vendor').mkdir()
+            archive = root / 'source.zip'
+            with patch.object(self.package, 'REPO', root):
+                self.package.make_source_archive(archive, root / 'vendor', {'version': '0.0.1'})
+            with zipfile.ZipFile(archive) as source:
+                self.assertIn('scripts/install.ps1', source.namelist())
+
     def test_manifest_hashes_actual_bytes_and_portable_paths(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

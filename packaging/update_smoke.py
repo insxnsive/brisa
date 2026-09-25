@@ -1,5 +1,6 @@
 """Exercise real Velopack updates in a disposable portable folder, never a live install."""
 from pathlib import Path
+import argparse
 import json
 import os
 import subprocess
@@ -20,8 +21,8 @@ def info(root):
     return json.loads((root / 'current/build-info.json').read_text(encoding='utf-8'))
 
 
-def main():
-    release = ROOT / 'artifacts/releases'
+def main(release_dir=None, evidence_path=None):
+    release = Path(release_dir) if release_dir is not None else ROOT / 'artifacts/releases'
     version = ET.parse(ROOT / 'src/Brisa/Brisa.csproj').findtext('.//Version')
     run([sys.executable, ROOT / 'packaging/release.py', 'verify', release])
     # Only help is exercised for Setup.exe: no install, registry or shortcuts.
@@ -59,11 +60,16 @@ def main():
         if not (screenshots / 'after.png').is_file():
             raise RuntimeError('Updated portable app did not render')
         print(f'PASS actual portable update {old_version} -> {version}; both app versions rendered; root data preserved.')
-        evidence = ROOT / 'artifacts/update-smoke.json'
+        evidence = Path(evidence_path) if evidence_path is not None else ROOT / 'artifacts/update-smoke.json'
+        evidence.parent.mkdir(parents=True, exist_ok=True)
         evidence.write_text(json.dumps({'from': old_version, 'to': version, 'portableApplied': True,
             'beforeAndAfterRendered': True, 'rootDataPreserved': True, 'setupHelpOnly': True,
             'liveInstallTested': False, 'liveAccountOrTunnelTested': False}, indent=2), encoding='utf-8')
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--release-dir', type=Path)
+    parser.add_argument('--evidence', type=Path)
+    args = parser.parse_args()
+    main(args.release_dir, args.evidence)

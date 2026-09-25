@@ -45,10 +45,19 @@ export function formatLine(
   const extras = data
     ? " | " +
       Object.entries(data)
-        .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v) ?? String(v)}`)
+        .map(([k, v]) => `${k}=${safeLogField(k, v)}`)
         .join(" ")
     : "";
   return `[${stamp()}] [${nivel}][${cat}] ${msg}${extras}`;
+}
+
+function safeLogField(key: string, value: unknown): string {
+  if (SENSITIVE_LOG_KEY.test(key)) return "[redacted]";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "boolean") return String(value);
+  if (key === "phase" && value === "confgen") return value;
+  if (key === "operation_id" && typeof value === "string" && /^proton-confgen-[a-f0-9-]{36}$/.test(value)) return value;
+  return "[redacted]";
 }
 
 function gravar(linha: string) {
@@ -126,8 +135,7 @@ export function logEvent(
 ): void {
   const merged = Object.fromEntries(
     Object.entries({ ...context, ...data })
-      .filter(([, value]) => value !== undefined)
-      .map(([key, value]) => [key, redactLogValue(value, key)]),
+      .filter(([, value]) => value !== undefined),
   );
   escrever(nivel, cat, event, merged);
 }
@@ -222,8 +230,10 @@ export function patchConsole(alvo: {
       try {
         const texto = args.map(stringifyArg).join(" ");
         const m = /^\[([A-Za-z-]+)\]/.exec(texto);
-        const cat = m ? (CAT_MAP[m[1].toLowerCase()] ?? m[1].toLowerCase()) : "app";
-        escrever(nivel, cat, m ? texto.slice(m[0].length).trimStart() : texto);
+        const cat = m ? (CAT_MAP[m[1].toLowerCase()] ?? "app") : "app";
+        // Console arguments can contain vendor text or credentials. Preserve
+        // only the category and level in the persisted diagnostic buffer.
+        escrever(nivel, cat, "Console event (details omitted).");
       } catch {
         // O tee jamais pode propagar erro pra dentro do app que esta logando.
       }

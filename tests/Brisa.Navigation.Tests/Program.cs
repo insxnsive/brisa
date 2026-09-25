@@ -22,6 +22,16 @@ internal static class Program
         var count = 0;
         try
         {
+            var motionProbe = new Border { Width = 100, Height = 100 };
+            PageTransition.Show(motionProbe, () => false);
+            Check(!motionProbe.HasAnimatedProperties && motionProbe.Opacity == 1,
+                "reduced-motion policy shows navigation content immediately");
+            PageTransition.Show(motionProbe, () => true);
+            Check(motionProbe.HasAnimatedProperties,
+                "enabled navigation has a finite entrance animation");
+            PageTransition.Stop(motionProbe);
+            Check(!motionProbe.HasAnimatedProperties && motionProbe.Opacity == 1,
+                "stopping navigation motion leaves content fully visible");
             foreach (var name in new[] { "AccountView", "SettingsView" })
             {
                 var type = typeof(MainWindow).Assembly.GetType("Brisa." + name);
@@ -103,14 +113,18 @@ internal static class Program
                 Check(!home.IsVisible && back.IsVisible, "Home is replaced, not stacked behind another window");
                 Check(app.Windows.Count == 1 && new WindowInteropHelper(main).Handle == hwnd, "same single HWND");
                 Check(new Rect(main.Left, main.Top, main.Width, main.Height) == bounds, "navigation keeps window geometry");
+                Check(host.RenderTransform is System.Windows.Media.TranslateTransform or System.Windows.Media.MatrixTransform,
+                    "inline page entrance uses a render transform without layout motion");
                 if (name == "Settings")
                 {
                     ((RadioButton)page.FindName("LightTheme")).IsChecked = true;
                     Check(((TextBlock)page.FindName("VersionText")).Text.Contains(AppVersion.Current), "Settings shows the packaged Brisa version");
                     Check(!((Button)page.FindName("CheckUpdateButton")).IsEnabled, "isolated navigation never enables network update checks");
                 }
-                Click(back); Pump(() => host.Content is null);
+                Click(back); Click(back); Pump(() => host.Content is null);
                 Check(home.IsVisible && !back.IsVisible, "Back restores Connection");
+                Check(host.Opacity == 1 && host.RenderTransform is System.Windows.Media.MatrixTransform,
+                    "rapid repeated Back clears the outgoing page animation");
                 Check(store.Current.Theme == AppTheme.Dark, "Back discards unsaved Settings");
             }
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);

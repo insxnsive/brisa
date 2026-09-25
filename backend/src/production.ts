@@ -22,6 +22,7 @@ import {
 } from "./network/vpn-types.ts";
 import { createBackend } from "./backend.mjs";
 import { startNativeWireSock } from "./native-wiresock-start.ts";
+import { assertPrivateDataTreeSync } from "./private-data.mjs";
 
 const MAX_CONFIG_BYTES = 512 * 1024;
 
@@ -38,11 +39,13 @@ function within(root: string, target: string): boolean {
 }
 
 function safeDataDir(): string {
+  if (process.platform !== "win32") throw new Error("Brisa private data requires Windows NTFS ACLs.");
   const configured = process.env.BRISA_DATA_DIR;
   const base = configured || (process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Brisa"));
   if (!base || !path.isAbsolute(base)) throw new Error("BRISA_DATA_DIR must be an absolute path.");
   const resolved = path.resolve(base);
   fs.mkdirSync(resolved, { recursive: true, mode: 0o700 });
+  assertPrivateDataTreeSync(resolved);
   return resolved;
 }
 

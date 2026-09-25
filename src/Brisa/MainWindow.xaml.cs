@@ -165,10 +165,12 @@ public partial class MainWindow : Window
     private void OpenAccount() => ShowPage(new AccountView(_backend, this, _state.Snapshot), "Account");
     private void ShowPage(UserControl page, string title)
     {
+        PageTransition.Stop(HomeContent);
         _currentPage = page; PageHost.Content = page;
         PageTitle.Text = title;
         HomeContent.Visibility = HomeActions.Visibility = Visibility.Collapsed;
         PageHost.Visibility = BackButton.Visibility = Visibility.Visible;
+        PageTransition.Show(PageHost);
         BackButton.Focus();
     }
     private async void Back_Click(object sender, RoutedEventArgs e) => await ReturnHomeAsync();
@@ -194,9 +196,11 @@ public partial class MainWindow : Window
         {
             if (page is IAsyncDisposable disposable) await disposable.DisposeAsync();
             if (_closing) return;
+            PageTransition.Stop(PageHost);
             PageHost.Content = null; _currentPage = null;
             PageHost.Visibility = BackButton.Visibility = Visibility.Collapsed;
             HomeContent.Visibility = HomeActions.Visibility = Visibility.Visible;
+            PageTransition.Show(HomeContent);
             PageTitle.Text = "Connection";
             using var refresh = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             refresh.CancelAfter(TimeSpan.FromSeconds(5));
@@ -285,6 +289,8 @@ public partial class MainWindow : Window
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (_canClose) return;
+        PageTransition.Stop(PageHost);
+        PageTransition.Stop(HomeContent);
         e.Cancel = true;
         if (!_explicitExit && _smokeOutput is null)
         {

@@ -90,6 +90,7 @@ internal static class Program
                     {
                         window = pageName == "Route" ? new RouteWindow(main) : new AdvancedWindow(backend, null);
                         window.Owner = main; window.Show(); view = window;
+                        if (window is AdvancedWindow) { window.Width = window.MinWidth; window.Height = window.MinHeight; }
                     }
                     window.UpdateLayout();
                     if (view is AccountView)
@@ -107,8 +108,58 @@ internal static class Program
                         ((CheckBox)view.FindName("StartupBox")).IsChecked = true;
                         Check(view.FindName("TrayBox") is null, "close-to-tray is unconditional, not an opt-in setting");
                         window.UpdateLayout();
+                        var updates = (Expander)view.FindName("UpdatesExpander");
+                        Check(updates.HorizontalContentAlignment == HorizontalAlignment.Stretch,
+                            "expanded Updates content stretches to the measured column width");
+                        Check(updates.Content is Grid, "expanded Updates uses a width-constrained content grid");
+                        var scroll = Descendants(view).OfType<ScrollViewer>().First(s => s.Parent is Grid);
+                        var status = (TextBlock)view.FindName("UpdateStatusText");
+                        status.Text = "A versioned Brisa update is ready. Review the release details before restarting. " +
+                            "The current connection remains available while the update is prepared in this isolated fixture.";
+                        updates.IsExpanded = true;
+                        foreach (var size in new[] { (460d, 540d), (440d, 520d) })
+                        {
+                            window.Width = size.Item1; window.Height = size.Item2; window.UpdateLayout();
+                            Check(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
+                                $"expanded Settings at {size.Item1}x{size.Item2} fits its horizontal viewport");
+                            foreach (var text in Descendants(updates).OfType<TextBlock>().Where(t => t.IsVisible && t.TextWrapping == TextWrapping.Wrap))
+                            {
+                                var right = text.TranslatePoint(new Point(text.ActualWidth, 0), scroll).X;
+                                Check(right <= scroll.ViewportWidth + 1,
+                                    $"expanded {text.Name} wraps within Settings at {size.Item1}x{size.Item2}");
+                            }
+                            Check(status.ActualHeight >= 48, "long update status wraps into full lines at " + size.Item1 + "x" + size.Item2);
+                            scroll.ScrollToBottom(); window.UpdateLayout();
+                            var updateButton = (Button)view.FindName("CheckUpdateButton");
+                            updateButton.IsEnabled = true; // Hit-test the disabled isolated-session action without invoking it.
+                            var updateCenter = updateButton.TranslatePoint(new Point(updateButton.ActualWidth / 2, updateButton.ActualHeight / 2), window);
+                            var updateHit = window.InputHitTest(updateCenter) as DependencyObject;
+                            while (updateHit is not null && updateHit != updateButton) updateHit = VisualTreeHelper.GetParent(updateHit);
+                            Check(updateHit == updateButton, "expanded Updates action stays visible at " + size.Item1 + "x" + size.Item2);
+                            updateButton.IsEnabled = false;
+                            foreach (var buttonName in new[] { "CancelButton", "SaveButton" })
+                            {
+                                var button = (Button)view.FindName(buttonName);
+                                var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
+                                var hit = window.InputHitTest(center) as DependencyObject;
+                                while (hit is not null && hit != button) hit = VisualTreeHelper.GetParent(hit);
+                                Check(hit == button, buttonName + " stays reachable below expanded Settings");
+                            }
+                        }
+                        // Font scaling approximates content pressure; this does not change OS DPI.
+                        foreach (var simulatedScale in new[] { 1d, 1.25d, 1.5d, 2d })
+                        {
+                            status.FontSize = 14 * simulatedScale;
+                            window.Width = 440; window.Height = 520; window.UpdateLayout();
+                            Check(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
+                                $"Settings fits at simulated {simulatedScale:P0} status-text scale");
+                            Check(status.TranslatePoint(new Point(status.ActualWidth, 0), scroll).X <= scroll.ViewportWidth + 1,
+                                $"update status wraps at simulated {simulatedScale:P0} status-text scale");
+                        }
+                        status.FontSize = 14;
+                        updates.IsExpanded = false; scroll.ScrollToTop(); window.UpdateLayout();
                     }
-                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string))
+                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string && (view is not SettingsView || b.Name != "CheckUpdateButton")))
                     {
                         Check(button.ActualHeight >= 30, $"{window.GetType().Name}: {button.Content} keeps its height");
                         var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
@@ -135,6 +186,16 @@ internal static class Program
                 connected.Show(); connected.InitializeAsync().GetAwaiter().GetResult(); connected.UpdateLayout();
                 Check(((Button)connected.FindName("PrimaryButton")).Content as string == "Disconnect", "connected action stays Disconnect");
                 Check(!((Button)connected.FindName("RouteButton")).IsEnabled, "connected route selection stays disabled");
+                connected.Width = connected.MinWidth; connected.Height = connected.MinHeight;
+                ((Button)connected.FindName("AccountButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var signedInAccount = (AccountView)((ContentControl)connected.FindName("PageHost")).Content;
+                connected.UpdateLayout();
+                Check(signedInAccount.ActualWidth > 0 && signedInAccount.ActualHeight > 0,
+                    "signed-in account view loads at minimum window size");
+                ((Button)connected.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                Check(((ContentControl)connected.FindName("PageHost")).Content is null,
+                    "signed-in account returns to Connection");
                 Capture(connected, theme + "-Connected");
                 connected.RequestExit();
                 main.RequestExit();

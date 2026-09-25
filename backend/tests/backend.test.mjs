@@ -400,3 +400,43 @@ test("signed-out Proton mode cannot reuse a stale generated profile", async () =
   assert.match(result.message, /Sign in/i);
   assert.equal(calls.some(call => call[0] === "start"), false);
 });
+
+test("helper messages cannot expose arbitrary account, secret, URL query, path, or key material", async () => {
+  const username = "person@example.test";
+  const password = "fixture-password-293";
+  const key = "K".repeat(44);
+  const hostile = `helper failed for ${username} ${password} at C:\\private\\person.conf https://vpn-api.proton.me/core/v4/captcha?Token=fixture-query-937 PrivateKey = ${key}`;
+  const { backend } = harness({ login: async () => ({ success: false, code: "NETWORK_ERROR", message: hostile, error: hostile,
+    route: { server: "fixture-secret-725", country: "NL" },
+    captchaUrl: "https://verify.proton.me/?token=fixture-query-938" }) });
+  const result = await backend.execute("login", { username, password });
+  assert.equal(result.code, "NETWORK_ERROR");
+  assert.equal(result.success, false);
+  for (const sensitive of [username, password, "fixture-query-937", "fixture-query-938", "person.conf", key, "fixture-secret-725"]) {
+    assert.equal(JSON.stringify(result).includes(sensitive), false, sensitive);
+  }
+  assert.match(result.message, /network|connection|Proton/i);
+});
+
+test("thrown helper errors and invalid-profile details stay out of backend responses", async () => {
+  const hostile = "C:\\private\\person.conf person@example.test https://proton.me/captcha?Token=fixture-query-937 PrivateKey=fixture-key-482";
+  const optimize = harness({ generate: async () => { throw new Error(hostile); } });
+  const optimization = await optimize.backend.execute("optimize", {});
+  assert.equal(optimization.success, false);
+  assert.equal(JSON.stringify(optimization).includes("fixture-query-937"), false);
+  const imported = harness({ validateConfig: () => ({ valid: false, error: hostile }) });
+  const validation = await imported.backend.execute("importConfig", { path: "C:\\picked\\route.conf" });
+  assert.equal(validation.success, false);
+  assert.equal(JSON.stringify(validation).includes("person.conf"), false);
+});
+
+test("security challenge retains its explicit Proton URL and safe action text", async () => {
+  const challenge = "https://verify.proton.me/?token=fixture-challenge&methods=ownership-email&embed=1&vpn=1";
+  const { backend } = harness({ login: async () => ({ success: false, code: "CAPTCHA_REQUIRED",
+    error: "unexpected account detail person@example.test", captchaUrl: challenge }) });
+  const result = await backend.execute("login", { username: "person@example.test", password: "fixture-password-293" });
+  assert.equal(result.code, "CAPTCHA_REQUIRED");
+  assert.equal(result.captchaUrl, challenge);
+  assert.match(result.message, /security check/i);
+  assert.equal(result.message.includes("person@example.test"), false);
+});
