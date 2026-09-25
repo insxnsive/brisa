@@ -7,11 +7,28 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def fixture_environment(folder):
+    # A pwsh parent can pass its incompatible module path through Python to
+    # Windows PowerShell. Let the selected shell rebuild its own built-in paths.
+    env = {key: value for key, value in os.environ.items() if key.upper() != 'PSMODULEPATH'}
+    env.update(TEMP=str(folder), TMP=str(folder), TMPDIR=str(folder))
+    return env
+
+
 class QuickInstallTests(unittest.TestCase):
+    def test_fixture_environment_does_not_inherit_foreign_module_paths(self):
+        with patch.dict(os.environ, {'PSModulePath': 'foreign-powershell-modules'}):
+            env = fixture_environment('isolated-scratch')
+        self.assertFalse(any(key.upper() == 'PSMODULEPATH' for key in env))
+        for key in ('TEMP', 'TMP', 'TMPDIR'):
+            self.assertEqual(env[key], 'isolated-scratch')
+        self.assertEqual(env.get('PATH'), os.environ.get('PATH'))
+
     def test_readme_is_bilingual_with_clickable_section_indexes(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
         self.assertIn('## Português (Brasil)', readme)
@@ -51,12 +68,40 @@ class QuickInstallTests(unittest.TestCase):
                         '-File', str(ROOT / 'tests/packaging/bootstrap_fixture.ps1'), '-Bootstrap', str(bootstrap),
                         '-Source', str(ROOT / 'scripts/install.ps1'), '-Scenario', scenario, '-Evidence', str(result)],
                         capture_output=True, text=True, timeout=15,
-                        env={**os.environ, 'TEMP': folder, 'TMP': folder, 'TMPDIR': folder})
+                        env=fixture_environment(folder))
                     self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
                     data = json.loads(result.read_text(encoding='utf-8-sig'))
                     self.assertEqual(data['invoked'], scenario == 'matching', data)
                     self.assertEqual(data['error'] is None, scenario == 'matching', data)
                     self.assertEqual(data['leftovers'], 0, data)
+
+    def test_powershell7_direct_handoff_preserves_real_hash_validation(self):
+        pwsh = shutil.which('pwsh')
+        if os.name != 'nt' or not pwsh:
+            self.skipTest('The direct handoff needs PowerShell 7 on Windows')
+        scratch = Path(os.environ.get('TMPDIR') or ROOT / 'artifacts/test-temp')
+        scratch.mkdir(parents=True, exist_ok=True)
+        quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+        for scenario in ('present', 'hash-mismatch'):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory(prefix='brisa-pwsh-direct-', dir=scratch) as folder:
+                result = Path(folder) / 'result.json'
+                command = ("& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "
+                    + quote(ROOT / 'tests/packaging/quick_install_fixture.ps1')
+                    + ' -ScriptPath ' + quote(ROOT / 'scripts/install.ps1')
+                    + ' -Scenario ' + quote(scenario) + ' -EvidencePath ' + quote(result) + '; exit $LASTEXITCODE')
+                # Deliberately do not sanitize PSModulePath: pwsh owns this direct handoff.
+                process = subprocess.run([pwsh, '-NoProfile', '-NonInteractive', '-Command', command],
+                    env={**os.environ, 'TEMP': folder, 'TMP': folder, 'TMPDIR': folder},
+                    capture_output=True, text=True, timeout=25)
+                self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+                data = json.loads(result.read_text(encoding='utf-8-sig'))
+                self.assertEqual(data['leftovers'], 0, data)
+                if scenario == 'present':
+                    self.assertIsNone(data['error'], data)
+                    self.assertEqual(data['launches'], ['Brisa-win-Setup.exe'])
+                else:
+                    self.assertIn('SHA-256 does not match', data['error'])
+                    self.assertEqual(data['launches'], [])
 
     def test_installer_uses_official_release_digest_and_visible_installers(self):
         script = (ROOT / 'scripts' / 'install.ps1').read_text(encoding='utf-8')
@@ -76,7 +121,7 @@ class QuickInstallTests(unittest.TestCase):
         scratch.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='quick-install-fixture-', dir=scratch) as folder:
             result = Path(folder) / 'result.json'
-            env = {**os.environ, 'TEMP': folder, 'TMP': folder, 'TMPDIR': folder}
+            env = fixture_environment(folder)
             process = subprocess.run([powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
                 '-File', str(ROOT / 'tests/packaging/quick_install_fixture.ps1'),
                 '-ScriptPath', str(ROOT / 'scripts/install.ps1'), '-Scenario', scenario,

@@ -53,6 +53,9 @@ export function assertPrivateDataTreeSync(root) {
     const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', readAclScript], {
       input: JSON.stringify(paths), encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024,
       windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'],
+      // PowerShell 7 paths inherited through Node can hide Windows PowerShell's
+      // built-in ACL cmdlets. Rebuild this child's native module search paths.
+      env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH')),
     });
     const parsed = JSON.parse(output);
     if (!Array.isArray(parsed.records) || parsed.records.length !== paths.length ||

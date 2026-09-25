@@ -1,6 +1,10 @@
 # Preview verification
 
-## Beta.5 verification (2026-09-25)
+## Beta.6 follow-up
+
+The beta.5 tag's CI stopped before packaging/publication: a PowerShell 7 parent passed its module paths through Python into Windows PowerShell, hiding `Get-FileHash`. Reproduction with a checksum-verified portable PowerShell 7 runtime also exposed the same environment problem in the ACL reader's `Get-Acl` call. Beta.6 lets those child shells construct their native module paths; it does not replace the hash command or relax ACL decisions. Two additional regressions bring the packaging suite to 40 tests. The complete offline runner passed both normally and through a real PowerShell 7 parent: 40 packaging tests, 65 backend tests, the Go suites, 21 core tests, 77 navigation assertions, 150 appearance assertions and C#–Node integration. The direct-handoff regression confirms that PowerShell 7's direct `powershell.exe` launch accepts a matching hash and rejects a mismatch without changing its inherited module path; the Python/Node-intermediary case is distinct. The old tag is retained without force-updating it; beta.5 was never a published release.
+
+## Beta.5 local verification (2026-09-25)
 
 The beta.5 changes passed the full offline runner:
 
