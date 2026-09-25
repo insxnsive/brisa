@@ -13,7 +13,7 @@
 - [x] Extend the real packaged diagnostic and strict Python schema/tests so old IPv4-only evidence cannot pass the new milestone.
 - [x] Update bilingual limitations in `docs/macos.md` and run focused Go tests/vet and Python tests.
 - [x] Obtain independent review and resolve pending-DNS error identity and unjoined self-test workers; verify the fixes and repeat local transport tests 25 times.
-- [ ] Obtain native race/packaged evidence on Apple Silicon and Intel and verify downloaded artifacts. Parent owns development commits and CI verification; workers do not commit or publish. No release is authorized.
+- [x] Verify native Apple Silicon and Intel artifacts from [run 36194386622](https://github.com/insxnsive/brisa/actions/runs/36194386622), code commit `0c1f4f626eb2f876b70214c4b34e78047757ddd5`: 12 transport test cases repeated three times per architecture with the race detector, exact packaged version-2 dual-stack diagnostics, native UI/account fixtures, hashes, tracked source, Mach-O architecture and deployment targets. Connect remains disabled; no host routing, real-account acceptance, production signing or release is claimed.
 
 ## Commands
 
