@@ -19,6 +19,7 @@ for (const changed of [false, true]) {
       const prelude = `$global:fixtureTerminated=0; function Get-CimInstance { param($ClassName,$Filter) [pscustomobject]@{ExecutablePath=${literal(changed ? "C:\\Other\\Discord.exe" : app)}} }; function Invoke-CimMethod { param($InputObject,$MethodName) $global:fixtureTerminated++; [pscustomobject]@{ReturnValue=0} }; function Get-Process { param($Id) $p=[pscustomobject]@{Handle=1; HasExited=$false; MainModule=[pscustomobject]@{FileName=${literal(changed ? "C:\\Other\\Discord.exe" : app)}}}; $p | Add-Member ScriptMethod Kill {$global:fixtureTerminated++}; $p | Add-Member ScriptMethod WaitForExit {param($milliseconds) return $this.HasExited}; $p | Add-Member ScriptMethod Dispose {}; return $p }; `;
       const command = prelude + script + "; if($global:fixtureTerminated -ne 2){throw 'FIXTURE_NOT_TERMINATED'}";
       commands++;
+      assert.ok(options.timeout >= 10_000, "cold PowerShell startup needs a bounded ten-second command deadline");
       execute(file, [...args.slice(0, -1), command], options, (error, stdout) => {
         if (!error) active = false;
         callback(error, stdout);

@@ -66,7 +66,7 @@ export function createDiscordLifecycle(options = {}) {
 
   const run = (script, extra = [], signal) => new Promise((resolve, reject) => {
     execFile(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", extra.length ? `& { ${script} } ${extra.join(" ")}` : script],
-      { windowsHide: true, encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 5_000, signal },
+      { windowsHide: true, encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 10_000, signal },
       (error, stdout) => error ? reject(error) : resolve(stdout));
   });
 
