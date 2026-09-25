@@ -2,6 +2,14 @@
 
 Updates come from `insxnsive/brisa` GitHub Releases, on Velopack's `win` channel. Do not point a build at upstream GoLiveBypass releases.
 
+## Development is not publication
+
+Accumulate fixes in commits and CI artifacts. Do not bump versions, create release tags or publish a release for each patch. A new release is a deliberate maintainer-requested milestone after acceptance, not the default end of a coding task. Branch pushes only build development artifacts.
+
+`CHANGELOG.md` retains the complete history. Each GitHub release body contains only the exact version's section; `packaging/release.py` extracts it and rejects missing, duplicate or empty sections. Do not pass the complete changelog as release notes or append previous versions' patches. This notes-only change does not require a new app release.
+
+## Publish an approved version
+
 1. Change `<Version>` in `src/Brisa/Brisa.csproj` and update `CHANGELOG.md`.
 2. Run `python packaging/test.py` and inspect the app in isolated UI mode. Packaging also runs `packaging/production_startup_smoke.py` against the real bundled backend from the app working directory using disposable storage. This production-startup gate is required in addition to, not replaced by, `--ui-test`.
 3. Commit the implementation. If `scripts/install.ps1` changed, update both README bootstrap blocks to that full commit ID and the exact script SHA-256. Run the bootstrap fixtures and commit the README before tagging.

@@ -21,6 +21,45 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.release.check_tag(tag, '0.1.0-beta.1')
 
+    def test_publish_uses_only_the_requested_versions_changes(self):
+        from unittest.mock import patch
+        import contextlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'CHANGELOG.md').write_text(
+                '# Changes\n\n## Unreleased\n\n- Future work.\n\n'
+                '## 0.1.0-beta.8\n\n- Fix packaged startup.\n\n'
+                '### Tests\n\n- Check real startup.\n\n'
+                '## 0.1.0-beta.7\n\n- Older change.\n', encoding='utf-8')
+            assets = root / 'assets'
+            assets.mkdir()
+            (assets / 'asset.zip').write_bytes(b'fixture')
+            calls = []
+            def capture(*args):
+                if args[:2] == ('release', 'create'):
+                    notes = Path(args[args.index('--notes-file') + 1]).read_text(encoding='utf-8')
+                    calls.append(notes)
+                return ''
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(self.release, 'ROOT', root))
+                stack.enter_context(patch.object(self.release, 'verify_release'))
+                stack.enter_context(patch.object(self.release, 'verify_uploaded', return_value='fixture'))
+                stack.enter_context(patch.object(self.release, 'gh', side_effect=capture))
+                self.release.publish(assets, 'v0.1.0-beta.8', '0.1.0-beta.8')
+            self.assertEqual(calls, ['## 0.1.0-beta.8\n\n- Fix packaged startup.\n\n### Tests\n\n- Check real startup.\n'])
+
+    def test_notes_require_an_exact_unique_nonempty_version(self):
+        for text in ('## 0.1.0-beta.80\n- Wrong version.\n',
+                     '## 0.1.0-beta.8\n\n## 0.1.0-beta.7\n- Old.\n',
+                     '## 0.1.0-beta.8\n- A.\n## 0.1.0-beta.8\n- B.\n'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                self.release.release_notes(text, '0.1.0-beta.8')
+        self.assertEqual(self.release.release_notes(
+            '# Changes\n## 0.1.0-beta.4 (published 2026-09-25)\n- Only this.\n',
+            '0.1.0-beta.4'), '## 0.1.0-beta.4 (published 2026-09-25)\n- Only this.\n')
+        with self.assertRaises(ValueError):
+            self.release.release_notes('## 0.1.0-beta.8\n- Patch.\n', 'v0.1.0-beta.8')
+
     def test_checksums_cover_exact_files_and_detect_tampering(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

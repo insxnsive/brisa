@@ -11,3 +11,4 @@ Brisa is a Windows x64 .NET 10 WPF fork of GoLiveBypass. Only the native app shi
 - Run relevant tests before committing. WPF builds are not UI acceptance; also exercise the packaged executable in isolated mode.
 - Use test-first fixes. Keep workers in their assigned paths; no worker commits or publishes.
 - Release target: `insxnsive/brisa`, public with user authorization. Publication requires verified artifacts and matching source.
+- Development fixes stay in commits and CI artifacts. Do not bump versions, tag or publish without a maintainer-requested release. GitHub release notes contain only that version's changes; the cumulative history belongs in `CHANGELOG.md`.

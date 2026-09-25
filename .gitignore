@@ -7,6 +7,7 @@
 artifacts/
 .tools/
 .hermes/
+.worktrees/
 .env*
 *.user
 *.suo

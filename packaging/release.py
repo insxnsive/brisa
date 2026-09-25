@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -109,14 +110,35 @@ def verify_uploaded(root, tag, prerelease, draft):
     return release['html_url']
 
 
+def release_notes(changelog, version):
+    """Select one exact version; never fall back to publishing the full history."""
+    if not VERSION.fullmatch(version):
+        raise ValueError('Invalid release-notes version')
+    sections = list(re.finditer(r'^##[ \t]+(.+?)\s*$', changelog, re.MULTILINE))
+    matches = [i for i, heading in enumerate(sections)
+               if re.fullmatch(re.escape(version) + r'(?:[ \t]+\([^\n]+\))?', heading[1])]
+    if len(matches) != 1:
+        raise ValueError('Expected exactly one changelog section for ' + version)
+    index = matches[0]
+    start = sections[index]
+    end = sections[index + 1].start() if index + 1 < len(sections) else len(changelog)
+    if not changelog[start.end():end].strip():
+        raise ValueError('Release changelog section must not be empty')
+    return changelog[start.start():end].strip() + '\n'
+
+
 def publish(root, tag, version):
     prerelease = check_tag(tag, version)
+    notes = release_notes((ROOT / 'CHANGELOG.md').read_text(encoding='utf-8'), version)
     verify_release(root, version)
     files = [str(p) for p in sorted(root.iterdir()) if p.is_file()]
     # Never clobber a published version. Failed validation leaves a draft to inspect.
-    gh('release', 'create', tag, *files, '--repo', REPOSITORY, '--verify-tag', '--draft',
-       '--prerelease=' + str(prerelease).lower(), '--latest=false', '--title', 'Brisa ' + version,
-       '--notes-file', ROOT / 'CHANGELOG.md')
+    with tempfile.TemporaryDirectory(prefix='brisa-release-notes-') as temporary:
+        notes_path = Path(temporary) / 'notes.md'
+        notes_path.write_text(notes, encoding='utf-8')
+        gh('release', 'create', tag, *files, '--repo', REPOSITORY, '--verify-tag', '--draft',
+           '--prerelease=' + str(prerelease).lower(), '--latest=false', '--title', 'Brisa ' + version,
+           '--notes-file', notes_path)
     verify_uploaded(root, tag, prerelease, draft=True)
     gh('release', 'edit', tag, '--repo', REPOSITORY, '--draft=false',
        '--prerelease=' + str(prerelease).lower(), '--latest=' + str(not prerelease).lower())
