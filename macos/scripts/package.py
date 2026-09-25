@@ -33,7 +33,8 @@ if not swift_binary.is_file():
 shutil.copy2(swift_binary, MACOS / "Brisa")
 helper = HELPERS / "protonvpn-wg"
 env = dict(os.environ, GOOS="darwin", GOARCH={"arm64": "arm64", "x86_64": "amd64"}[ARCH], CGO_ENABLED="1")
-subprocess.run(["go", "build", "-trimpath", "-o", str(helper), "./cmd/protonvpn-wg"],
+subprocess.run(["go", "mod", "vendor"], cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
+subprocess.run(["go", "build", "-mod=vendor", "-trimpath", "-o", str(helper), "./cmd/protonvpn-wg"],
                cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
 shutil.copy2(ROOT / "LICENSE", RESOURCES / "LICENSE")
 with (CONTENTS / "Info.plist").open("wb") as stream:
@@ -64,6 +65,10 @@ tracked = subprocess.check_output([
 source_files = [ROOT / os.fsdecode(relative) for relative in tracked if relative]
 if not (ROOT / "macos/Package.swift") in source_files or not all(path.is_file() for path in source_files):
     raise SystemExit("Matching source files must be tracked and present in this checkout")
+vendor = ROOT / "tools/proton-confgen/vendor"
+source_files.extend(path for path in vendor.rglob("*") if path.is_file())
+if not (vendor / "modules.txt").is_file():
+    raise SystemExit("Matching dependency source is required")
 with zipfile.ZipFile(source_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(set(source_files)):
         archive.write(path, path.relative_to(ROOT).as_posix())

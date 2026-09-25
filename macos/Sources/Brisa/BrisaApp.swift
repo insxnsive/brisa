@@ -3,23 +3,18 @@ import BrisaCore
 
 @main
 struct BrisaApp: App {
-    init() {
-        if CommandLine.arguments.contains("--smoke-no-network") {
-            print("Brisa packaged startup: signed out; tunnel unavailable")
-            exit(0)
-        }
-    }
+    init() { NSApplication.shared.setActivationPolicy(.regular) }
 
     var body: some Scene {
-        WindowGroup("Brisa") { ContentView() }
-            .defaultSize(width: 440, height: 390)
+        Window("Brisa", id: "main") { ContentView() }
+            .defaultSize(width: 440, height: 440)
     }
 }
 
-private enum Page: Equatable { case home, account, settings }
+enum Page: Equatable { case home, account, settings }
 
 @MainActor
-private final class AppModel: ObservableObject {
+final class AppModel: ObservableObject {
     @Published var page: Page = .home
     @Published var signedIn = AccountState().signedIn
     @Published var username = ""
@@ -87,6 +82,7 @@ private struct ContentView: View {
                 if model.page != .home {
                     Button { model.back() } label: { Label("Back", systemImage: "chevron.left") }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("back")
                 }
                 Spacer()
                 Text("Brisa").font(.headline)
@@ -101,7 +97,8 @@ private struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(24)
-        .frame(minWidth: 400, minHeight: 350)
+        .frame(minWidth: 400, minHeight: 420)
+        .onAppear { NativeSmoke.start(model: model) }
         .onDisappear { model.cancel() }
     }
 
@@ -111,14 +108,14 @@ private struct ContentView: View {
                 .font(.title3.weight(.semibold))
             Text("This development build can manage a Proton account. It cannot create or protect a VPN connection.")
                 .foregroundStyle(.secondary)
-            Button("Connect") {}.disabled(!capability.tunnelAvailable)
+            Button("Connect") {}.disabled(!capability.tunnelAvailable).accessibilityIdentifier("connect")
             Divider()
             Button { model.page = .account } label: {
                 Label("Account", systemImage: "person.crop.circle")
-            }
+            }.accessibilityIdentifier("nav-account")
             Button { model.page = .settings } label: {
                 Label("Settings", systemImage: "gearshape")
-            }
+            }.accessibilityIdentifier("nav-settings")
         }
     }
 
@@ -129,16 +126,16 @@ private struct ContentView: View {
                 .foregroundStyle(.secondary)
             if !model.signedIn {
                 TextField("Username", text: $model.username)
-                    .textContentType(.username)
+                    .textContentType(.username).accessibilityIdentifier("username")
                 SecureField("Password", text: $model.password)
-                    .textContentType(.password)
+                    .textContentType(.password).accessibilityIdentifier("password")
                 SecureField("Authenticator code, if requested", text: $model.code)
                 HStack {
-                    Button("Sign in") { model.signIn() }.disabled(model.busy)
-                    Button("Check saved session") { model.check() }.disabled(model.busy)
+                    Button("Sign In") { model.signIn() }.disabled(model.busy)
+                    Button("Check Saved Session") { model.check() }.disabled(model.busy)
                 }
             } else {
-                Button("Sign out on this Mac") { model.signOut() }.disabled(model.busy)
+                Button("Sign Out on This Mac") { model.signOut() }.disabled(model.busy)
             }
             if model.busy { ProgressView().controlSize(.small) }
             if !model.message.isEmpty { Text(model.message).foregroundStyle(.secondary) }

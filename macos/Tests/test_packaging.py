@@ -22,8 +22,14 @@ class PackagingTests(unittest.TestCase):
                 executable.parent.mkdir(parents=True)
                 executable.write_bytes(b'fixture-not-executable')
                 observed = {}
+                vendored = []
                 def run(command, **kwargs):
+                    if command == ['go', 'mod', 'vendor']:
+                        vendored.append(True)
+                        return
                     self.assertEqual(command[:2], ['go', 'build'])
+                    self.assertTrue(vendored, 'dependency source must be vendored before building the distributed helper')
+                    self.assertIn('-mod=vendor', command)
                     observed.update(kwargs['env'])
                     raise BuildObserved()
                 with patch('sys.platform', 'darwin'), patch('platform.machine', return_value=machine), patch('subprocess.run', side_effect=run):

@@ -3,7 +3,7 @@ import XCTest
 
 final class AccountTests: XCTestCase {
     func testTimeoutReapsAHelperThatIgnoresTermination() async throws {
-        let helper = try fixture("exec /usr/bin/python3 -c 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(2)'")
+        let helper = try fixture("trap '' TERM\nexec /usr/bin/python3 -c 'import time; time.sleep(2)'")
         let client = AccountClient(helper: helper, sessionFile: fixtureSession(), timeout: 0.2)
         let started = Date()
         do { _ = try await client.checkSession(); XCTFail("expected timeout") }
