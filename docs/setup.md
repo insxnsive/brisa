@@ -30,7 +30,7 @@ Extract the entire `Brisa-win-Portable.zip` into a folder you can write to. Keep
 
 The main interface is native WPF. WebView2 is used only for Proton verification, not for the application UI.
 
-The window’s X button always hides Brisa in the tray without disconnecting or restarting Discord. Double-click its tray icon or choose Open to return. Choose Exit from the tray menu when you want to disconnect and quit.
+The window’s X button normally hides Brisa in the tray without disconnecting or restarting Discord. Double-click its tray icon or choose Open to return. Choose Exit from the tray menu when you want to disconnect and quit. If the native service failed before the first status loaded and no native connection may be active, **Exit Brisa** and X close the failed window instead. That fallback never applies an update without a verified shutdown.
 
 ## Updates and saved data
 
@@ -38,7 +38,9 @@ Brisa checks at startup and periodically while open. It downloads newer publishe
 
 Preview builds accept newer preview releases as well as stable ones. Updates never come from the original GoLiveBypass repository.
 
-Account state and preferences live under `%LOCALAPPDATA%\Brisa`, outside the versioned application files. Updating replaces the program, not those settings. Treat that folder as private; don't include it in bug reports. Proton sessions use Windows current-user DPAPI protection; runtime WireGuard profiles remain plaintext and require private NTFS permissions. Brisa refuses a data tree with unsafe ACLs or ownership rather than rewriting permissions. Sign-out retains explicitly imported custom profiles. See [privacy and local data](privacy.md).
+Preferences remain in `%LOCALAPPDATA%\Brisa\settings.json`; native account state and profiles use the private `%LOCALAPPDATA%\Brisa\native-data` child directory. The parent is also the installer base, so Brisa does not treat installed application files as account data or recursively rewrite their permissions. Updating replaces the program, not those settings. Do not include either data location in bug reports. Proton sessions use Windows current-user DPAPI protection; runtime WireGuard profiles remain plaintext and require private NTFS permissions.
+
+On first use after upgrading an older preview, Brisa migrates only its recognized account, state and profile files. Conflicting destinations and active or unknown WireSock state defer migration rather than overwrite data or interrupt a tunnel. Finish the existing connection normally before retrying; do not delete account/profile files to bypass this protection. Existing unsafe private-store ACLs, owners and reparse points are rejected. Sign-out retains explicitly imported custom profiles. See [privacy and local data](privacy.md).
 
 ## If something fails
 

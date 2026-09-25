@@ -13,6 +13,7 @@ import {
 } from "./network/proton.ts";
 import { findWindowsDiscordInstall } from "./network/windows-discord-install.ts";
 import {
+  inspectWireSock,
   inspectWireSockAsync,
   stopOwnedWireSock,
 } from "./network/vpn-windows.ts";
@@ -22,7 +23,7 @@ import {
 } from "./network/vpn-types.ts";
 import { createBackend } from "./backend.mjs";
 import { startNativeWireSock } from "./native-wiresock-start.ts";
-import { assertPrivateDataTreeSync } from "./private-data.mjs";
+import { prepareNativeDataStoreSync } from "./native-data-store.mjs";
 
 const MAX_CONFIG_BYTES = 512 * 1024;
 
@@ -43,10 +44,7 @@ function safeDataDir(): string {
   const configured = process.env.BRISA_DATA_DIR;
   const base = configured || (process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Brisa"));
   if (!base || !path.isAbsolute(base)) throw new Error("BRISA_DATA_DIR must be an absolute path.");
-  const resolved = path.resolve(base);
-  fs.mkdirSync(resolved, { recursive: true, mode: 0o700 });
-  assertPrivateDataTreeSync(resolved);
-  return resolved;
+  return prepareNativeDataStoreSync(base, { probeLegacyTunnel: (oldConfigPath: string) => inspectWireSock(oldConfigPath) });
 }
 
 function safeResourceDir(): string {

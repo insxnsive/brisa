@@ -6,11 +6,21 @@ public static class ExitGuard
 {
     private static readonly ConditionalWeakTable<IBackendClient, CancellationAttempt> CancellationAttempts = new();
 
-    public static async Task StopOwnedAsync(IBackendClient backend, bool nativeOperationMayBeActive)
+    // False allows an idle failed-service window to close, but never authorizes
+    // applying an update without a reliable final ownership check.
+    public static async Task<bool> StopOwnedAsync(IBackendClient backend, bool nativeOperationMayBeActive)
     {
-        await GetCancellation(backend).WaitAsync(TimeSpan.FromSeconds(6));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        var state = await backend.SnapshotAsync(timeout.Token);
+        Brisa.Models.NativeSnapshot state;
+        try
+        {
+            await GetCancellation(backend).WaitAsync(TimeSpan.FromSeconds(6));
+            state = await backend.SnapshotAsync(timeout.Token);
+        }
+        catch (BackendUnavailableException) when (!nativeOperationMayBeActive)
+        {
+            return false;
+        }
         if (!state.Reliable && (nativeOperationMayBeActive || state.HasOwnedTunnel))
             throw new InvalidOperationException("Tunnel ownership could not be verified. The app will stay open.");
         if (state.HasOwnedTunnel && state.Reliable && !state.ExternalTunnel)
@@ -21,6 +31,7 @@ public static class ExitGuard
             if (after.HasOwnedTunnel || !after.Reliable)
                 throw new InvalidOperationException("Disconnection could not be confirmed. The app will stay open.");
         }
+        return state.Reliable;
     }
 
     private static Task GetCancellation(IBackendClient backend)

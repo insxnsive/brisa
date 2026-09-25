@@ -101,7 +101,10 @@ public sealed class UpdateService : IUpdateService
     private readonly SemaphoreSlim _singleFlight = new(1, 1);
     private readonly object _lifecycleGate = new();
     private Task? _loop;
-    private int _disposed;
+    private bool _disposed;
+    private Task? _disposeTask;
+    private TaskCompletionSource _checksIdle = CompletedSignal();
+    private int _activeChecks;
     private UpdateStatus _status;
 
     public UpdateService(IUpdateClient client, TimeSpan? checkInterval = null)
@@ -119,49 +122,72 @@ public sealed class UpdateService : IUpdateService
 
     public void Start()
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
         lock (_lifecycleGate)
-            _loop ??= RunAsync(_lifetime.Token);
+        {
+            if (_disposed) return;
+            if (_loop is null)
+            {
+                var token = _lifetime.Token;
+                _loop = Task.Run(() => RunAsync(token));
+            }
+        }
     }
 
-    public async Task CheckNowAsync(CancellationToken cancellationToken = default)
+    public Task CheckNowAsync(CancellationToken cancellationToken = default)
     {
-        if (Volatile.Read(ref _disposed) != 0 || !await _singleFlight.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return;
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        lock (_lifecycleGate)
+        {
+            if (_disposed) return Task.CompletedTask;
+            if (_activeChecks++ == 0) _checksIdle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return CheckAdmittedAsync(cancellationToken, _lifetime.Token);
+        }
+    }
+
+    private async Task CheckAdmittedAsync(CancellationToken cancellationToken, CancellationToken lifetimeToken)
+    {
+        var acquired = false;
         try
         {
-            Publish(new(UpdatePhase.Checking, "Checking for updates…"));
-            var release = await _client.CheckForUpdatesAsync(linked.Token).ConfigureAwait(false);
-            if (release is null)
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetimeToken);
+            try
             {
-                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "Brisa is up to date."));
-                return;
-            }
+                acquired = await _singleFlight.WaitAsync(0, linked.Token).ConfigureAwait(false);
+                if (!acquired) return;
+                Publish(new(UpdatePhase.Checking, "Checking for updates…"));
+                var release = await _client.CheckForUpdatesAsync(linked.Token).ConfigureAwait(false);
+                if (release is null)
+                {
+                    Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "Brisa is up to date."));
+                    return;
+                }
 
-            if (!SemanticVersion.TryParse(_client.CurrentVersion, out var current) ||
-                !SemanticVersion.TryParse(release.Version, out var offered) ||
-                offered.CompareTo(current) <= 0)
+                if (!SemanticVersion.TryParse(_client.CurrentVersion, out var current) ||
+                    !SemanticVersion.TryParse(release.Version, out var offered) ||
+                    offered.CompareTo(current) <= 0)
+                {
+                    Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "Brisa is up to date."));
+                    return;
+                }
+
+                Publish(new(UpdatePhase.Downloading, "Downloading update…", offered.ToString(), 0));
+                await _client.DownloadUpdatesAsync(release, progress =>
+                    Publish(new(UpdatePhase.Downloading, "Downloading update…", offered.ToString(), Math.Clamp(progress, 0, 100))), linked.Token).ConfigureAwait(false);
+                Publish(Ready(offered.ToString()));
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
             {
-                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "Brisa is up to date."));
-                return;
+                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Idle, "Updates are checked automatically."));
             }
-
-            Publish(new(UpdatePhase.Downloading, "Downloading update…", offered.ToString(), 0));
-            await _client.DownloadUpdatesAsync(release, progress =>
-                Publish(new(UpdatePhase.Downloading, "Downloading update…", offered.ToString(), Math.Clamp(progress, 0, 100))), linked.Token).ConfigureAwait(false);
-            Publish(Ready(offered.ToString()));
-        }
-        catch (OperationCanceledException) when (linked.IsCancellationRequested)
-        {
-            Publish(new(UpdatePhase.Idle, "Updates are checked automatically."));
-        }
-        catch
-        {
-            Publish(new(UpdatePhase.Error, "Updates could not be checked. Try again later."));
+            catch
+            {
+                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Error, "Updates could not be checked. Try again later."));
+            }
         }
         finally
         {
-            _singleFlight.Release();
+            if (acquired) _singleFlight.Release();
+            lock (_lifecycleGate)
+                if (--_activeChecks == 0) _checksIdle.TrySetResult();
         }
     }
 
@@ -190,23 +216,50 @@ public sealed class UpdateService : IUpdateService
 
     private void Publish(UpdateStatus status)
     {
-        Volatile.Write(ref _status, status);
-        StatusChanged?.Invoke(this, status);
+        lock (_lifecycleGate)
+        {
+            if (_disposed) return;
+            Volatile.Write(ref _status, status);
+            if (StatusChanged is not { } handlers) return;
+            foreach (EventHandler<UpdateStatus> handler in handlers.GetInvocationList())
+            {
+                if (_disposed) break;
+                try { handler(this, status); } catch { /* UI observers cannot break update cleanup. */ }
+            }
+        }
     }
 
     public void Dispose() => DisposeAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_lifecycleGate)
+        {
+            if (_disposeTask is null)
+            {
+                _disposed = true;
+                var loop = _loop;
+                var checksIdle = _checksIdle.Task;
+                _disposeTask = Task.Run(() => DisposeCoreAsync(loop, checksIdle));
+            }
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync(Task? loop, Task checksIdle)
+    {
         _lifetime.Cancel();
-        Task? loop;
-        lock (_lifecycleGate) loop = _loop;
         if (loop is not null)
             try { await loop.ConfigureAwait(false); } catch (OperationCanceledException) { }
-        await _singleFlight.WaitAsync().ConfigureAwait(false);
-        _singleFlight.Release();
+        await checksIdle.ConfigureAwait(false);
         _singleFlight.Dispose();
         _lifetime.Dispose();
+    }
+
+    private static TaskCompletionSource CompletedSignal()
+    {
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        signal.SetResult();
+        return signal;
     }
 }

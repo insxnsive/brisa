@@ -47,7 +47,7 @@ O Brisa verifica novas versões publicadas e baixa atualizações em segundo pla
 
 ### Janela e bandeja
 
-Fechar a janela mantém o Brisa e a conexão ativos na bandeja do sistema. Use **Abrir** no ícone da bandeja para voltar; escolha **Sair** para desconectar e fechar o aplicativo.
+Fechar a janela mantém o Brisa e a conexão ativos na bandeja do sistema. Use **Abrir** no ícone da bandeja para voltar; escolha **Sair** para desconectar e fechar o aplicativo. Se o serviço falhar antes de carregar o primeiro status e nenhuma conexão puder estar ativa, **Exit Brisa** ou X fecha a janela com falha.
 
 ### Desenvolvimento e licença
 
@@ -100,7 +100,7 @@ Brisa checks for published releases and downloads updates in the background. It 
 
 ### Window and Tray
 
-Closing the window keeps Brisa and the connection running in the system tray. Choose **Open** from the tray icon to return, or **Exit** to disconnect and quit.
+Closing the window keeps Brisa and the connection running in the system tray. Choose **Open** from the tray icon to return, or **Exit** to disconnect and quit. If the service fails before loading its first status and no connection may be active, **Exit Brisa** or X closes the failed window.
 
 ### Development and License
 

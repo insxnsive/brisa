@@ -63,6 +63,15 @@ var tests = new (string Name, Action Run)[]
         Assert(!Directory.Exists(profile));
         Directory.Delete(root);
     }),
+    ("failed startup offers Exit instead of a disabled Connect", () =>
+    {
+        var state = new HomeState(ConnectionPhase.Error, null);
+        Assert(state.PrimaryEnabled && state.PrimaryLabel == "Exit Brisa");
+    }),
+    ("idle exit is allowed when the backend never started", () =>
+    {
+        ExitGuard.StopOwnedAsync(new UnavailableBackendClient(), false).GetAwaiter().GetResult();
+    }),
     ("exit disconnects only the native-owned tunnel", () =>
     {
         var backend = new UiTestBackendClient(new(true, false, true, true, "fixture", null));

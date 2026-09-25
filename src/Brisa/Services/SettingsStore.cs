@@ -11,21 +11,44 @@ public sealed class SettingsStore
 {
     public string DataDirectory { get; }
     private readonly bool _allowStartupRegistration;
+    private readonly Action<bool> _setStartup;
     private string SettingsPath => Path.Combine(DataDirectory, "settings.json");
     public UserSettings Current { get; private set; }
-    public SettingsStore(string? dataDirectory = null, bool allowStartupRegistration = true)
+    public SettingsStore(string? dataDirectory = null, bool allowStartupRegistration = true, Action<bool>? setStartup = null)
     {
         DataDirectory = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Brisa");
         _allowStartupRegistration = allowStartupRegistration;
+        _setStartup = setStartup ?? SetStartup;
         try { Current = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(SettingsPath)) ?? new(); }
         catch { Current = new(); }
     }
     public void Save(UserSettings value)
     {
         Directory.CreateDirectory(DataDirectory);
+        var temporaryPath = Path.Combine(DataDirectory, ".settings-" + Guid.NewGuid().ToString("N") + ".tmp");
+        var startupChanged = false;
+        try
+        {
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(value));
+            if (_allowStartupRegistration)
+            {
+                _setStartup(value.StartWithWindows);
+                startupChanged = true;
+            }
+            if (File.Exists(SettingsPath)) File.Replace(temporaryPath, SettingsPath, null);
+            else File.Move(temporaryPath, SettingsPath);
+        }
+        catch
+        {
+            // Persistence failed after registration; restore the previous choice.
+            if (startupChanged) _setStartup(Current.StartWithWindows);
+            throw;
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
         Current = value;
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(value));
-        if (_allowStartupRegistration) SetStartup(Current.StartWithWindows);
         ApplyTheme();
     }
     public void ApplyTheme()

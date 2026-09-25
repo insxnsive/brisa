@@ -1,5 +1,17 @@
 # Preview verification
 
+## Beta.7 repair candidate
+
+The new failed-startup report exposed a different path from the earlier successful routing tests: the installer and native state shared a parent directory, so recursive private-data validation could reject the installed payload. A terminal backend then left the exit guard waiting for a service that could never acknowledge cancellation. This was not evidence that Discord was still running.
+
+The repair moves native state into a dedicated private child, retains fail-closed ownership checks, and permits an idle terminal-backend window to close without authorizing an update. Settings persistence, updater lifecycle, initial-status cancellation and transport EOF/disposal also received regression fixes.
+
+The full offline runner passed both directly and through a checksum-verified portable PowerShell 7 parent: 40 packaging tests; 76 backend tests passed and one elevation-only fixture skipped; the Go suites; 23 core tests; 85 navigation, 150 appearance and 57 lifecycle assertions; and C#–Node transport/process integration. Storage fixtures cover opaque legacy migration, existing conflicts, unsafe ACL/reparse rejection, active/unknown WireSock refusal, failed-publication rollback/retry, read-only matching-destination refusal/retry, interrupted source-deletion recovery, and real Windows handle exclusion against file writes and directory replacement. Administrators-owner SID acceptance passed a decision test; creating that ownership with an elevated token is not verified locally.
+
+The rebuilt executable also passed 41 failed-startup UI assertions: both themes, primary Exit and window-close paths at actual 100%/125% scaling, Settings Save returning to the same error screen without losing its actionable message, normal process termination, and preservation of pre-existing Brisa process identities. This local executable check is not yet evidence for a published beta.7 artifact.
+
+No real credentials/session/profile contents were read. Independent C# and storage follow-up reviews found no remaining concrete blocking security or logic issue. All new and matching destinations are opened writable and flushed before held originals are removed; fault fixtures cover partial deletion and retry, not a physical power-loss test. The installed app and existing tunnel were not replaced or stopped. Clean-machine installation, real elevated startup/migration, higher-DPI acceptance, packaged two-factor acceptance, WireSock terms and trusted signing remain separate open gates. Final publication/packaged acceptance is recorded below only when completed.
+
 ## Published beta.6
 
 [v0.1.0-beta.6](https://github.com/insxnsive/brisa/releases/tag/v0.1.0-beta.6) is a published, unsigned prerelease from commit `1e109ab866681b44baf1623c0ce7293990d5ecec`. The failed beta.5 tag was retained without rewriting it; beta.5 never became a published release.

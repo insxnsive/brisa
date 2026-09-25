@@ -11,6 +11,7 @@ File.WriteAllText(Path.Combine(root, "backend", "backend.cjs"), """
 const readline = require('node:readline');
 readline.createInterface({input:process.stdin}).on('line', line => {
  const q=JSON.parse(line);
+ if(q.command==='closeOutput'){ process.exit(17); }
  if(q.command==='environment'){ console.log(JSON.stringify({id:q.id,ok:true,result:{success:!Object.hasOwn(process.env,'ELECTRON_RUN_AS_NODE')}})); return; }
  if(q.command==='spawnClient'){
    const child = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(()=>{},30000)'], {stdio:'ignore',detached:true,windowsHide:true});
@@ -51,8 +52,55 @@ try
         Console.WriteLine("PASS backend shutdown preserves the independently running restored client");
     }
     finally { if (!independentClient.HasExited) { independentClient.Kill(); await independentClient.WaitForExitAsync(); } }
+
+    VerifyConcurrentDisposal(root);
+    await using var closedOutput = new BackendClient(root, Path.Combine(root, "closed-output"));
+    await ExpectTerminalFailure(closedOutput.CommandAsync("closeOutput", new { }));
+    await ExpectTerminalFailure(closedOutput.SnapshotAsync());
+    Console.WriteLine("PASS a crashed peer is terminal for current and later requests");
 }
 finally
 {
     try { Directory.Delete(root, true); } catch { }
+}
+
+static void VerifyConcurrentDisposal(string root)
+{
+    var previous = SynchronizationContext.Current;
+    using var context = new QueuedContext();
+    BackendClient client;
+    try { SynchronizationContext.SetSynchronizationContext(context); client = new BackendClient(root, Path.Combine(root, "joined-disposal")); }
+    finally { SynchronizationContext.SetSynchronizationContext(previous); }
+    var first = client.DisposeAsync().AsTask();
+    var second = client.DisposeAsync().AsTask();
+    try
+    {
+        if (!ReferenceEquals(first, second)) throw new Exception("Concurrent backend disposal must join one cleanup task");
+    }
+    finally { context.DrainUntil(Task.WhenAll(first, second)); }
+    Console.WriteLine("PASS concurrent backend disposal joins all owned readers");
+}
+
+static async Task ExpectTerminalFailure(Task request)
+{
+    try { await request.WaitAsync(TimeSpan.FromSeconds(2)); }
+    catch (BackendUnavailableException) { return; }
+    throw new Exception("A closed transport must fail with a terminal backend error, not succeed or hang");
+}
+
+sealed class QueuedContext : SynchronizationContext, IDisposable
+{
+    private readonly System.Collections.Concurrent.BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = new();
+    public override void Post(SendOrPostCallback callback, object? state) => _queue.Add((callback, state));
+    public void DrainUntil(Task completion)
+    {
+        using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!completion.IsCompleted)
+        {
+            if (!_queue.TryTake(out var item, 50, bound.Token)) continue;
+            item.Callback(item.State);
+        }
+        completion.GetAwaiter().GetResult();
+    }
+    public void Dispose() => _queue.Dispose();
 }

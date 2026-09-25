@@ -12,7 +12,11 @@ public sealed class BackendClient : IBackendClient
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Task _reader;
+    private readonly Task _errorReader;
+    private Task? _disposeTask;
     private int _disposed;
+    private readonly object _transportLock = new();
+    private Exception? _terminalError;
 
     public BackendClient(string appDirectory, string dataDirectory)
     {
@@ -37,7 +41,7 @@ public sealed class BackendClient : IBackendClient
         start.Environment["ELECTRON_RUN_AS_NODE"] = null;
         _process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the native backend.");
         _reader = ReadResponsesAsync();
-        _ = DrainErrorsAsync();
+        _errorReader = DrainErrorsAsync();
     }
 
     public Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default) =>
@@ -71,13 +75,19 @@ public sealed class BackendClient : IBackendClient
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var id = Guid.NewGuid().ToString("N");
         var completion = new TaskCompletionSource<BackendEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pending.TryAdd(id, completion)) throw new InvalidOperationException("Duplicate request id.");
+        lock (_transportLock)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            if (_terminalError is not null) throw _terminalError;
+            if (!_pending.TryAdd(id, completion)) throw new InvalidOperationException("Duplicate request id.");
+        }
         using var registration = token.Register(() => completion.TrySetCanceled(token));
         try
         {
             var line = NdjsonProtocol.SerializeRequest(id, command, payload);
             await _writeLock.WaitAsync(token);
             try { await _process.StandardInput.WriteLineAsync(line.AsMemory(), token); await _process.StandardInput.FlushAsync(token); }
+            catch (IOException) { var failure = new BackendUnavailableException(); FailPending(failure); throw failure; }
             finally { _writeLock.Release(); }
             var response = await completion.Task;
             if (!response.Ok) throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Error) ? "Backend request failed." : response.Error);
@@ -97,10 +107,10 @@ public sealed class BackendClient : IBackendClient
                 catch (InvalidDataException) { continue; }
                 if (response is not null && _pending.TryGetValue(response.Id, out var completion)) completion.TrySetResult(response);
             }
-            FailPending(new EndOfStreamException("Native backend closed unexpectedly."));
+            FailPending(new BackendUnavailableException());
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { FailPending(ex); }
+        catch (Exception) { FailPending(new BackendUnavailableException()); }
     }
 
     private async Task DrainErrorsAsync()
@@ -109,17 +119,36 @@ public sealed class BackendClient : IBackendClient
         catch { }
     }
 
-    private void FailPending(Exception ex) { foreach (var item in _pending.Values) item.TrySetException(ex); }
-
-    public async ValueTask DisposeAsync()
+    private void FailPending(Exception ex)
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_transportLock)
+        {
+            _terminalError ??= ex;
+            foreach (var item in _pending.Values) item.TrySetException(_terminalError);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_transportLock)
+        {
+            if (_disposeTask is null)
+            {
+                Interlocked.Exchange(ref _disposed, 1);
+                _disposeTask = Task.Run(DisposeCoreAsync);
+            }
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
         FailPending(new ObjectDisposedException(nameof(BackendClient)));
         _lifetime.Cancel();
         // Discord is intentionally relaunched on the normal route before disposal.
         // It is not a backend-owned worker and must survive Brisa exiting.
         try { if (!_process.HasExited) _process.Kill(entireProcessTree: false); } catch { }
-        try { await _reader; } catch { }
+        try { await Task.WhenAll(_reader, _errorReader).ConfigureAwait(false); } catch { }
         _process.Dispose(); _writeLock.Dispose(); _lifetime.Dispose();
     }
 }

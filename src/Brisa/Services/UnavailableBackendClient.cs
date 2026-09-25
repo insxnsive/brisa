@@ -4,7 +4,7 @@ namespace Brisa.Services;
 
 public sealed class UnavailableBackendClient : IBackendClient
 {
-    private static InvalidOperationException Unavailable() => new("The native backend bundle is unavailable.");
+    private static BackendUnavailableException Unavailable() => new();
     public Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromException<NativeSnapshot>(Unavailable());
     public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken cancellationToken = default) => Task.FromException<CommandResult>(Unavailable());
     public Task CancelAsync() => Task.CompletedTask;

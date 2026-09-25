@@ -36,9 +36,10 @@ public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, 
     };
 
     public bool RequiresSignIn => Snapshot is { SignedIn: false, Mode: "proton", HasOwnedTunnel: false, ExternalTunnel: false, Reliable: true };
-    public string PrimaryLabel => Snapshot?.HasOwnedTunnel == true ? "Disconnect" : RequiresSignIn ? "Sign In" : "Connect";
-    public bool PrimaryEnabled => Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
-        && Snapshot is { ExternalTunnel: false, Reliable: true };
+    public bool StartupFailed => Phase == ConnectionPhase.Error && Snapshot is null;
+    public string PrimaryLabel => StartupFailed ? "Exit Brisa" : Snapshot?.HasOwnedTunnel == true ? "Disconnect" : RequiresSignIn ? "Sign In" : "Connect";
+    public bool PrimaryEnabled => StartupFailed || (Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
+        && Snapshot is { ExternalTunnel: false, Reliable: true });
 
     public static HomeState FromSnapshot(NativeSnapshot snapshot) => snapshot switch
     {

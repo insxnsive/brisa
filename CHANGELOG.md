@@ -1,5 +1,14 @@
 # Changes
 
+## 0.1.0-beta.7
+
+- Fix the failed-startup exit loop. A terminal, idle backend failure now offers **Exit Brisa**, and the window close button exits instead of hiding a broken window. Normal working connections still close to the tray.
+- Keep possible native-tunnel ownership after an interrupted Connect; an unavailable service cannot authorize an unverified disconnect or update application.
+- Separate private native account/configuration storage from the installer directory. Migrate only recognized legacy files, preserve conflicts, and defer migration while WireSock activity is active or unknown.
+- Fail current and later requests promptly when the backend transport ends; join concurrent shutdown calls and both output readers. Bound initial status loading and prevent late startup from restarting closed-window polling.
+- Save settings atomically, retain the previous state on failure, and restore the previous startup choice if file replacement fails.
+- Serialize updater startup/check/disposal, preserve an already-staged update when a newer download fails, suppress late notifications after disposal, and isolate failing UI subscribers.
+
 ## 0.1.0-beta.6
 
 - Fix Windows PowerShell module discovery when a PowerShell 7 parent launches Brisa or the installer fixtures; preserve the fail-closed ACL checks and real checksum validation.

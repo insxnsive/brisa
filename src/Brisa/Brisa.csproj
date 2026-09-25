@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\Brisa.ico</ApplicationIcon>
     <RootNamespace>Brisa</RootNamespace>
     <StartupObject>Brisa.App</StartupObject>
-    <Version>0.1.0-beta.6</Version>
+    <Version>0.1.0-beta.7</Version>
     <Authors>insxnsive</Authors>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <Product>Brisa</Product>

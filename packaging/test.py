@@ -25,7 +25,7 @@ run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/packaging', '-v'
 run([node, 'build.mjs', '--fixture'], ROOT/'backend')
 run([node, '--test', *sorted(str(p.relative_to(ROOT/'backend')) for p in (ROOT/'backend/tests').glob('*.test.mjs'))], ROOT/'backend')
 run(['go', 'test', './...'], ROOT/'tools/proton-confgen')
-for name in ('Brisa.Core.Tests', 'Brisa.Navigation.Tests', 'Brisa.Appearance.Tests', 'Brisa.Integration.Tests'):
+for name in ('Brisa.Core.Tests', 'Brisa.Navigation.Tests', 'Brisa.Appearance.Tests', 'Brisa.Lifecycle.Tests', 'Brisa.Integration.Tests'):
     project = ROOT/'tests'/name
     if not project.is_dir():
         raise SystemExit(f'Missing required suite: {name}')

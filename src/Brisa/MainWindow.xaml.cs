@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly SettingsStore _settings;
     private readonly string? _smokeOutput;
     private readonly IUpdateService? _updates;
+    private readonly Action<string> _exitWarning;
     private readonly SemaphoreSlim _operation = new(1, 1);
     private HomeState _state = new(ConnectionPhase.Loading, null);
     private CancellationTokenSource _lifetime = new();
@@ -26,11 +27,14 @@ public partial class MainWindow : Window
     private UserControl? _currentPage;
     private Task? _returnHomeTask;
     private bool _refreshing;
+    private bool _nativeOperationMayBeActive;
+    private bool _terminalBackendFailure;
     private readonly System.Windows.Threading.DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(10) };
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null)
     {
         InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
+        _exitWarning = exitWarning ?? (message => { MessageBox.Show(this, message, "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); });
         SetState(_state);
         _statusTimer.Tick += RefreshStatus;
         Closed += (_, _) => _statusTimer.Stop();
@@ -40,8 +44,19 @@ public partial class MainWindow : Window
 
     public async Task InitializeAsync()
     {
-        try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); }
-        catch (Exception ex) { SetState(new(ConnectionPhase.Error, null, SafeMessage(ex))); }
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            var snapshot = await _backend.SnapshotAsync(timeout.Token).WaitAsync(timeout.Token);
+            if (_closing || _canClose) return;
+            SetState(HomeState.FromSnapshot(snapshot));
+        }
+        catch (Exception ex)
+        {
+            if (_closing || _canClose) return;
+            SetError(ex, null);
+        }
         if (_state.RequiresSignIn && _currentPage is null && !_closing) OpenAccount();
         _statusTimer.Start();
         if (_smokeOutput is not null) await RunSmokeAsync(_smokeOutput);
@@ -60,15 +75,24 @@ public partial class MainWindow : Window
             var snapshot = await _backend.SnapshotAsync(timeout.Token);
             if (!_closing && _currentPage is null && ReferenceEquals(before, _state)) SetState(HomeState.FromSnapshot(snapshot));
         }
-        catch
+        catch (Exception ex)
         {
-            if (!_closing && ReferenceEquals(before, _state)) SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable."));
+            if (!_closing && ReferenceEquals(before, _state)) SetError(ex, _state.Snapshot);
         }
         finally { _refreshing = false; }
     }
 
+    private void SetError(Exception error, NativeSnapshot? snapshot)
+    {
+        if (error is BackendUnavailableException) _terminalBackendFailure = true;
+        SetState(new(ConnectionPhase.Error, snapshot, SafeMessage(error)));
+    }
+
     private void SetState(HomeState state)
     {
+        if (state.Snapshot?.HasOwnedTunnel == true) _nativeOperationMayBeActive = true;
+        else if (_operation.CurrentCount != 0 && state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Blocked
+            && state.Snapshot is { Reliable: true, HasOwnedTunnel: false }) _nativeOperationMayBeActive = false;
         _state = state; StatusText.Text = state.StatusText; DetailText.Text = state.Detail ?? "";
         PrimaryButton.Content = state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting;
@@ -82,11 +106,14 @@ public partial class MainWindow : Window
 
     private async void Primary_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentPage is not null || _navigationBusy || _closing || !await _operation.WaitAsync(0)) return;
+        if (_currentPage is not null || _navigationBusy || _closing) return;
+        if (_state.StartupFailed) { RequestExit(); return; }
+        if (!await _operation.WaitAsync(0)) return;
         try
         {
             if (_state.RequiresSignIn) { OpenAccount(); return; }
             var command = _state.Snapshot?.HasOwnedTunnel == true ? "disconnect" : "connect";
+            if (command == "connect") _nativeOperationMayBeActive = true;
             SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, Detail = null });
             var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending);
@@ -94,8 +121,8 @@ public partial class MainWindow : Window
             if (!result.Success) MessageBox.Show(this, result.Message ?? "The operation could not be completed.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
             SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync()));
         }
-        catch (OperationCanceledException) { if (!_closing) { try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch { SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable.")); } } }
-        catch (Exception ex) { SetState(new(ConnectionPhase.Error, _state.Snapshot, SafeMessage(ex))); }
+        catch (OperationCanceledException) { if (!_closing) { try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch (Exception ex) { SetError(ex, _state.Snapshot); } } }
+        catch (Exception ex) { SetError(ex, _state.Snapshot); }
         finally { _operation.Release(); }
     }
 
@@ -205,7 +232,7 @@ public partial class MainWindow : Window
             using var refresh = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             refresh.CancelAfter(TimeSpan.FromSeconds(5));
             try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync(refresh.Token))); }
-            catch { if (!_closing) SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable.")); }
+            catch (Exception ex) { if (!_closing) SetError(ex, _state.Snapshot); }
         }
         catch { if (!_closing) MessageBox.Show(this, "The account operation is still stopping. Please try going back again.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally
@@ -292,7 +319,8 @@ public partial class MainWindow : Window
         PageTransition.Stop(PageHost);
         PageTransition.Stop(HomeContent);
         e.Cancel = true;
-        if (!_explicitExit && _smokeOutput is null)
+        if (!_explicitExit && _smokeOutput is null &&
+            !(_state.StartupFailed && _terminalBackendFailure && !_nativeOperationMayBeActive))
         {
             if (_currentPage is AccountView || _returnHomeTask is { IsCompleted: false }) await ReturnHomeAsync();
             if (!_closing && !_canClose) Hide();
@@ -300,7 +328,7 @@ public partial class MainWindow : Window
         }
         if (_closing) return;
         _closing = true;
-        var mayBeActive = _state.Snapshot?.HasOwnedTunnel == true || _state.Phase == ConnectionPhase.Connecting;
+        var mayBeActive = _nativeOperationMayBeActive || _state.Snapshot?.HasOwnedTunnel == true || _state.Phase == ConnectionPhase.Connecting;
         _lifetime.Cancel();
         var acquired = false;
         try
@@ -309,10 +337,10 @@ public partial class MainWindow : Window
             // ExitGuard performs the final native cancel only after active work has joined.
             acquired = await _operation.WaitAsync(TimeSpan.FromSeconds(15));
             if (!acquired) throw new InvalidOperationException("The current operation is still stopping. Please try exiting again.");
-            await ExitGuard.StopOwnedAsync(_backend, mayBeActive);
+            var safeToApplyUpdate = await ExitGuard.StopOwnedAsync(_backend, mayBeActive);
             await _backend.DisposeAsync();
             if (_updates is not null) await _updates.DisposeAsync();
-            if (_updates?.HasPendingUpdate == true)
+            if (safeToApplyUpdate && _updates?.HasPendingUpdate == true)
             {
                 // The updater process is launched only after account work, tunnel
                 // ownership checks, and backend disposal have all completed.
@@ -325,10 +353,19 @@ public partial class MainWindow : Window
         {
             _closing = false; _explicitExit = false; _applyUpdateOnExit = false;
             _lifetime.Dispose(); _lifetime = new();
-            MessageBox.Show(this, ex is InvalidOperationException ? ex.Message : "The service has not finished stopping. Please try exiting again.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _exitWarning(ex is BackendUnavailableException
+                ? "The native service stopped while a connection may still be active. Brisa cannot confirm a safe disconnect."
+                : ex is InvalidOperationException ? ex.Message : "The service has not finished stopping. Please try exiting again.");
         }
         finally { if (acquired) _operation.Release(); }
     }
 
-    private static string SafeMessage(Exception ex) => ex is FileNotFoundException ? "The native backend is not installed with this build." : "The native service could not complete this action. Check the connection status before retrying.";
+    private string SafeMessage(Exception ex) => ex switch
+    {
+        FileNotFoundException => "The native backend is not installed with this build.",
+        BackendUnavailableException => _nativeOperationMayBeActive
+            ? "The native service stopped while a connection may still be active. Brisa cannot confirm a safe disconnect."
+            : "The native service stopped. You can exit Brisa and reopen it to retry.",
+        _ => "The native service could not complete this action. Check the connection status before retrying."
+    };
 }

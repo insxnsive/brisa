@@ -41,6 +41,50 @@ internal static class Program
             Directory.CreateDirectory(root);
             File.WriteAllText(Path.Combine(root, "settings.json"), "{\"Theme\":2,\"CloseToTray\":false}");
             var store = new SettingsStore(root, false);
+            var unavailableOrder = new List<string>();
+            var unavailable = new MainWindow(new UnavailableBackendClient(), store,
+                updates: new OrderedUpdateService(unavailableOrder));
+            unavailable.Show(); unavailable.InitializeAsync().GetAwaiter().GetResult();
+            Click((Button)unavailable.FindName("SettingsButton"));
+            var failedHost = (ContentControl)unavailable.FindName("PageHost");
+            Click((Button)((SettingsView)failedHost.Content).FindName("SaveButton"));
+            Pump(() => failedHost.Content is null);
+            Check(((TextBlock)unavailable.FindName("DetailText")).Text.Contains("native service"), "returning from Settings preserves actionable terminal-failure details");
+            unavailable.RequestExit(); Pump(() => app.Windows.Count == 0);
+            Check(!unavailableOrder.Contains("update-apply"), "failed-service exit cannot apply an update without verified ownership");
+            var failedClose = new MainWindow(new UnavailableBackendClient(), store);
+            failedClose.Show(); failedClose.InitializeAsync().GetAwaiter().GetResult();
+            failedClose.Close(); Pump(() => !failedClose.IsVisible);
+            Check(!app.Windows.Cast<Window>().Contains(failedClose), "X exits a terminal idle startup failure instead of hiding it in the tray");
+            var unknownStartup = new StartupProbeBackend();
+            unknownStartup.Release.TrySetException(new TimeoutException("fixture initial status timeout"));
+            var unknownMain = new MainWindow(unknownStartup, store);
+            unknownMain.Show(); unknownMain.InitializeAsync().GetAwaiter().GetResult();
+            unknownMain.Close(); Pump(() => !unknownMain.IsVisible);
+            Check(app.Windows.Cast<Window>().Contains(unknownMain), "an unknown initial status is not proof that the backend stopped; X still hides");
+            unknownMain.RequestExit(); Pump(() => app.Windows.Count == 0);
+            var startup = new StartupProbeBackend();
+            var startupMain = new MainWindow(startup, store);
+            startupMain.Show(); var initialization = startupMain.InitializeAsync();
+            startupMain.RequestExit(); Pump(() => app.Windows.Count == 0);
+            startup.Release.TrySetResult(new(false, false, true, true, "fixture", null));
+            Pump(() => initialization.IsCompleted);
+            var startupTimer = (DispatcherTimer)typeof(MainWindow).GetField("_statusTimer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(startupMain)!;
+            Check(!startupTimer.IsEnabled, "late startup completion never restarts polling after close");
+            Check(startup.StartupToken.CanBeCanceled, "initial status request has a cancellable lifetime");
+
+            var crashed = new CrashDuringConnectBackend();
+            var exitWarnings = new List<string>();
+            var crashedMain = new MainWindow(crashed, store, exitWarning: exitWarnings.Add);
+            crashedMain.Show(); crashedMain.InitializeAsync().GetAwaiter().GetResult();
+            Click((Button)crashedMain.FindName("PrimaryButton"));
+            Pump(() => ((TextBlock)crashedMain.FindName("StatusText")).Text == "Couldn’t load status");
+            Check(!((TextBlock)crashedMain.FindName("DetailText")).Text.Contains("You can exit"), "uncertain connection failure cannot promise a safe exit");
+            crashedMain.RequestExit(); Pump(() => exitWarnings.Count > 0 || app.Windows.Count == 0);
+            Check(exitWarnings.Count == 1 && app.Windows.Cast<Window>().Contains(crashedMain), "a failed Connect cannot erase possible tunnel ownership and silently exit");
+            crashed.Recovered = true;
+            crashedMain.RequestExit(); Pump(() => app.Windows.Count == 0);
+
             var closeBackend = new CloseProbeBackend();
             var closeMain = new MainWindow(closeBackend, store);
             closeMain.Show(); closeMain.InitializeAsync().GetAwaiter().GetResult();
@@ -235,6 +279,37 @@ internal static class Program
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
         finally { app.Shutdown(); if (Directory.Exists(root)) Directory.Delete(root, true); }
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); count++; }
+    }
+    private sealed class StartupProbeBackend : IBackendClient
+    {
+        private int reads;
+        public CancellationToken StartupToken;
+        public TaskCompletionSource<NativeSnapshot> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default)
+        {
+            if (++reads == 1) { StartupToken = token; return Release.Task; }
+            return Task.FromResult(new NativeSnapshot(false, false, true, true, "fixture", null));
+        }
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) => Task.FromResult(new CommandResult(true));
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class CrashDuringConnectBackend : IBackendClient
+    {
+        private bool crashed;
+        public bool Recovered;
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) => crashed && !Recovered
+            ? Task.FromException<NativeSnapshot>(new BackendUnavailableException())
+            : Task.FromResult(new NativeSnapshot(false, false, true, true, "fixture", null));
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            if (command == "connect") { crashed = true; throw new BackendUnavailableException(); }
+            return Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync() => crashed && !Recovered ? Task.FromException(new BackendUnavailableException()) : Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
     private sealed class CloseProbeBackend : IBackendClient
     {
