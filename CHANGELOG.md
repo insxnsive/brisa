@@ -1,12 +1,12 @@
 # Changes
 
-## 0.1.0-beta.5 (candidate)
+## 0.1.0-beta.5
 
 - Add short same-window page transitions that honor Windows animation preferences and stop cleanly on Back or close.
 - Constrain expanded About and Updates content to the Settings viewport; add loaded-window wrapping and hit-target checks in both themes.
 - Reject managed data trees with unsafe Windows ACLs or ownership before the backend uses them; retain DPAPI session encryption and document plaintext runtime-profile limits.
 - Replace arbitrary helper failure text with fixed, actionable messages. Omit untrusted diagnostic strings while retaining safe status fields.
-- Harden quick-install release metadata checks, cancellation/retry guidance and reboot guidance; include installation scripts in matching-source archives.
+- Pin both README installation blocks to an immutable script commit and verify its SHA-256 before execution. Harden release metadata checks, cancellation/retry and reboot guidance; include installation scripts in matching-source archives.
 
 ## 0.1.0-beta.4 (published 2026-09-25)
 
@@ -35,4 +35,4 @@ First Brisa preview, forked from GoLiveBypass 2.0.9.
 - Windows-only project layout, without the Electron app or plugin distributions.
 - Installer and background release updates that wait for a safe restart.
 
-Live native account verification, tunnel routing and normal install/uninstall acceptance still need user testing. The installer is not Authenticode-signed. See [the verification scope](docs/verification.md).
+These remain unsigned previews. The maintainer has accepted the current live connection/routing path; clean-machine prerequisite/account verification, reboot, installed upgrade and uninstall remain open. See [the verification scope](docs/verification.md).

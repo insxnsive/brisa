@@ -1,5 +1,24 @@
 # Preview verification
 
+## Beta.5 verification (2026-09-25)
+
+The beta.5 changes passed the full offline runner:
+
+- 38 packaging, release, quick-install and UI contract tests.
+- 65 Node backend tests, including real NTFS ACL/ownership readback on disposable files, plus the retained Go helper suites.
+- 21 native core tests, 77 inline-navigation assertions and 150 loaded-window appearance assertions.
+- Real C# to Node request/response and process-lifecycle integration checks.
+
+The packaged Windows executable was exercised in explicit no-network mode at **100% and 125% actual Windows display scaling**. Both themes, signed-in/out fixture states, and 460×540 / 440×520 DIP sizes passed: 16 combinations and 464 assertions. The run covered username input, Account/Back, Settings expansion and scrolling in both directions, Cancel/Save, Advanced diagnostics/Close and Route/Cancel. Screenshots showed no unintended overlap or inaccessible footer actions. Partial content at the top of a scrolled Settings viewport is not missing content.
+
+Settings entrance motion changed the page pixels and settled without looping in every combination. Comparisons exclude native title-bar activation fades and the fixed navigation header's control-state animations. Loaded-window tests separately cover the 170 ms transition, reduced-motion policy, rapid Back cleanup, expanded two-factor fields and long update messages. Status-text pressure was tested up to 200%; that is not an OS DPI test. Actual 150%/200% scaling and packaged two-factor challenge acceptance remain outstanding.
+
+A disposable portable **0.0.1 → 0.1.0-beta.5** update applied successfully, rendered before and after, and preserved its test data. The feed, package manifest, checksums and bundled/separate source archives verified. Setup was queried for help only; no real installation occurred. These local packaged checks used source commit `7ef9a05768cede75a4d2b1fde7a4b4c887939e31`; subsequent verification-note edits do not change the runtime code. Tag CI rebuilds and rechecks the final source before publication.
+
+An independent source review found no remaining blocking security or logic issue after the ACL-ownership regression was repaired. The [privacy audit](privacy.md) explains the limits of DPAPI and plaintext runtime profiles. Both README bootstrap blocks pin an immutable installer-script commit and verify its independently embedded SHA-256 before execution; fixture tests reject tampering and download failures without launching an installer.
+
+No real account/session/profile content was read, and the active Brisa instance and tunnel were not operated. Clean-machine install/UAC/reboot/installed-upgrade/uninstall, higher-DPI acceptance, WireSock production permission and trusted publisher signing remain open. This is preview evidence, not stable-release approval.
+
 ## Published beta.4 (2026-09-25)
 
 [v0.1.0-beta.4](https://github.com/insxnsive/brisa/releases/tag/v0.1.0-beta.4) is a published GitHub prerelease, not an unreleased change. Its on-demand WireSock path passed source/fixture checks and packaging; the real vendor installer was not run during those checks.
