@@ -48,8 +48,10 @@ public sealed class BackendClient : IBackendClient
 
     public async Task CancelAsync()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try { await CommandAsync("cancel", new { }, timeout.Token); } catch { }
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        await CommandAsync("cancel", new { }, timeout.Token);
+        // Abort acknowledgement is not a cleanup acknowledgement.
+        await CommandAsync("waitForIdle", new { }, timeout.Token);
     }
 
     public async Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default)
@@ -114,7 +116,9 @@ public sealed class BackendClient : IBackendClient
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         FailPending(new ObjectDisposedException(nameof(BackendClient)));
         _lifetime.Cancel();
-        try { if (!_process.HasExited) _process.Kill(true); } catch { }
+        // Discord is intentionally relaunched on the normal route before disposal.
+        // It is not a backend-owned worker and must survive Brisa exiting.
+        try { if (!_process.HasExited) _process.Kill(entireProcessTree: false); } catch { }
         try { await _reader; } catch { }
         _process.Dispose(); _writeLock.Dispose(); _lifetime.Dispose();
     }

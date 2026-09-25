@@ -9,23 +9,39 @@ public partial class AccountView : UserControl, IAsyncDisposable
 {
     private readonly IBackendClient _backend;
     private readonly MainWindow _main;
+    private readonly Action<Uri> _openExternal;
     private NativeSnapshot? _snapshot;
     private readonly CancellationTokenSource _lifetime = new();
     private Task _pending = Task.CompletedTask;
     private Task? _leaveTask;
     private bool _closed;
-    public AccountView(IBackendClient backend, MainWindow main, NativeSnapshot? snapshot)
+    public AccountView(IBackendClient backend, MainWindow main, NativeSnapshot? snapshot, Action<Uri>? openExternal = null)
     {
-        InitializeComponent(); _backend = backend; _main = main; _snapshot = snapshot; Render();
+        InitializeComponent(); _backend = backend; _main = main; _snapshot = snapshot;
+        _openExternal = openExternal ?? (uri => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }));
+        Render();
     }
     private void Render()
     {
         var signedIn = _snapshot?.SignedIn == true;
         SignedOutPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         SignedInPanel.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        RegistrationPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
+        if (signedIn) Subtitle.Text = "Your Proton account.";
         UsernameText.Text = _snapshot?.Username ?? "";
         ActionButton.Content = signedIn ? "Sign Out" : "Sign In";
-        ActionButton.IsEnabled = !_closed && (!signedIn || _snapshot is { Connected: false, ExternalTunnel: false, Reliable: true });
+        ActionButton.IsEnabled = !_closed && (!signedIn || _snapshot is { HasOwnedTunnel: false, ExternalTunnel: false, Reliable: true });
+    }
+    private void SignUp_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        e.Handled = true;
+        if (_closed) return;
+        try { _openExternal(new Uri("https://account.protonvpn.com/signup?plan=free")); }
+        catch
+        {
+            RegistrationHelp.Text = "Open https://account.protonvpn.com/signup?plan=free in your browser to create an account.";
+            RegistrationHelp.Visibility = Visibility.Visible;
+        }
     }
     private async void Action_Click(object sender, RoutedEventArgs e)
     {

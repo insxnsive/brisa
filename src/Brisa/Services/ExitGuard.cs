@@ -11,14 +11,14 @@ public static class ExitGuard
         await GetCancellation(backend).WaitAsync(TimeSpan.FromSeconds(6));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         var state = await backend.SnapshotAsync(timeout.Token);
-        if (!state.Reliable && (nativeOperationMayBeActive || state.Connected))
+        if (!state.Reliable && (nativeOperationMayBeActive || state.HasOwnedTunnel))
             throw new InvalidOperationException("Tunnel ownership could not be verified. The app will stay open.");
-        if (state.Connected && state.Reliable && !state.ExternalTunnel)
+        if (state.HasOwnedTunnel && state.Reliable && !state.ExternalTunnel)
         {
             var result = await backend.CommandAsync("disconnect", new { }, timeout.Token);
             if (!result.Success) throw new InvalidOperationException("The native tunnel could not be stopped safely. The app will stay open.");
             var after = await backend.SnapshotAsync(timeout.Token);
-            if (after.Connected || !after.Reliable)
+            if (after.HasOwnedTunnel || !after.Reliable)
                 throw new InvalidOperationException("Disconnection could not be confirmed. The app will stay open.");
         }
     }

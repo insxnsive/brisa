@@ -16,7 +16,7 @@ public partial class SettingsView : UserControl, IAsyncDisposable
     public SettingsView(SettingsStore store, IUpdateService? updates, Action? restartForUpdate, Action? openAdvanced = null)
     {
         InitializeComponent(); _store = store; _updates = updates; _restartForUpdate = restartForUpdate; _openAdvanced = openAdvanced;
-        StartupBox.IsChecked = store.Current.StartWithWindows; TrayBox.IsChecked = store.Current.CloseToTray;
+        StartupBox.IsChecked = store.Current.StartWithWindows;
         SystemTheme.IsChecked = store.Current.Theme == AppTheme.System;
         LightTheme.IsChecked = store.Current.Theme == AppTheme.Light;
         DarkTheme.IsChecked = store.Current.Theme == AppTheme.Dark;
@@ -43,7 +43,7 @@ public partial class SettingsView : UserControl, IAsyncDisposable
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var theme = DarkTheme.IsChecked == true ? AppTheme.Dark : LightTheme.IsChecked == true ? AppTheme.Light : AppTheme.System;
-        try { _store.Save(new(theme, StartupBox.IsChecked == true, TrayBox.IsChecked == true)); }
+        try { _store.Save(new(theme, StartupBox.IsChecked == true)); }
         catch { MessageBox.Show(Window.GetWindow(this), "Settings could not be saved. Please try again.", "Settings", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }

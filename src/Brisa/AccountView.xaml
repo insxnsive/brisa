@@ -2,7 +2,15 @@
         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel><TextBlock x:Name="Subtitle" Style="{StaticResource SecondaryText}" Margin="0,0,0,16" Text="Sign in to Proton VPN."/></StackPanel>
+    <StackPanel Margin="0,0,0,16">
+      <TextBlock x:Name="Subtitle" Style="{StaticResource SecondaryText}" Text="Sign in with your Proton account to connect."/>
+      <StackPanel x:Name="RegistrationPanel" Margin="0,6,0,0">
+        <TextBlock Style="{StaticResource SecondaryText}" TextWrapping="Wrap">
+          New to Proton? <Hyperlink x:Name="SignUpLink" NavigateUri="https://account.protonvpn.com/signup?plan=free" RequestNavigate="SignUp_RequestNavigate" AutomationProperties.Name="Create a Free Proton Account">Create a Free Account</Hyperlink>
+        </TextBlock>
+        <TextBlock x:Name="RegistrationHelp" Style="{StaticResource SecondaryText}" Margin="0,6,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+      </StackPanel>
+    </StackPanel>
     <Border Grid.Row="1" Style="{StaticResource SettingsSurface}">
       <Grid>
         <Grid x:Name="SignedOutPanel" VerticalAlignment="Top">

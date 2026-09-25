@@ -25,10 +25,15 @@ public partial class MainWindow : Window
     private bool _closing, _canClose, _explicitExit, _navigationBusy, _applyUpdateOnExit;
     private UserControl? _currentPage;
     private Task? _returnHomeTask;
+    private bool _refreshing;
+    private readonly System.Windows.Threading.DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(10) };
 
     public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null)
     {
         InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
+        SetState(_state);
+        _statusTimer.Tick += RefreshStatus;
+        Closed += (_, _) => _statusTimer.Stop();
         Closing += OnClosing;
         PreviewKeyDown += OnNavigationKeyDown;
     }
@@ -37,13 +42,38 @@ public partial class MainWindow : Window
     {
         try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); }
         catch (Exception ex) { SetState(new(ConnectionPhase.Error, null, SafeMessage(ex))); }
+        if (_state.RequiresSignIn && _currentPage is null && !_closing) OpenAccount();
+        _statusTimer.Start();
         if (_smokeOutput is not null) await RunSmokeAsync(_smokeOutput);
+    }
+
+    private async void RefreshStatus(object? sender, EventArgs e)
+    {
+        if (_refreshing || _closing || !IsVisible || _currentPage is not null ||
+            _state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting) return;
+        _refreshing = true;
+        var before = _state;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            var snapshot = await _backend.SnapshotAsync(timeout.Token);
+            if (!_closing && _currentPage is null && ReferenceEquals(before, _state)) SetState(HomeState.FromSnapshot(snapshot));
+        }
+        catch
+        {
+            if (!_closing && ReferenceEquals(before, _state)) SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable."));
+        }
+        finally { _refreshing = false; }
     }
 
     private void SetState(HomeState state)
     {
         _state = state; StatusText.Text = state.StatusText; DetailText.Text = state.Detail ?? "";
         PrimaryButton.Content = state.PrimaryLabel;
+        var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting;
+        ConnectionProgress.IsIndeterminate = busy;
+        ConnectionProgress.Visibility = busy ? Visibility.Visible : Visibility.Hidden;
         UpdateActionAvailability();
 
         RouteText.Text = state.Snapshot?.Route is { } route ? $"{route.Country} · {route.Server}" : "Automatic";
@@ -55,15 +85,45 @@ public partial class MainWindow : Window
         if (_currentPage is not null || _navigationBusy || _closing || !await _operation.WaitAsync(0)) return;
         try
         {
-            var command = _state.Phase == ConnectionPhase.Connected ? "disconnect" : "connect";
+            if (_state.RequiresSignIn) { OpenAccount(); return; }
+            var command = _state.Snapshot?.HasOwnedTunnel == true ? "disconnect" : "connect";
             SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, Detail = null });
-            var result = await ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
+            var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
+            await TrackProgressAsync(pending);
+            var result = await pending;
             if (!result.Success) MessageBox.Show(this, result.Message ?? "The operation could not be completed.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
             SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync()));
         }
         catch (OperationCanceledException) { if (!_closing) { try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch { SetState(new(ConnectionPhase.Error, _state.Snapshot, "Connection status is unavailable.")); } } }
         catch (Exception ex) { SetState(new(ConnectionPhase.Error, _state.Snapshot, SafeMessage(ex))); }
         finally { _operation.Release(); }
+    }
+
+    private async Task TrackProgressAsync(Task pending)
+    {
+        while (!pending.IsCompleted && !_closing)
+        {
+            await Task.WhenAny(pending, Task.Delay(400));
+            if (pending.IsCompleted || _closing) break;
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(2));
+                var progress = await _backend.CommandAsync("progress", new { }, timeout.Token);
+                var detail = progress.Stage switch
+                {
+                    "preparing-profile" => "Preparing your VPN route…",
+                    "closing-discord" => "Closing the old Discord session…",
+                    "starting-tunnel" => "Starting and settling the tunnel…",
+                    "starting-discord" => "Reopening Discord…",
+                    "verifying-route" => "Checking Discord’s route…",
+                    "stopping-tunnel" => "Restoring the normal connection…",
+                    _ => null
+                };
+                if (detail is not null && !pending.IsCompleted && !_closing) SetState(_state with { Detail = detail });
+            }
+            catch { /* Progress is advisory; the command still controls its outcome. */ }
+        }
     }
 
     public async Task<CommandResult> ExecuteWithVerificationAsync(string command, Func<string?, string?, object> payloadFactory, CancellationToken cancellationToken = default)
@@ -100,8 +160,9 @@ public partial class MainWindow : Window
     private void Account_Click(object sender, RoutedEventArgs e)
     {
         if (_currentPage is not null || _navigationBusy || _closing || !AccountButton.IsEnabled) return;
-        ShowPage(new AccountView(_backend, this, _state.Snapshot), "Account");
+        OpenAccount();
     }
+    private void OpenAccount() => ShowPage(new AccountView(_backend, this, _state.Snapshot), "Account");
     private void ShowPage(UserControl page, string title)
     {
         _currentPage = page; PageHost.Content = page;
@@ -153,7 +214,7 @@ public partial class MainWindow : Window
     {
         var available = !_navigationBusy && !_closing;
         PrimaryButton.IsEnabled = available && _state.PrimaryEnabled;
-        RouteButton.IsEnabled = available && _state.Phase == ConnectionPhase.Disconnected && _state.Snapshot is { ExternalTunnel: false, Reliable: true, Connected: false };
+        RouteButton.IsEnabled = available && !_state.RequiresSignIn && _state.Phase == ConnectionPhase.Disconnected && _state.Snapshot is { ExternalTunnel: false, Reliable: true, HasOwnedTunnel: false };
         AccountButton.IsEnabled = available && _state.Phase is not (ConnectionPhase.Connecting or ConnectionPhase.Disconnecting);
         SettingsButton.IsEnabled = available;
     }
@@ -225,14 +286,15 @@ public partial class MainWindow : Window
     {
         if (_canClose) return;
         e.Cancel = true;
-        if (_settings.Current.CloseToTray && !_explicitExit && _smokeOutput is null)
+        if (!_explicitExit && _smokeOutput is null)
         {
             if (_currentPage is AccountView || _returnHomeTask is { IsCompleted: false }) await ReturnHomeAsync();
-            Hide(); return;
+            if (!_closing && !_canClose) Hide();
+            return;
         }
         if (_closing) return;
         _closing = true;
-        var mayBeActive = _state.Snapshot?.Connected == true || _state.Phase == ConnectionPhase.Connecting;
+        var mayBeActive = _state.Snapshot?.HasOwnedTunnel == true || _state.Phase == ConnectionPhase.Connecting;
         _lifetime.Cancel();
         var acquired = false;
         try

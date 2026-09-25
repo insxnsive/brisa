@@ -11,6 +11,15 @@ var tests = new (string Name, Action Run)[]
         var state = HomeState.FromSnapshot(new(true, false, true, true, "u", new("s", "BR")));
         Assert(state.Phase == ConnectionPhase.Connected && state.PrimaryLabel == "Disconnect" && state.PrimaryEnabled);
     }),
+    ("unverified owned tunnel offers Disconnect without claiming Connected", () =>
+    {
+        var snapshot = JsonSerializer.Deserialize<NativeSnapshot>("{\"connected\":false,\"tunnelActive\":true,\"externalTunnel\":false,\"reliable\":true,\"signedIn\":false,\"username\":\"\",\"route\":null}", new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.StatusText != "Connected" && state.PrimaryLabel == "Disconnect" && state.PrimaryEnabled);
+        var backend = new UiTestBackendClient(snapshot);
+        ExitGuard.StopOwnedAsync(backend, false).GetAwaiter().GetResult();
+        Assert(backend.Commands.Contains("disconnect"));
+    }),
     ("external tunnel blocks mutations", () =>
     {
         var state = HomeState.FromSnapshot(new(false, true, true, false, "", null));

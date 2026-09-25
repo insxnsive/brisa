@@ -1,7 +1,7 @@
 import path from "node:path";
 
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
-const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics"]);
+const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
 
 const cleanText = (value, fallback = "Operation failed.", secrets = []) => {
   let text = typeof value === "string" ? value : fallback;
@@ -63,7 +63,7 @@ function stringField(payload, key, { required = false, max = 16_384 } = {}) {
 export function validateCommandPayload(command, payload) {
   assertPayloadObject(payload);
   if (!COMMANDS.has(command)) throw new Error("Unknown command.");
-  if (["snapshot", "logout", "connect", "disconnect", "cancel", "diagnostics"].includes(command)) {
+  if (["snapshot", "logout", "connect", "disconnect", "cancel", "diagnostics", "progress", "waitForIdle"].includes(command)) {
     const optional = command === "connect" ? ["humanVerificationToken", "humanVerificationMethod"] : [];
     exactKeys(payload, [], optional);
   } else if (command === "login") {
@@ -92,6 +92,25 @@ export function createBackend(deps, paths) {
   let generation = 0;
   let activeOperation = null;
   let mutationBusy = false;
+  let mutationDone = Promise.resolve();
+  let releaseMutation = () => {};
+  let sessionApps = [];
+  let routeVerification = { verified: false, reason: "not_checked" };
+  let stage = "idle";
+  let lastRouteCheck = 0;
+  let routeCheckInFlight = null;
+  const now = () => deps.now?.() ?? Date.now();
+  const checkRoute = async signal => {
+    const mine = generation;
+    let result;
+    try { result = await deps.verifyRoute(signal); }
+    catch { result = { verified: false, reason: "probe_failed" }; }
+    if (mine === generation) {
+      routeVerification = { verified: result?.verified === true,
+        reason: ["verified", "probe_failed", "discord_failed", "same_as_direct", "probe_unavailable"].includes(result?.reason) ? result.reason : "probe_failed" };
+      lastRouteCheck = now();
+    }
+  };
 
   const loadState = async () => {
     if (state) return state;
@@ -176,13 +195,25 @@ export function createBackend(deps, paths) {
     return normalized;
   };
 
-  const cleanupCancelledStart = async () => {
+  const rollbackStart = async (apps) => {
+    sessionApps = [];
+    routeVerification = { verified: false, reason: "not_checked" };
     try {
       const status = await inspect();
-      if (status?.reliable === true && status.active === true && status.owned === true) await deps.stop(paths.ownedConfigPath);
-    } catch {}
-    return cancelled();
+      if (!status?.reliable || (status.active && !status.owned)) return false;
+      if (status.active) {
+        await deps.stopDiscord(apps);
+        if ((await deps.stop(paths.ownedConfigPath))?.stopped !== true) return false;
+      }
+      const restored = await inspect();
+      if (!restored.reliable || restored.active) return false;
+      // Rollback must restore the application as well as its normal route.
+      await deps.launchDiscord(apps);
+      return true;
+    } catch { return false; }
   };
+  const cleanupCancelledStart = async (apps) => (await rollbackStart(apps)) ? cancelled() :
+    { success: false, message: "Cancellation could not confirm normal-route restoration. Check tunnel status and Discord before retrying." };
 
   return {
     async execute(command, payload) {
@@ -194,14 +225,31 @@ export function createBackend(deps, paths) {
         activeOperation = null;
         return { success: true };
       }
+      if (command === "waitForIdle") { await mutationDone; return { success: true }; }
+      if (command === "progress") return { success: true, stage };
       await loadState();
       if (["login", "optimize", "connect"].includes(command) && generation !== enteredGeneration) return cancelled();
 
       if (command === "snapshot") {
+        const mine = generation;
         const status = await inspect();
         const currentUsername = await username();
+        const tunnelActive = status?.reliable === true && status.active === true && status.owned === true;
+        let discordRunning = false;
+        if (tunnelActive && sessionApps.length && !mutationBusy) {
+          try { discordRunning = await deps.discordRunning(sessionApps); } catch {}
+          if (discordRunning && now() - lastRouteCheck >= 30_000 && mine === generation && !mutationBusy) {
+            routeCheckInFlight ??= checkRoute().finally(() => { routeCheckInFlight = null; });
+            await routeCheckInFlight;
+          }
+        }
+        if (!tunnelActive && mine === generation && !mutationBusy) { sessionApps = []; routeVerification = { verified: false, reason: "not_checked" }; }
         return {
-          connected: status?.reliable === true && status.active === true && status.owned === true,
+          connected: tunnelActive && discordRunning && routeVerification.verified && mine === generation && !mutationBusy,
+          tunnelActive,
+          readiness: tunnelActive ? (discordRunning && routeVerification.verified ? "verified" : "unverified") : "inactive",
+          discordRunning,
+          stage,
           externalTunnel: status?.reliable === true && status.active === true && status.owned !== true,
           reliable: status?.reliable === true,
           signedIn: Boolean(currentUsername),
@@ -216,6 +264,9 @@ export function createBackend(deps, paths) {
         const lines = [
           `WireSock inspection: ${status?.reliable ? "reliable" : "unreliable"}.`,
           `Tunnel: ${status?.active ? (status.owned ? "native-owned" : "external") : "inactive"}.`,
+          `Discord session: ${sessionApps.length ? "restarted by Brisa" : "not confirmed"}.`,
+          `Route check: ${routeVerification.reason}.`,
+          `Connection stage: ${stage}.`,
           `Mode: ${state.mode}.`,
           `Packaged Proton helper: ${deps.helperAvailable() ? "available" : "missing"}.`,
         ];
@@ -224,6 +275,7 @@ export function createBackend(deps, paths) {
 
       if (mutationBusy) return { success: false, message: "Another native backend operation is still running." };
       mutationBusy = true;
+      mutationDone = new Promise(resolve => { releaseMutation = resolve; });
       const connectOperation = command === "connect" ? begin() : null;
       try {
         const guarded = await mutationGuard();
@@ -282,7 +334,9 @@ export function createBackend(deps, paths) {
       if (command === "connect") {
         const operation = connectOperation;
         if (!operation?.isCurrent()) return cancelled();
-        if (guarded.status.active && guarded.status.owned) return { success: true, ...(state.route ? { route: state.route } : {}) };
+        if (guarded.status.active && guarded.status.owned)
+          return { success: false, message: "A Brisa tunnel is already active. Disconnect it before starting a fresh Discord connection." };
+        stage = "preparing-profile";
         if (state.mode === "proton") {
           const currentUsername = await username();
           if (!operation.isCurrent()) return cancelled();
@@ -305,30 +359,65 @@ export function createBackend(deps, paths) {
         if (!operation.isCurrent()) return cancelled();
         const validation = deps.validateConfig(raw);
         if (!validation?.valid) return { success: false, message: "The saved WireGuard profile is invalid." };
+        sessionApps = [];
+        routeVerification = { verified: false, reason: "not_checked" };
         try {
+          stage = "closing-discord";
+          await deps.stopDiscord(apps, operation.controller.signal);
+          if (!operation.isCurrent()) return await cleanupCancelledStart(apps);
+          stage = "starting-tunnel";
           await deps.start(paths.ownedConfigPath, raw, apps, operation.controller.signal);
-        } catch (error) {
-          if (!operation.isCurrent()) return cleanupCancelledStart();
-          throw error;
+          if (!operation.isCurrent()) return await cleanupCancelledStart(apps);
+          stage = "starting-discord";
+          await deps.launchDiscord(apps, operation.controller.signal);
+          if (!operation.isCurrent()) return await cleanupCancelledStart(apps);
+          sessionApps = apps;
+          stage = "verifying-route";
+          await checkRoute(operation.controller.signal);
+          if (!operation.isCurrent()) return await cleanupCancelledStart(apps);
+          if (!routeVerification.verified) return { success: false, code: "ROUTE_UNVERIFIED",
+            message: "Discord was reopened and the tunnel is running, but the routed connection could not be verified. Disconnect and try another route." };
+          return { success: true, ...(state.route ? { route: state.route } : {}) };
+        } catch {
+          if (!operation.isCurrent()) return await cleanupCancelledStart(apps);
+          const failedStage = stage;
+          const cleaned = await rollbackStart(apps);
+          return { success: false, message: !cleaned
+            ? "Connection failed. Tunnel cleanup and Discord restoration could not both be confirmed. Check the connection status before retrying."
+            : failedStage === "closing-discord" ? "Discord could not be closed within the startup window. No tunnel was started, and Discord was restored. Try again."
+            : failedStage === "starting-discord" ? "Discord could not be restarted on the VPN. Brisa restored the normal connection. Try another route."
+            : "The Brisa tunnel could not be started. Check WireSock and your VPN profile, then try again." };
         }
-        if (!operation.isCurrent()) return cleanupCancelledStart();
-        for (const app of apps) {
-          if (!operation.isCurrent()) return cleanupCancelledStart();
-          try { await deps.launchDiscord(app); break; } catch {}
-        }
-        return { success: true, ...(state.route ? { route: state.route } : {}) };
       }
 
       if (command === "disconnect") {
+        generation += 1;
         if (!guarded.status.active) return { success: true };
-        const result = await deps.stop(paths.ownedConfigPath);
-        return result?.stopped === true ? { success: true } : { success: false, message: cleanText(result?.error, "The native-owned tunnel could not be stopped safely.") };
+        const apps = sessionApps.length ? sessionApps : await deps.discoverDiscord();
+        sessionApps = [];
+        routeVerification = { verified: false, reason: "not_checked" };
+        try {
+          stage = "closing-discord";
+          if (apps.length) await deps.stopDiscord(apps);
+          stage = "stopping-tunnel";
+          const result = await deps.stop(paths.ownedConfigPath);
+          if (result?.stopped !== true) return { success: false, message: "The native-owned tunnel could not be stopped safely." };
+          stage = "starting-discord";
+          if (apps.length) await deps.launchDiscord(apps);
+          return { success: true };
+        } catch {
+          return { success: false, message: stage === "starting-discord"
+            ? "The tunnel was stopped, but Discord could not be reopened. Open Discord manually."
+            : "Discord or the tunnel could not be stopped safely. Close Discord and try disconnecting again." };
+        }
       }
 
         throw new Error("Unknown command.");
       } finally {
         if (connectOperation) finish(connectOperation);
         mutationBusy = false;
+        stage = "idle";
+        releaseMutation();
       }
     },
   };

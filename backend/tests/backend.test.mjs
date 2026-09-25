@@ -22,11 +22,14 @@ function harness(overrides = {}) {
       return { success: true, server: "NL#1", country: "NL", pingMs: 34, confFile: "generated.conf" };
     },
     start: async (configPath, raw, apps) => { calls.push(["start", configPath, raw, apps]); return { configPath }; },
-    stop: async configPath => { calls.push(["stop", configPath]); return { stopped: true }; },
+    stop: async configPath => { calls.push(["stop", configPath]); inspection = { active: false, owned: false, reliable: true }; return { stopped: true }; },
     validateConfig: raw => raw === goodConfig ? { valid: true } : { valid: false, error: "invalid profile" },
     sanitizeConfig: (raw, allowed) => `${raw}#@ws:AllowedApps = ${allowed}`,
     discoverDiscord: async () => ["C:\\Discord\\Discord.exe"],
-    launchDiscord: async exe => { calls.push(["launch", exe]); },
+    stopDiscord: async apps => { calls.push(["close-discord", apps]); },
+    launchDiscord: async apps => { calls.push(["launch", apps]); },
+    discordRunning: async () => true,
+    verifyRoute: async () => ({ verified: true, reason: "verified" }),
     helperAvailable: () => true,
     files: {
       readExplicit: async p => {
@@ -51,10 +54,132 @@ function harness(overrides = {}) {
   return { backend, calls, files, setInspection(value) { inspection = value; } };
 }
 
+test("connect closes old Discord before changing the route and confirms its relaunch", async () => {
+  const { backend, calls, files } = harness();
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  assert.equal((await backend.execute("connect", {})).success, true);
+  assert.deepEqual(calls.filter(c => ["close-discord", "start", "launch"].includes(c[0])).map(c => c[0]),
+    ["close-discord", "start", "launch"]);
+});
+
+test("Discord launch failure rolls back only the owned tunnel and is not swallowed", async () => {
+  const { backend, calls, files, setInspection } = harness({
+    start: async () => { calls.push(["start"]); setInspection({ active: true, owned: true, reliable: true }); },
+    launchDiscord: async () => { throw new Error("synthetic spawn failure"); },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.ok(calls.some(c => c[0] === "stop"));
+  assert.equal((await backend.execute("snapshot", {})).connected, false);
+});
+
+test("failed tunneled relaunch restores Discord only after verified tunnel removal", async () => {
+  let launches = 0;
+  const { backend, files, setInspection, calls } = harness({
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    launchDiscord: async () => {
+      if (++launches === 1) throw new Error("synthetic first launch failure");
+      assert.equal((await backend.execute("snapshot", {})).tunnelActive, false);
+      calls.push(["restored"]);
+    },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  assert.equal((await backend.execute("connect", {})).success, false);
+  assert.equal(launches, 2);
+  assert.deepEqual(calls.filter(c => ["stop", "restored"].includes(c[0])).map(c => c[0]), ["stop", "restored"]);
+});
+
+test("unverified route returns an explicit warning while keeping Disconnect available", async () => {
+  const { backend, files, setInspection } = harness({
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => ({ verified: false, reason: "same_as_direct" }),
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.equal(result.code, "ROUTE_UNVERIFIED");
+  const snapshot = await backend.execute("snapshot", {});
+  assert.equal(snapshot.connected, false);
+  assert.equal(snapshot.tunnelActive, true);
+});
+
+test("status rechecks route health instead of keeping a stale verified badge", async () => {
+  let now = 1_000, healthy = true, probes = 0;
+  const { backend, files, setInspection } = harness({
+    now: () => now,
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => { probes++; return { verified: healthy, reason: healthy ? "verified" : "probe_failed" }; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  await backend.execute("connect", {});
+  assert.equal((await backend.execute("snapshot", {})).connected, true);
+  healthy = false; now += 31_000;
+  assert.equal((await backend.execute("snapshot", {})).connected, false);
+  assert.equal(probes, 2);
+  assert.equal((await backend.execute("snapshot", {})).tunnelActive, true);
+});
+
+test("waitForIdle joins cancelled work instead of acknowledging early", async () => {
+  let release, began;
+  const blocked = new Promise(r => release = r), started = new Promise(r => began = r);
+  const { backend } = harness({ login: async () => { began(); await blocked; return { success: true }; } });
+  const pending = backend.execute("login", { username: "fixture", password: "synthetic" });
+  await started; await backend.execute("cancel", {});
+  let joined = false;
+  const idle = backend.execute("waitForIdle", {}).then(() => { joined = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(joined, false);
+  release(); await pending; await idle;
+  assert.equal(joined, true);
+});
+
+test("cancellation keeps the mutation lock until owned cleanup has finished", async () => {
+  let releaseStart, startBegan, releaseStop, stopBegan;
+  const starting = new Promise(r => startBegan = r), blockedStart = new Promise(r => releaseStart = r);
+  const stopping = new Promise(r => stopBegan = r), blockedStop = new Promise(r => releaseStop = r);
+  const { backend, files, setInspection } = harness({
+    start: async () => { startBegan(); await blockedStart; setInspection({ active: true, owned: true, reliable: true }); },
+    stop: async () => { stopBegan(); await blockedStop; return { stopped: true }; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const pending = backend.execute("connect", {});
+  await starting; await backend.execute("cancel", {}); releaseStart(); await stopping;
+  const overlap = backend.execute("disconnect", {});
+  await new Promise(resolve => setImmediate(resolve));
+  releaseStop(); await pending;
+  const concurrent = await overlap;
+  assert.equal(concurrent.success, false);
+  assert.match(concurrent.message, /still running/);
+});
+
+test("disconnect closes Discord before removing the filter then confirms the normal relaunch", async () => {
+  const { backend, calls, setInspection } = harness();
+  setInspection({ active: true, owned: true, reliable: true });
+  assert.equal((await backend.execute("disconnect", {})).success, true);
+  assert.deepEqual(calls.filter(c => ["close-discord", "stop", "launch"].includes(c[0])).map(c => c[0]),
+    ["close-discord", "stop", "launch"]);
+});
+
+test("a surviving owned WireSock process alone is never reported connected", async () => {
+  const { backend, setInspection } = harness();
+  setInspection({ active: true, owned: true, reliable: true });
+  const snapshot = await backend.execute("snapshot", {});
+  assert.equal(snapshot.connected, false);
+  assert.equal(snapshot.tunnelActive, true);
+  assert.equal(snapshot.readiness, "unverified");
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false, "an orphan process cannot short-circuit activation as a success");
+});
+
 test("snapshot exposes the exact contract and obtains username from the owned-session helper", async () => {
   const { backend } = harness();
   assert.deepEqual(await backend.execute("snapshot", {}), {
     connected: false,
+    tunnelActive: false,
+    readiness: "inactive",
+    discordRunning: false,
+    stage: "idle",
     externalTunnel: false,
     reliable: true,
     signedIn: true,
@@ -228,7 +353,7 @@ test("cancel during owned profile read prevents start", async () => {
   assert.equal(calls.some(call => call[0] === "start"), false);
 });
 
-test("cancel during start cleans up only an exact native-owned tunnel and never launches Discord", async () => {
+test("cancel during start restores Discord only after exact owned tunnel cleanup", async () => {
   let releaseStart;
   let startBegan;
   const pendingStart = new Promise(resolve => { releaseStart = resolve; });
@@ -237,6 +362,8 @@ test("cancel during start cleans up only an exact native-owned tunnel and never 
   const { backend, calls, files } = harness({
     inspect: async () => inspection,
     start: async () => { calls.push(["start"]); startBegan(); await pendingStart; inspection = { active: true, owned: true, reliable: true }; },
+    stop: async p => { calls.push(["stop", p]); inspection = { active: false, owned: false, reliable: true }; return { stopped: true }; },
+    launchDiscord: async () => { assert.equal(inspection.active, false); calls.push(["launch"]); },
   });
   files.set("C:\\native-data\\wireguard.conf", goodConfig);
   const connect = backend.execute("connect", {});
@@ -245,7 +372,7 @@ test("cancel during start cleans up only an exact native-owned tunnel and never 
   releaseStart();
   assert.equal((await connect).success, false);
   assert.deepEqual(calls.filter(call => call[0] === "stop"), [["stop", "C:\\native-data\\native-wiresock.conf"]]);
-  assert.equal(calls.some(call => call[0] === "launch"), false);
+  assert.equal(calls.some(call => call[0] === "launch"), true);
 });
 
 test("logout removes Proton credentials and generated runtime profiles but preserves imported custom profile", async () => {

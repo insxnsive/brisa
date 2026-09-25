@@ -1,6 +1,9 @@
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { createDiscordLifecycle, discordAllowedApps } from "./discord-lifecycle.mjs";
+import { createRouteVerifier } from "./route-verification.mjs";
 
 import {
   generateOptimalProtonConfig,
@@ -91,6 +94,13 @@ export function createProductionBackend() {
     return resolved;
   };
   const noLog = () => {};
+  const discord = createDiscordLifecycle();
+  const verifier = createRouteVerifier({ helperPath, probePath: path.join(dataDir, "brisa-route-probe.exe") });
+  let probePrepared = false;
+  const trustedApps = (apps: string[]) => {
+    const discovered = new Set(discordExecutables().map(value => value.toLowerCase()));
+    if (!apps.length || apps.some(app => !discovered.has(app.toLowerCase()))) throw new Error("Discord path is not trusted.");
+  };
   // WireSock is elevated. A standard user cannot reliably inspect its command
   // line, so never let a start succeed before discovering that ownership is
   // unreadable. Check the current token only; never request elevation here.
@@ -111,13 +121,31 @@ export function createProductionBackend() {
     validateConfig: validateWireGuardConfig,
     sanitizeConfig: sanitizeWireGuardConfig,
     helperAvailable: () => existingRegularFile(helperPath),
-    discoverDiscord: async () => discordExecutables(),
-    launchDiscord: async (executable: string) => {
-      if (!discordExecutables().some(candidate => candidate.toLowerCase() === executable.toLowerCase())) throw new Error("Discord path is not trusted.");
-      const child = spawn(executable, [], { detached: true, stdio: "ignore", windowsHide: true, shell: false });
-      child.unref();
+    discoverDiscord: async () => {
+      const all = discordExecutables();
+      if (!all.length) return [];
+      const running = await discord.runningApps(all);
+      // Restart the clients the user is actually using, not every installed
+      // PTB/Canary/alternative. Stable Discord is first if none is running.
+      return running.length ? running : all.slice(0, 1);
     },
-    start: startNativeWireSock,
+    stopDiscord: async (apps: string[], signal?: AbortSignal) => { trustedApps(apps); await discord.stop(apps, signal); },
+    launchDiscord: async (apps: string[], signal?: AbortSignal) => { trustedApps(apps); await discord.launch(apps, signal); },
+    discordRunning: (apps: string[]) => discord.isRunning(apps),
+    verifyRoute: (signal?: AbortSignal) => probePrepared ? verifier.verify(signal) : Promise.resolve({ verified: false, reason: "probe_unavailable" }),
+    start: async (configPath: string, raw: string, apps: string[], signal?: AbortSignal) => {
+      const scoped = discordAllowedApps(apps);
+      const allowed = [...scoped.executables, ...scoped.appDirs, ...scoped.executableNames, ...scoped.updaterPaths];
+      probePrepared = false;
+      try {
+        const probe = await verifier.prepare(signal);
+        allowed.push(probe, path.basename(probe));
+        probePrepared = true;
+      } catch { signal?.throwIfAborted(); }
+      await startNativeWireSock(configPath, raw, allowed, signal);
+      // Keep the proven Windows settling interval before opening fresh sockets.
+      await delay(2_000, undefined, { signal });
+    },
     stop: (configPath: string) => stopOwnedWireSock(configPath, noLog),
     files: {
       readExplicit: async (selected: string) => {

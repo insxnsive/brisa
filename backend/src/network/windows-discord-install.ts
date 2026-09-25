@@ -26,19 +26,21 @@ export function findWindowsDiscordInstall(
     .find((candidate, index, candidates) =>
       candidates.indexOf(candidate) === index && existsSync(candidate),
     );
-  if (directExePath) {
-    return {
-      appDir: rootPath,
-      resources: path.join(rootPath, "resources"),
-      exePath: directExePath,
-    };
-  }
+  const direct = directExePath ? {
+    appDir: rootPath,
+    resources: path.join(rootPath, "resources"),
+    exePath: directExePath,
+  } : null;
+  // Official Discord can ship a short-lived root launcher. Routing/readiness
+  // must target the real versioned client, not that hand-off executable.
+  const squirrelClient = /^(Discord|DiscordPTB|DiscordCanary)$/i.test(flavour);
+  if (direct && !squirrelClient) return direct;
 
   let dirs: string[];
   try {
     dirs = readdirSync(rootPath).filter((dir) => dir.startsWith("app-"));
   } catch {
-    return null;
+    return squirrelClient ? null : direct;
   }
 
   const candidates = dirs
@@ -47,12 +49,12 @@ export function findWindowsDiscordInstall(
       const appPath = path.join(rootPath, appDir);
       const resources = path.join(appPath, "resources");
       return {
-        appDir,
+        appDir: appPath,
         resources,
         exePath: path.join(appPath, `${flavour}.exe`),
       };
     })
     .filter((candidate) => existsSync(candidate.exePath));
 
-  return candidates[0] ?? null;
+  return candidates[0] ?? (squirrelClient ? null : direct);
 }

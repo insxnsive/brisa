@@ -44,7 +44,10 @@ public partial class App : System.Windows.Application
             settings.Save(settings.Current with { Theme = theme });
         settings.ApplyTheme();
         IBackendClient backend;
-        if (testMode || smokeOutput is not null) backend = new UiTestBackendClient();
+        if (testMode || smokeOutput is not null) backend = new UiTestBackendClient(
+            initial: smokeOutput is not null || e.Args.Contains("--signed-in", StringComparer.OrdinalIgnoreCase)
+                ? new(false, false, true, true, "UI test account", null) : null,
+            commandDelay: testMode ? TimeSpan.FromSeconds(6) : TimeSpan.Zero);
         else
         {
             try { backend = new BackendClient(AppContext.BaseDirectory, settings.DataDirectory); }

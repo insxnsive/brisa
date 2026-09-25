@@ -105,7 +105,7 @@ internal static class Program
                     {
                         Check(view.FindName("UpdatesExpander") is Expander { IsExpanded: false }, "Updates and legal detail start collapsed");
                         ((CheckBox)view.FindName("StartupBox")).IsChecked = true;
-                        ((CheckBox)view.FindName("TrayBox")).IsChecked = true;
+                        Check(view.FindName("TrayBox") is null, "close-to-tray is unconditional, not an opt-in setting");
                         window.UpdateLayout();
                     }
                     foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string))

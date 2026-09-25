@@ -27,7 +27,7 @@ test("actual bundled process returns the snapshot NDJSON fixture contract", asyn
   assert.equal(stderr, "");
   assert.deepEqual(JSON.parse(stdout.trim()), {
     id: "snap-1", ok: true,
-    result: { connected: false, externalTunnel: false, reliable: true, signedIn: true, username: "fixture-user", route: null, mode: "proton" },
+    result: { connected: false, tunnelActive: false, readiness: "inactive", discordRunning: false, stage: "idle", externalTunnel: false, reliable: true, signedIn: true, username: "fixture-user", route: null, mode: "proton" },
   });
 });
 

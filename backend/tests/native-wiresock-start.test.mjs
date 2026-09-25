@@ -15,6 +15,15 @@ test("production blocks mutations when the current Windows token is not elevated
   assert.ok(production.includes("active: false, owned: false, reliable: false"));
 });
 
+test("production wires scoped Discord restart, route proof and post-start settling", () => {
+  assert.match(production, /stopDiscord:/);
+  assert.match(production, /discordRunning:/);
+  assert.match(production, /verifyRoute:/);
+  assert.match(production, /discordAllowedApps\(apps\)/);
+  assert.match(production, /await delay\(2_000/);
+  assert.doesNotMatch(production, /detached: true/);
+});
+
 test("native WireSock start uses direct application mode without global service or process mutation", () => {
   assert.match(source, /['\"]run['\"]/);
   assert.doesNotMatch(source, /\binstall\s+-|Stop-Service|taskkill|execFileSync|Get-Process[^\n]*Stop-Process/);

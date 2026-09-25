@@ -10,7 +10,7 @@ public partial class AdvancedWindow : Window
     public AdvancedWindow(IBackendClient backend, NativeSnapshot? snapshot)
     {
         InitializeComponent(); _backend = backend;
-        ImportButton.IsEnabled = snapshot is { Connected: false, ExternalTunnel: false, Reliable: true };
+        ImportButton.IsEnabled = snapshot is { HasOwnedTunnel: false, ExternalTunnel: false, Reliable: true };
     }
     private async void Import_Click(object sender, RoutedEventArgs e)
     {

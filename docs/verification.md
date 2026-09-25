@@ -1,5 +1,26 @@
 # Preview verification
 
+## Connection repair candidate (0.1.0-beta.3)
+
+The connection repair has passed the full offline runner:
+
+- 24 packaging, release and UI contract tests.
+- 55 Node backend tests, including real PowerShell batch parsing against stubbed process APIs and launcher-versus-client discovery, plus the retained Go helper suites.
+- 21 native core tests, 66 navigation assertions and 94 loaded-window appearance assertions.
+- Real C# to Node transport and child-process survival checks.
+- Packaged executable UI Automation: Connect and Disconnect were invoked in explicit no-network test mode, the app exited, and two captured frames differed in the progress-bar region.
+- Disposable portable update, feed selection, checksums, and no-reinstall/no-downgrade checks.
+
+An independent review identified cancellation-join, unverified-success, updater-scoping, process-disposal, and polling-budget issues. Each was repaired with regression coverage. No-network UI mode is not live-routing proof; live acceptance is recorded separately.
+
+The user confirmed the rebuilt beta.3 connection works. This is user-observed live acceptance, separate from the earlier automated route-probe failures.
+
+Tray/onboarding regression coverage includes legacy `CloseToTray=false`, X while connected or connecting, reopening without disconnect/cancel/disposal, explicit Exit cleanup, signed-out/signed-in/custom-profile startup, signup navigation and browser-launch failure fallback. The full offline runner passed after these changes. Packaged UI Automation verified first-run sign-in, the accessible registration link, signed-in Home, X hiding the window while preserving its registered tray icon, tray reopening of the same HWND, simulated connection survival, and explicit tray Exit. The external-browser click was not completed because its approval timed out; the navigation handler and official URL were exercised through an injected browser launcher.
+
+A separately authorized live stop-and-reopen diagnostic reproduced `PROCESS_IDENTITY_CHANGED` after Discord’s parent exited while a child was still represented by WMI. Shutdown now holds an OS process handle, rechecks the executable path, and tolerates an error only when that held process is confirmed exited. Real PowerShell tests cover dying children, still-live unreadable identities, changed identities, and denied termination. After the fix, another authorized live diagnostic confirmed no Discord processes remained after stop and a visible client returned after launch. Neither check changed the tunnel, inspected credentials, or replaced the running Brisa instance.
+
+## First preview
+
 The first Brisa preview has passed these local checks:
 
 - 24 packaging, release and UI contract tests.

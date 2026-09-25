@@ -8,10 +8,12 @@ This is a Windows-only fork of [GoLiveBypass](https://github.com/bezumiya/GoLive
 
 1. Download `Brisa-win-Setup.exe` from [Releases](https://github.com/insxnsive/brisa/releases).
 2. Run the installer, then open Brisa as administrator.
-3. Open Account to sign in to Proton, or import a WireGuard profile in Settings → Advanced.
+3. Sign in on the Account screen shown on first launch. Use Create a Free Account if you need a Proton account, or go Back and import a WireGuard profile in Settings → Advanced.
 4. Choose Connect when you're ready.
 
 You need Windows x64, a compatible WireSock Secure Connect SDK installation, and Microsoft's WebView2 Runtime for Proton verification. The .NET and Node runtimes are included. Brisa does not install network drivers or connect on first launch.
+
+Closing the window keeps Brisa and the connection running in the tray. Use the tray’s Open command to return, or Exit to disconnect and quit.
 
 See the [setup guide](docs/setup.md) for prerequisites, portable use and troubleshooting.
 

@@ -19,8 +19,7 @@
         <StackPanel>
           <TextBlock FontWeight="SemiBold" Text="Behavior" Margin="0,0,0,12"/>
           <CheckBox x:Name="StartupBox" Content="Start When I Sign In"/>
-          <CheckBox x:Name="TrayBox" Content="Keep Running When Closed" Margin="0,12,0,0"/>
-          <TextBlock Style="{StaticResource SecondaryText}" Margin="28,5,0,0" FontSize="12" Text="Minimize to the notification area."/>
+          <TextBlock Style="{StaticResource SecondaryText}" Margin="0,12,0,0" FontSize="12" Text="Closing the window keeps Brisa connected in the tray. Choose Exit from the tray menu to disconnect and quit."/>
         </StackPanel>
       </Border>
       <Border Style="{StaticResource SettingsSurface}" Margin="0,8,0,0" Padding="12">
