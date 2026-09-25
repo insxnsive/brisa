@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
 import test from "node:test";
 import { findWindowsDiscordInstall } from "../src/network/windows-discord-install.ts";
 
@@ -24,3 +26,18 @@ test("official Discord without a resolved versioned client fails closed", () => 
   const exe = path.join(root, "Discord.exe");
   assert.equal(findWindowsDiscordInstall(root, "Discord", p => p === exe, () => []), null);
 });
+
+for (const newer of ["absent", "empty", "directory"]) {
+  test(`usable 1.0.9258 remains selectable when 1.0.9259 is ${newer}`, t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-discord-build-"));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const oldExe = path.join(root, "app-1.0.9258", "Discord.exe");
+    const newExe = path.join(root, "app-1.0.9259", "Discord.exe");
+    fs.mkdirSync(path.dirname(oldExe), { recursive: true });
+    fs.mkdirSync(path.dirname(newExe), { recursive: true });
+    fs.writeFileSync(oldExe, "synthetic executable; never launched");
+    if (newer === "empty") fs.writeFileSync(newExe, "");
+    if (newer === "directory") fs.mkdirSync(newExe);
+    assert.equal(findWindowsDiscordInstall(root, "Discord")?.exePath, oldExe);
+  });
+}

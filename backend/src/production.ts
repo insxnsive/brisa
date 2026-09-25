@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { createDiscordLifecycle, discordAllowedApps } from "./discord-lifecycle.mjs";
+import { createDiscordSelectionGuard } from "./discord-compatibility.mjs";
 import { createRouteVerifier } from "./route-verification.mjs";
 
 import {
@@ -98,10 +99,8 @@ export function createProductionBackend() {
   const discord = createDiscordLifecycle();
   const verifier = createRouteVerifier({ helperPath, probePath: path.join(dataDir, "brisa-route-probe.exe") });
   let probePrepared = false;
-  const trustedApps = (apps: string[]) => {
-    const discovered = new Set(discordExecutables().map(value => value.toLowerCase()));
-    if (!apps.length || apps.some(app => !discovered.has(app.toLowerCase()))) throw new Error("Discord path is not trusted.");
-  };
+  const selectionGuard = createDiscordSelectionGuard(discordExecutables);
+  const trustedApps = selectionGuard.assertCurrent;
   // WireSock is elevated. A standard user cannot reliably inspect its command
   // line, so never let a start succeed before discovering that ownership is
   // unreadable. Check the current token only; never request elevation here.
@@ -130,11 +129,16 @@ export function createProductionBackend() {
       // PTB/Canary/alternative. Stable Discord is first if none is running.
       return running.length ? running : all.slice(0, 1);
     },
-    stopDiscord: async (apps: string[], signal?: AbortSignal) => { trustedApps(apps); await discord.stop(apps, signal); },
+    validateDiscordApps: trustedApps,
+    stopDiscord: async (apps: string[], signal?: AbortSignal, { cleanup = false }: { cleanup?: boolean } = {}) => {
+      (cleanup ? selectionGuard.assertCleanup : trustedApps)(apps);
+      await discord.stop(apps, signal);
+    },
     launchDiscord: async (apps: string[], signal?: AbortSignal) => { trustedApps(apps); await discord.launch(apps, signal); },
     discordRunning: (apps: string[]) => discord.isRunning(apps),
     verifyRoute: (signal?: AbortSignal) => probePrepared ? verifier.verify(signal) : Promise.resolve({ verified: false, reason: "probe_unavailable" }),
     start: async (configPath: string, raw: string, apps: string[], signal?: AbortSignal) => {
+      trustedApps(apps);
       const scoped = discordAllowedApps(apps);
       const allowed = [...scoped.executables, ...scoped.appDirs, ...scoped.executableNames, ...scoped.updaterPaths];
       probePrepared = false;

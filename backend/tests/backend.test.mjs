@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createBackend } from "../src/backend.mjs";
+import { DiscordCompatibilityError, createDiscordSelectionGuard } from "../src/discord-compatibility.mjs";
 
 const goodConfig = `[Interface]\nPrivateKey = ${"A".repeat(43)}=\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = ${"B".repeat(43)}=\nAllowedIPs = 0.0.0.0/0\nEndpoint = vpn.example:51820\n`;
 
@@ -52,6 +53,117 @@ function harness(overrides = {}) {
     generatedProfilePath: "C:\\native-data\\wireguard.conf",
   });
   return { backend, calls, files, setInspection(value) { inspection = value; } };
+}
+
+test("missing Discord gives update guidance before profile generation or any process change", async () => {
+  const { backend, calls } = harness({ discoverDiscord: async () => [] });
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.equal(result.code, "DISCORD_UNAVAILABLE");
+  assert.match(result.message, /install or update Discord/i);
+  assert.match(result.message, /open it once/i);
+  assert.deepEqual(calls, []);
+});
+
+test("Discord changing after profile read is reported before stopping any process", async () => {
+  const { backend, calls, files } = harness({
+    validateDiscordApps: async () => { throw new DiscordCompatibilityError("DISCORD_CHANGED"); },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.equal(result.code, "DISCORD_CHANGED");
+  assert.match(result.message, /Finish updating Discord/i);
+  assert.deepEqual(calls, []);
+});
+
+test("a compatibility failure at the process boundary retains actionable update guidance", async () => {
+  const { backend, calls, files } = harness({
+    stopDiscord: async () => { throw new DiscordCompatibilityError("DISCORD_CHANGED"); },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.equal(result.code, "DISCORD_CHANGED");
+  assert.match(result.message, /Finish updating Discord/i);
+  assert.equal(calls.some(c => c[0] === "start"), false);
+});
+
+test("Discord discovery errors do not leak paths and do not start anything", async () => {
+  const { backend, calls } = harness({ discoverDiscord: async () => { throw new Error("C:\\private\\synthetic-user\\token"); } });
+  const result = await backend.execute("connect", {});
+  assert.equal(result.code, "DISCORD_CHECK_FAILED");
+  assert.match(result.message, /restart Discord/i);
+  assert.doesNotMatch(JSON.stringify(result), /private|synthetic-user|token/);
+  assert.deepEqual(calls, []);
+});
+
+test("missing Discord during import returns guidance without saving a profile", async () => {
+  const { backend, calls } = harness({ discoverDiscord: async () => [] });
+  const result = await backend.execute("importConfig", { path: "C:\\picked\\route.conf" });
+  assert.equal(result.code, "DISCORD_UNAVAILABLE");
+  assert.deepEqual(calls, []);
+});
+
+test("a version change during optimization is rediscovered rather than pinned", async () => {
+  let current = "C:\\Discord\\app-1.0.9259\\Discord.exe";
+  const old = "C:\\Discord\\app-1.0.9258\\Discord.exe";
+  const { backend, calls, files } = harness({
+    discoverDiscord: async () => [current],
+    generate: async () => {
+      current = old;
+      files.set("C:\\native-data\\wireguard.conf", goodConfig);
+      return { success: true };
+    },
+  });
+  assert.equal((await backend.execute("connect", {})).success, true);
+  assert.deepEqual(calls.find(c => c[0] === "start")[3], [old]);
+  assert.deepEqual(calls.find(c => c[0] === "launch")[1], [old]);
+});
+
+test("update-race guidance never claims restoration when cleanup fails", async () => {
+  const { backend, calls, files } = harness({
+    stopDiscord: async () => { throw new DiscordCompatibilityError("DISCORD_CHANGED"); },
+    launchDiscord: async () => { throw new DiscordCompatibilityError("DISCORD_CHANGED"); },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.code, "DISCORD_CHANGED");
+  assert.match(result.message, /could not confirm tunnel cleanup/i);
+  assert.equal(calls.some(c => c[0] === "start"), false);
+});
+
+for (const timing of ["startup", "connected"]) {
+  test(`Discord updating while ${timing} cannot block owned-tunnel removal`, async () => {
+    const old = "C:\\Discord\\app-1.0.9258\\Discord.exe";
+    const updated = "C:\\Discord\\app-1.0.9259\\Discord.exe";
+    let current = [old];
+    const guard = createDiscordSelectionGuard(() => current);
+    const { backend, calls, files, setInspection } = harness({
+      discoverDiscord: async () => current,
+      validateDiscordApps: guard.assertCurrent,
+      stopDiscord: async (apps, _signal, { cleanup = false } = {}) => {
+        (cleanup ? guard.assertCleanup : guard.assertCurrent)(apps);
+        calls.push(["close-discord", apps]);
+      },
+      launchDiscord: async apps => guard.assertCurrent(apps),
+      start: async () => {
+        setInspection({ active: true, owned: true, reliable: true });
+        if (timing === "startup") current = [updated];
+      },
+    });
+    files.set("C:\\native-data\\wireguard.conf", goodConfig);
+    const result = await backend.execute("connect", {});
+    if (timing === "connected") {
+      assert.equal(result.success, true);
+      current = [updated];
+      await backend.execute("disconnect", {});
+    } else {
+      assert.equal(result.code, "DISCORD_CHANGED");
+    }
+    assert.equal(calls.filter(call => call[0] === "stop").length, 1, "the verified owned tunnel must be removed");
+    assert.equal((await backend.execute("snapshot", {})).tunnelActive, false);
+  });
 }
 
 test("connect closes old Discord before changing the route and confirms its relaunch", async () => {

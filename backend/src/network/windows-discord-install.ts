@@ -9,6 +9,15 @@ export interface WindowsDiscordInstall {
 
 type ExistsSync = (target: string) => boolean;
 
+// Inspect metadata only. An incomplete update can leave an empty executable or
+// directory in the newest app-* folder; it must not hide a usable older build.
+export function isUsableWindowsDiscordExecutable(target: string): boolean {
+  try {
+    const stat = fs.lstatSync(target);
+    return stat.isFile() && !stat.isSymbolicLink() && stat.size > 0;
+  } catch { return false; }
+}
+
 // WireSock classifica pacotes pelo executavel, nao pelo carregador Electron. Nao ler app.asar
 // evita acoplamento com BetterDiscord, Vencord e qualquer outro mod que troque resources/.
 // Os clientes paralelos instalados pelos instaladores atuais usam a pasta raiz diretamente
@@ -17,7 +26,7 @@ type ExistsSync = (target: string) => boolean;
 export function findWindowsDiscordInstall(
   rootPath: string,
   flavour: string,
-  existsSync: ExistsSync = fs.existsSync,
+  existsSync: ExistsSync = isUsableWindowsDiscordExecutable,
   readdirSync: (target: string) => string[] = (target) => fs.readdirSync(target),
 ): WindowsDiscordInstall | null {
   const directExeNames = [`${flavour}.exe`, `${flavour.toLowerCase()}.exe`];

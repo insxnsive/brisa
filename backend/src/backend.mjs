@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DiscordCompatibilityError, discordCompatibilityFailure } from "./discord-compatibility.mjs";
 
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
 const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
@@ -171,7 +172,7 @@ export function createBackend(deps, paths) {
   const discordApps = async () => {
     const found = await deps.discoverDiscord();
     const valid = [...new Set((Array.isArray(found) ? found : []).filter(value => typeof value === "string" && value.length <= 2048 && !/[\r\n,]/.test(value)))];
-    if (!valid.length) throw new Error("No supported Discord executable was found.");
+    if (!valid.length) throw new DiscordCompatibilityError("DISCORD_UNAVAILABLE");
     return valid;
   };
 
@@ -217,7 +218,7 @@ export function createBackend(deps, paths) {
       const status = await inspect();
       if (!status?.reliable || (status.active && !status.owned)) return false;
       if (status.active) {
-        await deps.stopDiscord(apps);
+        await deps.stopDiscord(apps, undefined, { cleanup: true });
         if ((await deps.stop(paths.ownedConfigPath))?.stopped !== true) return false;
       }
       const restored = await inspect();
@@ -337,7 +338,9 @@ export function createBackend(deps, paths) {
         catch { return { success: false, message: "The selected WireGuard file could not be read." }; }
         const validation = deps.validateConfig(raw);
         if (!validation?.valid) return { success: false, message: "The WireGuard profile is invalid." };
-        const apps = await discordApps();
+        let apps;
+        try { apps = await discordApps(); }
+        catch (error) { return discordCompatibilityFailure(error); }
         const sanitized = deps.sanitizeConfig(raw, apps.join(", "));
         await deps.files.writeOwned(paths.importedProfilePath, sanitized);
         state.mode = "custom";
@@ -351,6 +354,10 @@ export function createBackend(deps, paths) {
         if (!operation?.isCurrent()) return cancelled();
         if (guarded.status.active && guarded.status.owned)
           return { success: false, message: "A Brisa tunnel is already active. Disconnect it before starting a fresh Discord connection." };
+        let apps;
+        try { apps = await discordApps(); }
+        catch (error) { return operation.isCurrent() ? discordCompatibilityFailure(error) : cancelled(); }
+        if (!operation.isCurrent()) return cancelled();
         stage = "preparing-profile";
         if (state.mode === "proton") {
           const currentUsername = await username();
@@ -368,12 +375,18 @@ export function createBackend(deps, paths) {
           } catch { return operation.isCurrent() ? { success: false, message: safeFailure() } : cancelled(); }
           if (!operation.isCurrent()) return cancelled();
         }
-        const apps = await discordApps();
+        // Route optimization may outlast a Discord update. Resolve again rather
+        // than retaining a versioned path captured before profile generation.
+        try { apps = await discordApps(); }
+        catch (error) { return operation.isCurrent() ? discordCompatibilityFailure(error) : cancelled(); }
         if (!operation.isCurrent()) return cancelled();
         const raw = await deps.files.readOwned(profilePath);
         if (!operation.isCurrent()) return cancelled();
         const validation = deps.validateConfig(raw);
         if (!validation?.valid) return { success: false, message: "The saved WireGuard profile is invalid." };
+        try { await deps.validateDiscordApps?.(apps); }
+        catch (error) { return operation.isCurrent() ? discordCompatibilityFailure(error) : cancelled(); }
+        if (!operation.isCurrent()) return cancelled();
         sessionApps = [];
         routeVerification = { verified: false, reason: "not_checked" };
         try {
@@ -393,10 +406,15 @@ export function createBackend(deps, paths) {
           if (!routeVerification.verified) return { success: false, code: "ROUTE_UNVERIFIED",
             message: "Discord was reopened and the tunnel is running, but the routed connection could not be verified. Disconnect and try another route." };
           return { success: true, ...(state.route ? { route: state.route } : {}) };
-        } catch {
+        } catch (error) {
           if (!operation.isCurrent()) return await cleanupCancelledStart(apps);
           const failedStage = stage;
           const cleaned = await rollbackStart(apps);
+          if (error instanceof DiscordCompatibilityError) {
+            const failure = discordCompatibilityFailure(error);
+            return { ...failure, message: cleaned ? failure.message
+              : `${failure.message} Brisa could not confirm tunnel cleanup and Discord restoration. Check the connection status before retrying.` };
+          }
           return { success: false, message: !cleaned
             ? "Connection failed. Tunnel cleanup and Discord restoration could not both be confirmed. Check the connection status before retrying."
             : failedStage === "closing-discord" ? "Discord could not be closed within the startup window. No tunnel was started, and Discord was restored. Try again."
@@ -413,7 +431,7 @@ export function createBackend(deps, paths) {
         routeVerification = { verified: false, reason: "not_checked" };
         try {
           stage = "closing-discord";
-          if (apps.length) await deps.stopDiscord(apps);
+          if (apps.length) await deps.stopDiscord(apps, undefined, { cleanup: true });
           stage = "stopping-tunnel";
           const result = await deps.stop(paths.ownedConfigPath);
           if (result?.stopped !== true) return { success: false, message: "The native-owned tunnel could not be stopped safely." };

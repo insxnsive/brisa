@@ -41,6 +41,26 @@ These checks don't prove a real Proton account can sign in or that traffic takes
 
 After packaging, `python packaging/update_smoke.py` checks a real update between two disposable portable copies, including a rendered launch before and after. It never installs a driver or touches a live account. Setup.exe is checked without installing it.
 
+## Discord installation compatibility
+
+Brisa resolves the installed Discord executable each time you connect. It does not
+require `app-1.0.9259`: older and newer numeric builds are discovered dynamically,
+and saved/imported `AllowedApps` filters are rebuilt for this machine at startup.
+Empty, missing or non-file executables in an incomplete update are skipped rather
+than hiding a usable older installation. Discovery checks file metadata, not the
+health of every DLL or Discord's own service-side support policy.
+
+If no usable client can be resolved, Brisa asks you to install or update Discord and
+open it once to finish setup. If the installation changes during connection, finish
+the update, open Discord and retry. These checks run before Discord is closed or a
+tunnel is started. Rollback and Disconnect can still close clients from a previously
+verified selection after an update changes the selected executable; exact live
+process ownership is checked independently. Starting and relaunching still require
+a current installation. An update must not prevent removal of a verified owned tunnel.
+There is no unverified minimum build cutoff. The reported friend's failure still
+needs confirmation on that machine; synthetic `1.0.9258`/`1.0.9259` regressions do
+not substitute for that acceptance.
+
 ## Source releases
 
 `source.zip` inside the package contains the source and build scripts for that release, plus the Go helper's vendored dependencies. It excludes build output, local account data and credentials. The same archive is available as a separate release asset.

@@ -17,6 +17,9 @@ test("production blocks mutations when the current Windows token is not elevated
 
 test("production wires scoped Discord restart, route proof and post-start settling", () => {
   assert.match(production, /stopDiscord:/);
+  assert.match(production, /validateDiscordApps: trustedApps/);
+  assert.match(production, /createDiscordSelectionGuard\(discordExecutables\)/);
+  assert.match(production, /cleanup \? selectionGuard\.assertCleanup : trustedApps/);
   assert.match(production, /discordRunning:/);
   assert.match(production, /verifyRoute:/);
   assert.match(production, /discordAllowedApps\(apps\)/);

@@ -31,6 +31,16 @@ test("actual bundled process returns the snapshot NDJSON fixture contract", asyn
   });
 });
 
+test("actual bundled process exposes actionable Discord compatibility guidance", async () => {
+  const { stdout, stderr } = await runFrames([JSON.stringify({ id: "connect-missing", command: "connect", payload: {} }) + "\n"]);
+  assert.equal(stderr, "");
+  const frame = JSON.parse(stdout.trim());
+  assert.equal(frame.ok, true);
+  assert.equal(frame.result.success, false);
+  assert.equal(frame.result.code, "DISCORD_UNAVAILABLE");
+  assert.match(frame.result.message, /install or update Discord/i);
+});
+
 test("actual bundled process rejects schema and oversized frames without echoing input", async () => {
   const secret = "never-echo-this-secret";
   const { stdout } = await runFrames([
