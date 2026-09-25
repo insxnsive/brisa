@@ -55,6 +55,16 @@ final class AppModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var requestID = 0
     private let client: AccountService?
+    private let offlineAcceptance = CommandLine.arguments.contains("--smoke-no-network")
+    private(set) var blockedAccountAction = false
+
+    private func allowAccountAction() -> Bool {
+        guard !offlineAcceptance else {
+            blockedAccountAction = true
+            return false
+        }
+        return true
+    }
 
     init(client: AccountService? = try? AccountClient.bundled()) { self.client = client }
 
@@ -83,6 +93,7 @@ final class AppModel: ObservableObject {
         finishCancellation(current)
     }
     func signIn() {
+        guard allowAccountAction() else { return }
         guard !busy else { return }
         guard let client else { message = AccountError.missingHelper.localizedDescription; return }
         busy = true; message = ""
@@ -101,6 +112,7 @@ final class AppModel: ObservableObject {
         }
     }
     func check() {
+        guard allowAccountAction() else { return }
         guard !busy else { return }
         guard let client else { message = AccountError.missingHelper.localizedDescription; return }
         busy = true; message = ""
@@ -121,6 +133,7 @@ final class AppModel: ObservableObject {
         }
     }
     func signOut() async {
+        guard allowAccountAction() else { return }
         guard !busy else { return }
         let current = await joinCancelledRequest()
         guard current == requestID else { return }
@@ -140,7 +153,7 @@ private struct ContentView: View {
                 if model.page != .home {
                     Button { Task { await model.back() } } label: { Label("Back", systemImage: "chevron.left") }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("back")
+                        .nativeControlIdentifier("back")
                 }
                 Spacer()
                 Text("Brisa").font(.headline)
@@ -166,14 +179,14 @@ private struct ContentView: View {
                 .font(.title3.weight(.semibold))
             Text("This development build can manage a Proton account. It cannot create or protect a VPN connection.")
                 .foregroundStyle(.secondary)
-            Button("Connect") {}.disabled(!capability.tunnelAvailable).accessibilityIdentifier("connect")
+            Button("Connect") {}.disabled(!capability.tunnelAvailable).nativeControlIdentifier("connect")
             Divider()
             Button { model.page = .account } label: {
                 Label("Account", systemImage: "person.crop.circle")
-            }.accessibilityIdentifier("nav-account")
+            }.nativeControlIdentifier("nav-account")
             Button { model.page = .settings } label: {
                 Label("Settings", systemImage: "gearshape")
-            }.accessibilityIdentifier("nav-settings")
+            }.nativeControlIdentifier("nav-settings")
         }
     }
 
@@ -184,12 +197,13 @@ private struct ContentView: View {
                 .foregroundStyle(.secondary)
             if !model.signedIn {
                 TextField("Username", text: $model.username)
-                    .textContentType(.username).accessibilityIdentifier("username")
+                    .textContentType(.username).nativeControlIdentifier("username")
                     .disabled(model.busy)
                 SecureField("Password", text: $model.password)
-                    .textContentType(.password).accessibilityIdentifier("password")
+                    .textContentType(.password).nativeControlIdentifier("password")
                     .disabled(model.busy)
                 SecureField("Authenticator code, if requested", text: $model.code)
+                    .nativeControlIdentifier("authenticator-code")
                     .disabled(model.busy)
                 HStack {
                     Button("Sign In") { model.signIn() }.disabled(model.busy)

@@ -38,29 +38,30 @@ enum NativeSmoke {
         guard let root = window.contentView else { return [] }
         return visit(root).filter { !$0.isHiddenOrHasHiddenAncestor && $0.bounds.width > 0 && $0.bounds.height > 0 }
     }
-    private static func readingOrder(_ left: NSView, _ right: NSView) -> Bool {
-        let a = left.convert(left.bounds, to: nil), b = right.convert(right.bounds, to: nil)
-        return abs(a.midY - b.midY) < 2 ? a.minX < b.minX : a.midY > b.midY
+    private static func point(_ id: String, in window: NSWindow) throws -> NSPoint {
+        let anchors = views(in: window).filter { $0.identifier?.rawValue == id }
+        try require(anchors.count == 1, "Expected one native anchor for \(id); found \(anchors.count)")
+        let rect = anchors[0].convert(anchors[0].bounds, to: nil)
+        return NSPoint(x: rect.midX, y: rect.midY)
     }
     private static func button(_ id: String, in window: NSWindow) throws -> NSButton {
-        // SwiftUI exports its AX nodes lazily on headless runners. Exercise the real
-        // underlying AppKit controls instead; do not invoke model actions directly.
-        let controls = views(in: window).compactMap { $0 as? NSButton }.sorted(by: readingOrder)
-        let indices = ["connect": 0, "nav-account": 1, "nav-settings": 2, "back": 0]
-        guard let index = indices[id], controls.indices.contains(index) else {
-            throw Failure.assertion("Missing native button \(id); found \(controls.count)")
-        }
-        return controls[index]
+        let location = try point(id, in: window)
+        let controls = views(in: window).compactMap { $0 as? NSButton }
+            .filter { $0.convert($0.bounds, to: nil).contains(location) }
+        try require(controls.count == 1, "Expected one actual NSButton at \(id); found \(controls.count)")
+        return controls[0]
     }
     private static func press(_ id: String, in window: NSWindow) throws {
         let control = try button(id, in: window)
         try require(control.isEnabled, "Native button is disabled: \(id)")
         control.performClick(nil)
     }
-    private static func type(_ text: String, into index: Int, window: NSWindow) throws {
-        let fields = views(in: window).compactMap { $0 as? NSTextField }.filter { $0.isEditable }.sorted(by: readingOrder)
-        try require(fields.indices.contains(index), "Missing native text field")
-        let field = fields[index]
+    private static func type(_ text: String, into id: String, window: NSWindow) throws {
+        let location = try point(id, in: window)
+        let fields = views(in: window).compactMap { $0 as? NSTextField }
+            .filter { $0.isEditable && $0.convert($0.bounds, to: nil).contains(location) }
+        try require(fields.count == 1, "Expected one native text field at \(id); found \(fields.count)")
+        let field = fields[0]
         field.selectText(nil)
         guard let editor = field.currentEditor() as? NSTextView else { throw Failure.assertion("Native field did not accept focus") }
         editor.selectAll(nil)
@@ -104,13 +105,15 @@ enum NativeSmoke {
             try require(model.page == .account, "Account button did not navigate")
             try capture(theme + "-account", window: window, output: output)
             screens.append(theme + "-account")
-            try type("fixture", into: 0, window: window)
-            try type("synthetic-fixture-only", into: 1, window: window)
+            try type("fixture", into: "username", window: window)
+            try type("synthetic-fixture-only", into: "password", window: window)
+            try type("123456", into: "authenticator-code", window: window)
             try await pause()
             try require(model.username == "fixture" && model.password == "synthetic-fixture-only", "Native text input did not update bindings")
             try press("back", in: window)
             try await pause()
-            try require(model.page == .home && model.password.isEmpty && model.code.isEmpty, "Back must clear sensitive fields")
+            try require(model.page == .home, "Back did not navigate to Home")
+            try require(model.password.isEmpty && model.code.isEmpty, "Back must clear sensitive fields")
             try press("nav-settings", in: window)
             try await pause()
             try require(model.page == .settings, "Settings button did not navigate")
@@ -120,6 +123,7 @@ enum NativeSmoke {
             try await pause()
         }
         try require(NSApplication.shared.windows.filter { $0.isVisible }.count == 1, "Navigation created another window")
+        try require(!model.blockedAccountAction, "Navigation attempted an account action")
         let report: [String: Any] = ["passed": true, "windowCount": 1, "screens": screens,
                                      "navigationViaNativeControls": true, "secretsClearedOnBack": true]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted])

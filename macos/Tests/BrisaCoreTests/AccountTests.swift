@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 @testable import BrisaCore
 
 final class AccountTests: XCTestCase {
@@ -33,6 +34,20 @@ final class AccountTests: XCTestCase {
             let result = try await client.signIn(username: "fixture", password: "synthetic-password")
             XCTAssertEqual(result, .signedIn("fixture"))
         }
+    }
+
+    func testCancelledLargeStdinDoesNotLeakPipeDescriptors() async throws {
+        func openDescriptors() -> Int { (0..<2048).filter { fcntl(Int32($0), F_GETFD) >= 0 }.count }
+        let helper = try fixture("trap '' TERM\nwhile :; do :; done\n")
+        let client = AccountClient(helper: helper, sessionFile: fixtureSession(), timeout: 0.05)
+        let before = openDescriptors()
+        // JSON escapes make this bounded password larger than the pipe capacity.
+        let password = String(repeating: "\u{1}", count: 16_000)
+        for _ in 0..<16 {
+            do { _ = try await client.signIn(username: "fixture", password: password); XCTFail("expected timeout") }
+            catch { XCTAssertEqual(error as? AccountError, .timedOut) }
+        }
+        XCTAssertLessThanOrEqual(openDescriptors(), before + 4, "Completed requests must not retain blocked stdin pipes")
     }
 
     func testSignedOutAndTunnelUnavailable() {
