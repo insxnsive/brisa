@@ -1,6 +1,15 @@
 # Preview verification
 
-## Beta.8 packaged-startup repair
+## Published beta.8
+
+[v0.1.0-beta.8](https://github.com/insxnsive/brisa/releases/tag/v0.1.0-beta.8) is a published, unsigned prerelease from commit `7fa69a7b182fe93e588639e48bb64ecb4e4740b2`.
+
+- [Final branch CI](https://github.com/insxnsive/brisa/actions/runs/36157334988) and [release CI](https://github.com/insxnsive/brisa/actions/runs/36157946564) passed. Release CI passed all 78 backend tests without skips, 41 packaging tests and the remaining Go/C# suites, the real staged-production startup gate and disposable portable update.
+- All eight public assets were downloaded anonymously and their digests verified. All 180 expected source files matched the release commit, and every runtime payload file matched the tested CI build, including 479 executable/DLL files. The publicly downloaded production backend also passed fresh and restart probes locally.
+- The CI-built packaged UI passed 232 assertions across eight combinations at actual 125% scaling, plus 41 failed-startup assertions covering both themes and normal Exit/X-close at 100%/125%. These remain explicitly synthetic no-network UI checks, separate from the production-backend startup probe.
+- The anonymous Velopack updater selected and downloaded beta.8 from a beta.7 test locator, with matching hash, no reinstall and no downgrade. No installed copy was updated.
+
+### Root cause and coverage correction
 
 A user report after beta.7 publication exposed a missing acceptance boundary: the real production backend starts with the self-contained app directory as its working directory, while the storage unit tests ran from the repository and `--ui-test` replaced the backend entirely. The installed executable, assembly, Node runtime, backend and Proton helper matched the published beta.7 artifacts.
 
