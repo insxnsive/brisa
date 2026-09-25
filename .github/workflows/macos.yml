@@ -48,6 +48,17 @@ jobs:
         working-directory: tools/proton-confgen
         timeout-minutes: 4
         run: go test -timeout 120s ./internal/auth ./internal/config ./cmd/protonvpn-wg
+      - name: Run isolated WireGuard transport race tests
+        if: ${{ !cancelled() }}
+        working-directory: tools/proton-confgen
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -o pipefail
+          diagnostics="../../artifacts/macos/${{ matrix.arch }}/test-diagnostics"
+          mkdir -p "$diagnostics"
+          go test -race -count=3 -timeout 90s -json ./internal/macengine ./cmd/brisa-tunnel-check | tee "$diagnostics/transport-tests.jsonl"
+          go vet ./internal/macengine ./cmd/brisa-tunnel-check
       - name: Build native Swift app
         id: build
         if: ${{ !cancelled() }}
@@ -57,6 +68,13 @@ jobs:
         id: package
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: python3 macos/scripts/package.py
+      - name: Exercise exact packaged loopback transport
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        timeout-minutes: 2
+        run: >-
+          python3 macos/scripts/transport_acceptance.py
+          --binary "artifacts/macos/${{ matrix.arch }}/Brisa.app/Contents/Helpers/brisa-tunnel-check"
+          --output "artifacts/macos/${{ matrix.arch }}/transport-evidence/results.json"
       - name: Exercise packaged app without network
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         shell: bash
@@ -78,6 +96,7 @@ jobs:
           path: |
             artifacts/macos/${{ matrix.arch }}/ui-evidence
             artifacts/macos/${{ matrix.arch }}/test-diagnostics
+            artifacts/macos/${{ matrix.arch }}/transport-evidence
           if-no-files-found: ignore
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -42,6 +42,36 @@ class PackagingTests(unittest.TestCase):
                 for flag in ('CGO_CFLAGS', 'CGO_LDFLAGS'):
                     self.assertTrue(observed[flag].endswith('-mmacosx-version-min=13.0'), observed[flag])
 
+    def test_transport_check_is_built_and_verified_before_app_signing(self):
+        for machine, expected in [('arm64', 'arm64'), ('x86_64', 'amd64')]:
+            with self.subTest(machine=machine), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                script = root / 'macos/scripts/package.py'
+                script.parent.mkdir(parents=True)
+                script.write_text(SCRIPT.read_text(encoding='utf-8'), encoding='utf-8')
+                executable = root / 'macos/.build/release/Brisa'
+                executable.parent.mkdir(parents=True)
+                executable.write_bytes(b'fixture-not-executable')
+                (root / 'LICENSE').write_text('fixture-license')
+                commands = []
+                def run(command, **kwargs):
+                    commands.append(command)
+                    if command[:2] == ['go', 'build']:
+                        self.assertEqual(kwargs['env']['GOARCH'], expected)
+                        self.assertIn('-mod=vendor', command)
+                        Path(command[command.index('-o') + 1]).write_bytes(b'fixture-helper')
+                    if command[:4] == ['codesign', '--force', '--sign', '-'] and str(command[-1]).endswith('Brisa.app'):
+                        raise BuildObserved()
+                with patch('sys.platform', 'darwin'), patch('platform.machine', return_value=machine), patch('subprocess.run', side_effect=run), patch('subprocess.check_output', return_value=machine + '\n'):
+                    with self.assertRaises(BuildObserved):
+                        runpy.run_path(str(script), run_name='__main__')
+                builds = [command[-1] for command in commands if command[:2] == ['go', 'build']]
+                self.assertEqual(builds, ['./cmd/protonvpn-wg', './cmd/brisa-tunnel-check'])
+                target_checks = [Path(command[-1]).name for command in commands if len(command) > 1 and str(command[1]).endswith('verify_macos_target.py')]
+                self.assertEqual(target_checks, ['protonvpn-wg', 'brisa-tunnel-check', 'Brisa'])
+                signed = [Path(command[-1]).name for command in commands if command[:4] == ['codesign', '--force', '--sign', '-']]
+                self.assertEqual(signed, ['protonvpn-wg', 'brisa-tunnel-check', 'Brisa', 'Brisa.app'])
+
     def test_binary_minimum_is_checked_instead_of_trusting_plist(self):
         check = runpy.run_path(str(SCRIPT.with_name('verify_macos_target.py')))['minimum_macos']
         def binary(major, platform=1):

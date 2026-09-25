@@ -31,14 +31,15 @@ swift_binary = ROOT / "macos" / ".build" / "release" / "Brisa"
 if not swift_binary.is_file():
     raise SystemExit("Build the release Swift executable before packaging")
 shutil.copy2(swift_binary, MACOS / "Brisa")
-helper = HELPERS / "protonvpn-wg"
+helpers = [HELPERS / name for name in ("protonvpn-wg", "brisa-tunnel-check")]
 env = dict(os.environ, GOOS="darwin", GOARCH={"arm64": "arm64", "x86_64": "amd64"}[ARCH], CGO_ENABLED="1")
 env["MACOSX_DEPLOYMENT_TARGET"] = "13.0"
 for flag in ("CGO_CFLAGS", "CGO_LDFLAGS"):
     env[flag] = env.get(flag, "-O2 -g") + " -mmacosx-version-min=13.0"
 subprocess.run(["go", "mod", "vendor"], cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
-subprocess.run(["go", "build", "-mod=vendor", "-trimpath", "-o", str(helper), "./cmd/protonvpn-wg"],
-               cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
+for helper in helpers:
+    subprocess.run(["go", "build", "-mod=vendor", "-trimpath", "-o", str(helper), f"./cmd/{helper.name}"],
+                   cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
 shutil.copy2(ROOT / "LICENSE", RESOURCES / "LICENSE")
 with (CONTENTS / "Info.plist").open("wb") as stream:
     plistlib.dump({
@@ -50,7 +51,7 @@ with (CONTENTS / "Info.plist").open("wb") as stream:
         "NSHighResolutionCapable": True,
     }, stream)
 
-for binary in (helper, MACOS / "Brisa"):
+for binary in (*helpers, MACOS / "Brisa"):
     architectures = subprocess.check_output(["lipo", "-archs", str(binary)], text=True).split()
     if architectures != [ARCH]:
         raise SystemExit(f"Wrong architecture in {binary}: {architectures}")
@@ -64,7 +65,7 @@ subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(APP)
 source_zip = OUT / f"Brisa-macOS-{ARCH}-source.zip"
 tracked = subprocess.check_output([
     "git", "ls-files", "-z", "--", "macos", "tools/proton-confgen",
-    "LICENSE", "docs/macos.md", ".github/workflows/macos.yml",
+    "LICENSE", "docs/macos.md", "docs/plans/macos-transport-core.md", ".github/workflows/macos.yml",
 ], cwd=ROOT).split(b"\0")
 source_files = [ROOT / os.fsdecode(relative) for relative in tracked if relative]
 if not (ROOT / "macos/Package.swift") in source_files or not all(path.is_file() for path in source_files):
