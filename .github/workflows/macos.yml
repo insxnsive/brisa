@@ -37,7 +37,7 @@ jobs:
           swift --version
           go version
       - name: Run packaging contract tests
-        run: python3 -m unittest discover -s macos/tests -v
+        run: python3 -m unittest discover -s macos/Tests -v
       - name: Run isolated Swift process tests
         working-directory: macos
         timeout-minutes: 4
@@ -48,11 +48,16 @@ jobs:
         timeout-minutes: 4
         run: go test -timeout 120s ./internal/auth ./internal/config ./cmd/protonvpn-wg
       - name: Build native Swift app
+        id: build
+        if: ${{ !cancelled() }}
         working-directory: macos
         run: swift build -c release
       - name: Package matching native helper and source
+        id: package
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: python3 macos/scripts/package.py
       - name: Exercise packaged app without network
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         shell: bash
         run: |
           app="artifacts/macos/${{ matrix.arch }}/Brisa.app"
@@ -63,8 +68,7 @@ jobs:
           trap 'rm -rf "$fixture_dir"' EXIT
           "$app/Contents/Helpers/protonvpn-wg" -check-session -json -session-file "$fixture_dir/missing.enc" |
             python3 -c 'import json,sys; r=json.loads(sys.stdin.read().splitlines()[-1]); assert r["success"] is False and r["valid"] is False'
-          "$app/Contents/MacOS/Brisa" --smoke-no-network | grep 'signed out; tunnel unavailable'
-          open -W -n "$app" --args --smoke-no-network
+          python3 macos/scripts/ui_acceptance.py "$app"
           (cd "artifacts/macos/${{ matrix.arch }}" && shasum -a 256 -c SHA256SUMS)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

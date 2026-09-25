@@ -17,7 +17,10 @@ static CFMutableDictionaryRef brisaQuery(const char *service, const char *accoun
 		CFDictionarySetValue(q, kSecClass, kSecClassGenericPassword);
 		CFDictionarySetValue(q, kSecAttrService, s);
 		CFDictionarySetValue(q, kSecAttrAccount, a);
-		CFDictionarySetValue(q, kSecUseDataProtectionKeychain, kCFBooleanTrue);
+		// The local login Keychain supports an ad-hoc-signed CLI helper.
+		// Data Protection Keychain requires a provisioned access-group entitlement.
+		// This is an explicit store choice, never an unencrypted fallback.
+		CFDictionarySetValue(q, kSecAttrSynchronizable, kCFBooleanFalse);
 		CFDictionarySetValue(q, kSecUseAuthenticationUI, kSecUseAuthenticationUIFail);
     }
     CFRelease(s); CFRelease(a);
@@ -41,7 +44,6 @@ static OSStatus brisaAddKey(const char *service, const char *account, const unsi
     CFDataRef value = CFDataCreate(NULL, key, length);
     if (!value) { CFRelease(q); return errSecAllocate; }
     CFDictionarySetValue(q, kSecValueData, value);
-    CFDictionarySetValue(q, kSecAttrAccessible, kSecAttrAccessibleWhenUnlockedThisDeviceOnly);
     OSStatus status = SecItemAdd(q, NULL);
     CFRelease(value); CFRelease(q);
     return status;
