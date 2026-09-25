@@ -22,7 +22,7 @@
 - [x] Revalidate selected executables immediately before side effects and give update-in-progress guidance rather than a generic error.
 - [x] Exercise the actual WPF Connect control through the bundled synthetic coordinator in Dark/Light disposable desktops; verify the complete warning and return to Connect.
 - [x] Run all offline suites and independent review. Repair the review-discovered update race: previously verified selections remain trusted only for rollback/disconnect, not fresh startup or relaunch. PID/path ownership checks remain unchanged.
-- [ ] Verify the development Windows CI package. No production installation or live routing test is authorized.
+- [x] Verify the development Windows CI package: [run 36194382660](https://github.com/insxnsive/brisa/actions/runs/36194382660), code commit `df91282e140f158121b0690416c1581722ab3754`. All 95 backend tests passed in CI, plus packaging, Go, WPF, production-startup and disposable portable-update checks. Downloaded hashes, package manifest, source commit and all changed source files matched. No production installation or live routing test was performed.
 - [ ] Friend-machine confirmation remains outstanding; no unsupported minimum version is established.
 
 ## Verification commands
