@@ -36,12 +36,17 @@ jobs:
           test "$(uname -m)" = "${{ matrix.arch }}"
           swift --version
           go version
+      - name: Run packaging contract tests
+        run: python3 -m unittest discover -s macos/tests -v
       - name: Run isolated Swift process tests
         working-directory: macos
+        timeout-minutes: 4
         run: swift test
       - name: Run Go helper tests
+        if: ${{ !cancelled() }}
         working-directory: tools/proton-confgen
-        run: go test ./internal/auth ./internal/config ./cmd/protonvpn-wg
+        timeout-minutes: 4
+        run: go test -timeout 120s ./internal/auth ./internal/config ./cmd/protonvpn-wg
       - name: Build native Swift app
         working-directory: macos
         run: swift build -c release

@@ -2,6 +2,15 @@ import XCTest
 @testable import BrisaCore
 
 final class AccountTests: XCTestCase {
+    func testTimeoutReapsAHelperThatIgnoresTermination() async throws {
+        let helper = try fixture("exec /usr/bin/python3 -c 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(2)'")
+        let client = AccountClient(helper: helper, sessionFile: fixtureSession(), timeout: 0.2)
+        let started = Date()
+        do { _ = try await client.checkSession(); XCTFail("expected timeout") }
+        catch { XCTAssertEqual(error as? AccountError, .timedOut) }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1.5, "timeout must join the owned process without waiting for its voluntary exit")
+    }
+
     private func fixtureSession() -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }

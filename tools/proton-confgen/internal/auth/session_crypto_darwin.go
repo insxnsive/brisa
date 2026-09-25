@@ -83,10 +83,10 @@ func keychainCopy(target sessionKeychainTarget) ([]byte, C.OSStatus) {
 	if status != C.errSecSuccess {
 		return nil, status
 	}
-	defer C.CFRelease(C.CFTypeRef(value))
-	if value == nil {
+	if value == 0 {
 		return nil, C.errSecDecode
 	}
+	defer C.CFRelease(C.CFTypeRef(value))
 	if C.CFDataGetLength(value) != sessionKeyBytes {
 		return nil, C.errSecDecode
 	}

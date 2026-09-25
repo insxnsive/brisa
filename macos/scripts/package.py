@@ -32,7 +32,7 @@ if not swift_binary.is_file():
     raise SystemExit("Build the release Swift executable before packaging")
 shutil.copy2(swift_binary, MACOS / "Brisa")
 helper = HELPERS / "protonvpn-wg"
-env = dict(os.environ, GOOS="darwin", GOARCH=ARCH, CGO_ENABLED="1")
+env = dict(os.environ, GOOS="darwin", GOARCH={"arm64": "arm64", "x86_64": "amd64"}[ARCH], CGO_ENABLED="1")
 subprocess.run(["go", "build", "-trimpath", "-o", str(helper), "./cmd/protonvpn-wg"],
                cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
 shutil.copy2(ROOT / "LICENSE", RESOURCES / "LICENSE")
