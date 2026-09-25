@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -24,6 +25,38 @@ class QuickInstallTests(unittest.TestCase):
         self.assertTrue(toc_links)
         for anchor in toc_links:
             self.assertIn(anchor, slugs, f'broken README section link: #{anchor}')
+
+    def test_readme_bootstrap_verifies_an_immutable_script_before_execution(self):
+        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        blocks = re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL)
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[0], blocks[1])
+        snippet = blocks[0]
+        self.assertRegex(snippet, r'https://raw[.]githubusercontent[.]com/insxnsive/brisa/[0-9a-f]{40}/scripts/install[.]ps1')
+        self.assertIn(hashlib.sha256((ROOT / 'scripts/install.ps1').read_bytes()).hexdigest(), snippet)
+        self.assertLess(snippet.index('Get-FileHash'), snippet.index('& powershell.exe'))
+        self.assertNotRegex(snippet, r'(?i)\biex\b|Invoke-Expression')
+        powershell = shutil.which('powershell') or shutil.which('pwsh')
+        if not powershell:
+            self.skipTest('PowerShell is needed for bootstrap behavior')
+        scratch = Path(os.environ.get('TMPDIR') or ROOT / 'artifacts/test-temp')
+        scratch.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='brisa-bootstrap-', dir=scratch) as folder:
+            bootstrap = Path(folder) / 'bootstrap.ps1'
+            bootstrap.write_text(snippet, encoding='utf-8')
+            result = Path(folder) / 'result.json'
+            for scenario in ('matching', 'tampered', 'download-failed'):
+                with self.subTest(scenario=scenario):
+                    process = subprocess.run([powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                        '-File', str(ROOT / 'tests/packaging/bootstrap_fixture.ps1'), '-Bootstrap', str(bootstrap),
+                        '-Source', str(ROOT / 'scripts/install.ps1'), '-Scenario', scenario, '-Evidence', str(result)],
+                        capture_output=True, text=True, timeout=15,
+                        env={**os.environ, 'TEMP': folder, 'TMP': folder, 'TMPDIR': folder})
+                    self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+                    data = json.loads(result.read_text(encoding='utf-8-sig'))
+                    self.assertEqual(data['invoked'], scenario == 'matching', data)
+                    self.assertEqual(data['error'] is None, scenario == 'matching', data)
+                    self.assertEqual(data['leftovers'], 0, data)
 
     def test_installer_uses_official_release_digest_and_visible_installers(self):
         script = (ROOT / 'scripts' / 'install.ps1').read_text(encoding='utf-8')

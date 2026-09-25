@@ -16,13 +16,20 @@ Brisa roteia apenas o tráfego do Discord pelo WireGuard, sem colocar os outros 
 
 ### Instalar
 
-Abra o PowerShell e cole este comando. O [script de instalação](scripts/install.ps1) fica disponível para consulta no repositório:
+Abra o PowerShell e cole o bloco abaixo. Ele baixa uma revisão fixa do [script de instalação](scripts/install.ps1), confere seu SHA-256 antes de executá-lo e remove a cópia temporária no final:
 
 ```powershell
-irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$p = Join-Path ([IO.Path]::GetTempPath()) ('Brisa-install-' + [guid]::NewGuid().ToString('N') + '.ps1')
+try {
+    Invoke-WebRequest 'https://raw.githubusercontent.com/insxnsive/brisa/ab6a626bc8c9390b3361dc335a8508a24f3b1f23/scripts/install.ps1' -OutFile $p -UseBasicParsing -TimeoutSec 180
+    if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne '5dbb59c2a0c32c69217a4f7d3ff1e0f541f2a7361919b2c3e5c190fc6bf8c4af') { throw 'Brisa script checksum mismatch. Nothing was executed.' }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p
+    if ($LASTEXITCODE -ne 0) { throw "Brisa installer exited with code $LASTEXITCODE." }
+} finally { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 ```
 
-O instalador verifica se o WebView2 Runtime está presente e, se faltar, baixa o instalador oficial da Microsoft e confere a assinatura digital. Depois baixa o instalador mais recente publicado do Brisa pelo GitHub e confere o SHA-256 antes de executá-lo. As janelas dos instaladores ficam visíveis; não há instalação silenciosa.
+O instalador verifica se o WebView2 Runtime está presente e, se faltar, baixa o instalador oficial da Microsoft e confere a assinatura digital. Depois baixa o instalador mais recente publicado do Brisa pelo GitHub e confere o SHA-256 antes de executá-lo. As janelas dos instaladores ficam visíveis; não há instalação silenciosa. A conferência de hash não é uma assinatura de editor: o Brisa continua sem assinatura Authenticode.
 
 O comando não precisa ser executado como administrador. Ele instala o Brisa e o WebView2 quando necessário. Requer Windows 64 bits (x64). O aplicativo e os runtimes do .NET e Node já vêm no pacote. O WireSock não é incluído no instalador do Brisa.
 
@@ -32,7 +39,7 @@ O comando não precisa ser executado como administrador. Ele instala o Brisa e o
 2. Entre na sua conta Proton ou importe seu próprio perfil WireGuard em Configurações → Avançado.
 3. Ao conectar pela primeira vez, se o WireSock estiver ausente, o Brisa baixa o instalador oficial, confere o hash e mostra a instalação do WireSock. Leia e aceite os termos do WireSock e aprove a solicitação do Windows. O Brisa continua a conexão depois da instalação.
 
-O WireSock é um componente de terceiros. O próprio fornecedor diferencia uso não comercial e comercial; o nível gratuito é somente para uso não comercial e não é autorizado para produção comercial. O Brisa não inclui nem instala o WireSock sem mostrar os avisos do fornecedor e do Windows.
+O WireSock é um componente de terceiros. O nível Free do SDK é descrito para avaliação não comercial ou prova de conceito interna, não para produção. O uso não comercial do Brisa e o download direto não garantem permissão para uma versão pública de produção; a confirmação por escrito continua pendente. O Brisa não inclui o SDK nem oculta os avisos do fornecedor e do Windows.
 
 ### Atualizações
 
@@ -62,13 +69,20 @@ Brisa routes Discord traffic through WireGuard without putting the rest of your 
 
 ### Quick Install
 
-The [installer script](scripts/install.ps1) is available in the repository to inspect. Open PowerShell and paste:
+Open PowerShell and paste this block. It downloads an immutable revision of the [installer script](scripts/install.ps1), checks its SHA-256 before execution, and removes the temporary copy afterward:
 
 ```powershell
-irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$p = Join-Path ([IO.Path]::GetTempPath()) ('Brisa-install-' + [guid]::NewGuid().ToString('N') + '.ps1')
+try {
+    Invoke-WebRequest 'https://raw.githubusercontent.com/insxnsive/brisa/ab6a626bc8c9390b3361dc335a8508a24f3b1f23/scripts/install.ps1' -OutFile $p -UseBasicParsing -TimeoutSec 180
+    if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne '5dbb59c2a0c32c69217a4f7d3ff1e0f541f2a7361919b2c3e5c190fc6bf8c4af') { throw 'Brisa script checksum mismatch. Nothing was executed.' }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p
+    if ($LASTEXITCODE -ne 0) { throw "Brisa installer exited with code $LASTEXITCODE." }
+} finally { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
 ```
 
-The installer checks for the WebView2 Runtime. If it is missing, it downloads Microsoft's official installer and verifies its digital signature. It then downloads the latest published Brisa setup from GitHub and checks the SHA-256 digest before running it. Installer windows stay visible; nothing is installed silently.
+The installer checks for the WebView2 Runtime. If it is missing, it downloads Microsoft's official installer and verifies its digital signature. It then downloads the latest published Brisa setup from GitHub and checks the SHA-256 digest before running it. Installer windows stay visible; nothing is installed silently. Hash verification is not publisher signing: Brisa is still not Authenticode-signed.
 
 You do not need to run the command as administrator. It installs Brisa and WebView2 if needed and requires 64-bit Windows (x64). The app, .NET and Node runtimes are already included in the package. WireSock is not bundled with Brisa Setup.
 
@@ -78,7 +92,7 @@ You do not need to run the command as administrator. It installs Brisa and WebVi
 2. Sign in to Proton, or import your own WireGuard profile under Settings → Advanced.
 3. On the first connection, if WireSock is missing, Brisa downloads the official installer, verifies its hash, and opens WireSock Setup. Review and accept WireSock's terms and approve the Windows prompt. Brisa continues connecting after installation.
 
-WireSock is a third-party component. Its vendor distinguishes non-commercial and commercial use; the free tier is for non-commercial use only and is not licensed for commercial production. Brisa does not bundle WireSock or install it without showing the vendor's installer and Windows prompts.
+WireSock is a third-party component. Its SDK Free tier is described as non-commercial evaluation or internal proof-of-concept use, not production. Brisa being non-commercial and downloading directly from the vendor do not establish permission for a public production release; written clarification is still pending. Brisa does not bundle the SDK or hide the vendor installer and Windows prompts.
 
 ### Updates
 

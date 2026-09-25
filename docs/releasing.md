@@ -4,9 +4,9 @@ Updates come from `insxnsive/brisa` GitHub Releases, on Velopack's `win` channel
 
 1. Change `<Version>` in `src/Brisa/Brisa.csproj` and update `CHANGELOG.md`.
 2. Run `python packaging/test.py` and inspect the app in isolated UI mode.
-3. Commit the source and tag that commit as `v<version>`.
-4. Push the branch and tag. The release workflow validates the tag/version, runs the offline suites and builds the Windows artifacts.
-5. Check the workflow and release assets before sharing the download.
+3. Commit the implementation. If `scripts/install.ps1` changed, update both README bootstrap blocks to that full commit ID and the exact script SHA-256. Run the bootstrap fixtures and commit the README before tagging.
+4. Tag the final source commit as `v<version>`, then push the branch and tag. The release workflow validates the tag/version, runs the offline suites and builds the Windows artifacts.
+5. Check the workflow and release assets before sharing the download. Never restore mutable branch piping or equate a checksum with signing.
 
 Use numbered prereleases such as `0.1.0-beta.1` while testing. Prerelease tags must produce GitHub prereleases, not a stable latest release. A source commit alone does not update installed copies.
 
@@ -16,4 +16,4 @@ Never upload account/session files, WireGuard profiles or signing credentials. G
 
 The initial releases are unsigned. An Authenticode signing certificate can be added later through Velopack's signing options. Do not describe checksum validation as publisher signing.
 
-Before a stable release, complete live native Proton verification and tunnel acceptance on a suitable test machine. Offline regression tests and UI captures are not substitutes.
+Before a stable release, obtain written WireSock production-use clarification, add verified publisher signing, and complete [clean-machine acceptance](clean-machine-acceptance.md). The maintainer has accepted the current live connection/routing path; do not repeat or disturb it merely to refresh a checklist. Keep that user-observed acceptance separate from offline fixtures, UI captures, portable updates, and still-unperformed install/reboot/uninstall checks.

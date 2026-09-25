@@ -1,5 +1,13 @@
 # Preview verification
 
+## Published beta.4 (2026-09-25)
+
+[v0.1.0-beta.4](https://github.com/insxnsive/brisa/releases/tag/v0.1.0-beta.4) is a published GitHub prerelease, not an unreleased change. Its on-demand WireSock path passed source/fixture checks and packaging; the real vendor installer was not run during those checks.
+
+The maintainer subsequently reported the current connection/routing path all green. This is user-observed acceptance, not a new automated live test. The present work does not repeat that test, read real credentials, or disturb the active tunnel.
+
+A genuine clean Windows install, first-run prerequisite/UAC/cancel-and-retry flow, reboot, installed upgrade and uninstall remain unverified. The development host has no available disposable Windows VM/Sandbox; fixtures and portable updates are not substitutes. The [clean-machine checklist](clean-machine-acceptance.md) records the outstanding boundary. WireSock production-use clarification and trusted publisher signing are separate unresolved stable-release gates.
+
 ## Connection repair candidate (0.1.0-beta.3)
 
 The connection repair has passed the full offline runner:

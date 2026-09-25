@@ -7,7 +7,7 @@
 - [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) for Proton's verification page.
 - A Proton account or your own WireGuard `.conf` profile.
 
-Download prerequisites from their publishers. WireSock terms distinguish non-commercial and commercial use; the non-commercial tier is not for commercial production. Brisa does not bundle the SDK. On first connection, if it is missing, Brisa downloads the pinned official installer and opens its normal setup so you can review and accept WireSock's terms. The Windows elevation prompt is required to install its networking components.
+Download prerequisites from their publishers. The WireSock SDK Free tier is described as non-commercial evaluation or internal proof-of-concept use, not production. Brisa's non-commercial status and direct vendor download do not by themselves establish permission for a public production release; written clarification remains a stable-release gate. Brisa does not bundle the SDK. Its first-connection flow opens the pinned official installer so the user can review the vendor's terms and Windows elevation prompt.
 
 You don't need the .NET SDK, Node or Go to use a release build.
 
@@ -38,7 +38,7 @@ Brisa checks at startup and periodically while open. It downloads newer publishe
 
 Preview builds accept newer preview releases as well as stable ones. Updates never come from the original GoLiveBypass repository.
 
-Account state and preferences live under `%LOCALAPPDATA%\Brisa`, outside the versioned application files. Updating replaces the program, not those settings. Treat that folder as private; don't include it in bug reports. The saved Proton session can authenticate your account.
+Account state and preferences live under `%LOCALAPPDATA%\Brisa`, outside the versioned application files. Updating replaces the program, not those settings. Treat that folder as private; don't include it in bug reports. Proton sessions use Windows current-user DPAPI protection; runtime WireGuard profiles remain plaintext and require private NTFS permissions. Brisa refuses a data tree with unsafe ACLs or ownership rather than rewriting permissions. Sign-out retains explicitly imported custom profiles. See [privacy and local data](privacy.md).
 
 ## If something fails
 

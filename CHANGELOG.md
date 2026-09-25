@@ -1,6 +1,14 @@
 # Changes
 
-## 0.1.0-beta.4 (unreleased)
+## 0.1.0-beta.5 (candidate)
+
+- Add short same-window page transitions that honor Windows animation preferences and stop cleanly on Back or close.
+- Constrain expanded About and Updates content to the Settings viewport; add loaded-window wrapping and hit-target checks in both themes.
+- Reject managed data trees with unsafe Windows ACLs or ownership before the backend uses them; retain DPAPI session encryption and document plaintext runtime-profile limits.
+- Replace arbitrary helper failure text with fixed, actionable messages. Omit untrusted diagnostic strings while retaining safe status fields.
+- Harden quick-install release metadata checks, cancellation/retry guidance and reboot guidance; include installation scripts in matching-source archives.
+
+## 0.1.0-beta.4 (published 2026-09-25)
 
 - On first connection, detect and obtain the compatible x64 WireSock SDK directly from WireSock when missing. Verify the pinned installer hash and show the vendor's installer and Windows elevation prompts; Brisa does not bundle SDK files or install silently.
 
