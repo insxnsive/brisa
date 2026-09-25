@@ -1,8 +1,20 @@
 # Preview verification
 
-## Beta.6 follow-up
+## Published beta.6
 
-The beta.5 tag's CI stopped before packaging/publication: a PowerShell 7 parent passed its module paths through Python into Windows PowerShell, hiding `Get-FileHash`. Reproduction with a checksum-verified portable PowerShell 7 runtime also exposed the same environment problem in the ACL reader's `Get-Acl` call. Beta.6 lets those child shells construct their native module paths; it does not replace the hash command or relax ACL decisions. Two additional regressions bring the packaging suite to 40 tests. The complete offline runner passed both normally and through a real PowerShell 7 parent: 40 packaging tests, 65 backend tests, the Go suites, 21 core tests, 77 navigation assertions, 150 appearance assertions and C#–Node integration. The direct-handoff regression confirms that PowerShell 7's direct `powershell.exe` launch accepts a matching hash and rejects a mismatch without changing its inherited module path; the Python/Node-intermediary case is distinct. The old tag is retained without force-updating it; beta.5 was never a published release.
+[v0.1.0-beta.6](https://github.com/insxnsive/brisa/releases/tag/v0.1.0-beta.6) is a published, unsigned prerelease from commit `1e109ab866681b44baf1623c0ce7293990d5ecec`. The failed beta.5 tag was retained without rewriting it; beta.5 never became a published release.
+
+- [Branch CI](https://github.com/insxnsive/brisa/actions/runs/36101584040) and [tag/release CI](https://github.com/insxnsive/brisa/actions/runs/36102141558) passed, including the offline suites, packaging, disposable portable upgrade and release validation.
+- All eight published assets were downloaded and checked against GitHub's recorded sizes and SHA-256 digests. The update feed, package manifest and bundled/separate corresponding source also verified.
+- The CI-built portable executable passed the same 16 no-network UI combinations and 464 assertions described below, at actual 100%/125% scaling. All 479 executable/DLL files matched the published portable payload byte-for-byte. Only the bundled source ZIP and its manifest differed between the two builds.
+- The real Velopack `GithubSource`, without an access token, selected beta.6 for a beta.4 test locator and downloaded the package with a matching hash. Current-version reinstall and downgrade checks passed. This used an isolated cache, not the installed application.
+- An independent follow-up source review found no remaining blocking security or logic issue.
+
+Beta.5 CI exposed a PowerShell 7 parent passing its module paths through Python into Windows PowerShell, hiding `Get-FileHash`. Reproduction with a checksum-verified portable PowerShell 7 runtime also exposed the same problem in the ACL reader's `Get-Acl` call. Beta.6 lets those child shells construct their native module paths; it does not replace the hash command or relax ACL decisions.
+
+Two new regressions bring the packaging suite to 40 tests. The complete offline runner passed both normally and through a real PowerShell 7 parent: 40 packaging tests, 65 backend tests, the Go suites, 21 core tests, 77 navigation assertions, 150 appearance assertions and C#–Node integration. The direct-handoff regression confirms that PowerShell 7's direct `powershell.exe` launch accepts a matching hash and rejects a mismatch without changing its inherited module path; the Python/Node-intermediary case is distinct.
+
+No live account, installation or tunnel was operated. Actual 150%/200% scaling, packaged two-factor challenge acceptance and the clean-machine checklist remain open. WireSock production-use permission and trusted publisher signing remain separate stable-release gates.
 
 ## Beta.5 local verification (2026-09-25)
 
