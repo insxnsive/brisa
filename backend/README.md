@@ -19,13 +19,7 @@ The host starts `runtime/node.exe backend/backend.cjs` with the application dire
 - `BRISA_RESOURCE_DIR` to the absolute packaged `resources` directory.
 - `BRISA_DISCORD_EXE` optionally to an absolute, explicitly user-selected supported Discord executable when automatic safe discovery is insufficient.
 
-The Proton helper must already exist at:
-
-```text
-resources/extra/proton-confgen/proton-confgen.exe
-```
-
-The backend does not download Proton or WireSock binaries. WireSock connection is available only when a compatible local SDK is already installed. Production never falls back to fixture data.
+The Proton helper is packaged at `resources/extra/proton-confgen/proton-confgen.exe`. WireSock is not bundled; if no compatible SDK is found when the user starts a connection, the backend downloads the pinned x64 installer from the official WireSock endpoint, checks its SHA-256, and launches its visible installer with a Windows elevation prompt. The user must accept WireSock's installer/license prompts. Production never falls back to fixture data.
 
 ## Safety boundary
 

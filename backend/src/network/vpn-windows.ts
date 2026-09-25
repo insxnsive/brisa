@@ -584,7 +584,8 @@ function sha256(file: string): string {
 }
 
 function runElevatedInstaller(installer: string): Promise<void> {
-    const command = `try { $p=Start-Process -FilePath ${quotePowerShell(installer)} -ArgumentList @('/quiet','/norestart') -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop; if($null -eq $p){ exit 1223 }; exit [int]$p.ExitCode } catch { if($_.Exception.NativeErrorCode -eq 1223){ exit 1223 }; Write-Error $_; exit 1 }`;
+    // Show the vendor's installer UI so users can review and accept its terms.
+    const command = `try { $p=Start-Process -FilePath ${quotePowerShell(installer)} -Verb RunAs -WindowStyle Normal -Wait -PassThru -ErrorAction Stop; if($null -eq $p){ exit 1223 }; exit [int]$p.ExitCode } catch { if($_.Exception.NativeErrorCode -eq 1223){ exit 1223 }; Write-Error $_; exit 1 }`;
     return new Promise((resolve, reject) => {
         const child = execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], {
             windowsHide: true,

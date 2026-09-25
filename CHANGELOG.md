@@ -1,5 +1,9 @@
 # Changes
 
+## 0.1.0-beta.4 (unreleased)
+
+- On first connection, detect and obtain the compatible x64 WireSock SDK directly from WireSock when missing. Verify the pinned installer hash and show the vendor's installer and Windows elevation prompts; Brisa does not bundle SDK files or install silently.
+
 ## 0.1.0-beta.3
 
 - Fix Discord shutdown falsely failing on a child that is already exiting after its parent closes; validate and terminate against a held OS process handle without weakening path ownership checks.

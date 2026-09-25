@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { elevatedPowerShellFileArgs } from "./network/wiresock-service.ts";
-import { findWireSockCandidate, inspectWireSockAsync } from "./network/vpn-windows.ts";
+import { ensureWireSockInstalled, findWireSockCandidate, inspectWireSockAsync } from "./network/vpn-windows.ts";
 import { formatAllowedApps, sanitizeWireGuardConfig, validateWireGuardConfig } from "./network/vpn-types.ts";
 
 const quotePowerShell = (value: string) => `'${value.replace(/'/g, "''")}'`;
@@ -61,6 +61,9 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   if (!before.reliable) throw new Error("WireSock state is unreliable.");
   if (before.active && !before.owned) throw new Error("Another WireSock tunnel is active.");
   if (before.active && before.owned) return { configPath };
+  if (signal?.aborted) throw new Error("WireSock start was cancelled.");
+  await ensureWireSockInstalled(() => {});
+  if (signal?.aborted) throw new Error("WireSock start was cancelled.");
   const candidate = findWireSockCandidate();
   if (!candidate) throw new Error("A compatible WireSock SDK installation is required.");
 

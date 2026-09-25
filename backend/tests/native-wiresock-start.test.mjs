@@ -24,6 +24,19 @@ test("production wires scoped Discord restart, route proof and post-start settli
   assert.doesNotMatch(production, /detached: true/);
 });
 
+test("native start prepares WireSock on demand before launching the owned tunnel", () => {
+  assert.match(source, /await ensureWireSockInstalled\(/);
+  assert.match(source, /findWireSockCandidate\(\)/);
+  assert.match(source, /A compatible WireSock SDK installation is required\./);
+});
+
+test("WireSock setup launches the verified vendor installer visibly, never silently", () => {
+  const vpnWindows = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/network/vpn-windows.ts"), "utf8");
+  assert.match(vpnWindows, /WIRESOCK_INSTALLER_SHA256/);
+  assert.match(vpnWindows, /Start-Process -FilePath .* -Verb RunAs -WindowStyle Normal/);
+  assert.doesNotMatch(vpnWindows, /ArgumentList @\('\/quiet','\/norestart'\)/);
+});
+
 test("native WireSock start uses direct application mode without global service or process mutation", () => {
   assert.match(source, /['\"]run['\"]/);
   assert.doesNotMatch(source, /\binstall\s+-|Stop-Service|taskkill|execFileSync|Get-Process[^\n]*Stop-Process/);

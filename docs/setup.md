@@ -3,11 +3,11 @@
 ## Requirements
 
 - Windows x64. The interface is designed for Windows 11.
-- [WireSock Secure Connect SDK](https://www.wiresock.net/wiresock-secure-connect/download), including its `wiresock-client.exe` command-line client. The inherited integration targets SDK 3.4.8.1; newer versions need compatibility testing.
+- [WireSock Secure Connect SDK](https://wiresock.net/wiresock-sdk), including its `wiresock-client.exe` command-line client. If missing, Brisa fetches pinned version 3.4.8.1 directly from WireSock on first connection, verifies the installer SHA-256, then opens the vendor's installer and Windows elevation prompts. Newer versions may work, but compatibility has not been tested.
 - [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) for Proton's verification page.
 - A Proton account or your own WireGuard `.conf` profile.
 
-Download prerequisites from their publishers. WireSock has its own license: personal use and commercial use have different terms. Brisa does not bundle or silently install its driver.
+Download prerequisites from their publishers. WireSock terms distinguish non-commercial and commercial use; the non-commercial tier is not for commercial production. Brisa does not bundle the SDK. On first connection, if it is missing, Brisa downloads the pinned official installer and opens its normal setup so you can review and accept WireSock's terms. The Windows elevation prompt is required to install its networking components.
 
 You don't need the .NET SDK, Node or Go to use a release build.
 
@@ -26,7 +26,7 @@ Extract the entire `Brisa-win-Portable.zip` into a folder you can write to. Keep
 1. If another GoLiveBypass or WireSock instance is connected, disconnect it using that app and quit it first. Brisa will not take over another app's tunnel.
 2. When no Proton account is signed in, Brisa opens the Account screen automatically. Enter your credentials in the app and complete any verification there. Create a Free Account opens Proton’s official registration page in your browser. Brisa does not import accounts from the old app.
 3. Alternatively, open Settings → Advanced and import your WireGuard profile.
-4. Choose Connect. Route selection stays under Route; normal browsing and other apps keep their existing connection.
+4. Choose Connect. On first use, if WireSock isn't installed, Brisa downloads the verified SDK installer from WireSock and opens it for you; complete its license and Windows elevation prompts, then retry Connect. Route selection stays under Route; normal browsing and other apps keep their existing connection.
 
 The main interface is native WPF. WebView2 is used only for Proton verification, not for the application UI.
 
