@@ -145,15 +145,12 @@ public struct AccountClient {
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = stdin
-        let output = try HelperOutputReader(stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading)
+        let output = try HelperOutputReader(stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading,
+                                            stdin: stdin.fileHandleForWriting)
         defer { output.close() }
         do { try process.run() } catch { throw AccountError.missingHelper }
-        output.start(process: process)
-        // JSON is bounded above before process launch; write on a queue so cancellation remains responsive.
-        DispatchQueue.global().async {
-            if let input { try? stdin.fileHandleForWriting.write(contentsOf: input) }
-            try? stdin.fileHandleForWriting.close()
-        }
+        try? stdin.fileHandleForReading.close()
+        output.start(process: process, input: input)
         let limit = timeout
         let timedOut: Bool = await withTaskCancellationHandler {
             await withTaskGroup(of: Bool.self) { group in

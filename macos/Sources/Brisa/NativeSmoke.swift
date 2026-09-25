@@ -33,6 +33,13 @@ enum NativeSmoke {
     private static func require(_ condition: Bool, _ message: String) throws {
         if !condition { throw Failure.assertion(message) }
     }
+    private static func waitFor(_ message: String, until condition: () -> Bool) async throws {
+        for _ in 0..<25 {
+            if condition() { try await pause(); return }
+            try await pause()
+        }
+        try require(condition(), message)
+    }
     private static func views(in window: NSWindow) -> [NSView] {
         func visit(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(visit) }
         guard let root = window.contentView else { return [] }
@@ -52,9 +59,18 @@ enum NativeSmoke {
         return controls[0]
     }
     private static func press(_ id: String, in window: NSWindow) throws {
-        let control = try button(id, in: window)
-        try require(control.isEnabled, "Native button is disabled: \(id)")
-        control.performClick(nil)
+        let location = try point(id, in: window)
+        // Plain SwiftUI buttons are not NSButtons. Send genuine mouse events
+        // through the owned window instead of activating a neighbouring control.
+        for kind in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let event = NSEvent.mouseEvent(with: kind, location: location, modifierFlags: [],
+                                                 timestamp: ProcessInfo.processInfo.systemUptime,
+                                                 windowNumber: window.windowNumber, context: nil,
+                                                 eventNumber: 0, clickCount: 1, pressure: kind == .leftMouseDown ? 1 : 0) else {
+                throw Failure.assertion("Could not create native click for \(id)")
+            }
+            NSApplication.shared.postEvent(event, atStart: false)
+        }
     }
     private static func type(_ text: String, into id: String, window: NSWindow) throws {
         let location = try point(id, in: window)
@@ -101,26 +117,24 @@ enum NativeSmoke {
             try capture(theme + "-home", window: window, output: output)
             screens.append(theme + "-home")
             try press("nav-account", in: window)
-            try await pause()
-            try require(model.page == .account, "Account button did not navigate")
+            try await waitFor("Account button did not navigate") { model.page == .account }
             try capture(theme + "-account", window: window, output: output)
             screens.append(theme + "-account")
             try type("fixture", into: "username", window: window)
             try type("synthetic-fixture-only", into: "password", window: window)
             try type("123456", into: "authenticator-code", window: window)
-            try await pause()
-            try require(model.username == "fixture" && model.password == "synthetic-fixture-only", "Native text input did not update bindings")
+            try await waitFor("Native text input did not update bindings") {
+                model.username == "fixture" && model.password == "synthetic-fixture-only" && model.code == "123456"
+            }
             try press("back", in: window)
-            try await pause()
-            try require(model.page == .home, "Back did not navigate to Home")
+            try await waitFor("Back did not navigate to Home") { model.page == .home }
             try require(model.password.isEmpty && model.code.isEmpty, "Back must clear sensitive fields")
             try press("nav-settings", in: window)
-            try await pause()
-            try require(model.page == .settings, "Settings button did not navigate")
+            try await waitFor("Settings button did not navigate") { model.page == .settings }
             try capture(theme + "-settings", window: window, output: output)
             screens.append(theme + "-settings")
             try press("back", in: window)
-            try await pause()
+            try await waitFor("Settings Back did not navigate") { model.page == .home }
         }
         try require(NSApplication.shared.windows.filter { $0.isVisible }.count == 1, "Navigation created another window")
         try require(!model.blockedAccountAction, "Navigation attempted an account action")
