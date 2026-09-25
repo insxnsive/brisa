@@ -14,6 +14,18 @@ class PackagingTests(unittest.TestCase):
         cls.package = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.package)
 
+    def test_packaging_notes_exclude_older_versions_and_keep_source_changelog(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            text = '# Changes\n\n## 0.1.0-beta.8\n\n- Startup fix.\n\n## 0.1.0-beta.7\n\n- Older fixes.\n'
+            (root / 'CHANGELOG.md').write_text(text, encoding='utf-8')
+            with patch.object(self.package, 'REPO', root):
+                notes = self.package.prepare_release_notes(root, '0.1.0-beta.8')
+            self.assertEqual(notes.read_text(encoding='utf-8'), '## 0.1.0-beta.8\n\n- Startup fix.\n')
+            self.assertEqual((root / 'CHANGELOG.md').read_text(encoding='utf-8'), text)
+            self.assertIn("'--releaseNotes', notes_path", SCRIPT.read_text(encoding='utf-8'))
+
     def test_rejects_publish_output_without_native_executable(self):
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaisesRegex(ValueError, 'executable'):

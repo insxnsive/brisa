@@ -18,7 +18,13 @@
 ## 0.1.0-beta.6
 
 - Fix Windows PowerShell module discovery when a PowerShell 7 parent launches Brisa or the installer fixtures; preserve the fail-closed ACL checks and real checksum validation.
-- Include the navigation, layout, privacy and installer changes listed below. The beta.5 tag did not publish a release because CI caught this cross-shell environment issue.
+- Add short same-window page transitions that honor Windows animation preferences and stop cleanly on Back or close.
+- Constrain expanded About and Updates content to the Settings viewport; add loaded-window wrapping and hit-target checks in both themes.
+- Reject managed data trees with unsafe Windows ACLs or ownership before the backend uses them; retain DPAPI session encryption and document plaintext runtime-profile limits.
+- Replace arbitrary helper failure text with fixed, actionable messages. Omit untrusted diagnostic strings while retaining safe status fields.
+- Pin both README installation blocks to an immutable script commit and verify its SHA-256 before execution. Harden release metadata checks, cancellation/retry and reboot guidance; include installation scripts in matching-source archives.
+
+These changes first shipped in beta.6. The beta.5 candidate below was never published.
 
 ## 0.1.0-beta.5 (unpublished candidate)
 

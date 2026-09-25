@@ -6,7 +6,7 @@ Updates come from `insxnsive/brisa` GitHub Releases, on Velopack's `win` channel
 
 Accumulate fixes in commits and CI artifacts. Do not bump versions, create release tags or publish a release for each patch. A new release is a deliberate maintainer-requested milestone after acceptance, not the default end of a coding task. Branch pushes only build development artifacts.
 
-`CHANGELOG.md` retains the complete history. Each GitHub release body contains only the exact version's section; `packaging/release.py` extracts it and rejects missing, duplicate or empty sections. Do not pass the complete changelog as release notes or append previous versions' patches. This notes-only change does not require a new app release.
+`CHANGELOG.md` retains the complete history. Each GitHub release body and new Velopack update package contains only the exact version's section; `packaging/release.py` extracts it and rejects missing, duplicate or empty sections. Do not pass the complete changelog as release notes or append previous versions' patches. This notes-only change does not require a new app release. Existing package/feed bytes remain immutable even when their GitHub descriptions are corrected.
 
 ## Publish an approved version
 

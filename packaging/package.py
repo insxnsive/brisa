@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -141,6 +142,14 @@ def make_source_archive(archive, vendor, build_info):
                 z.write(p, 'tools/proton-confgen/vendor/' + p.relative_to(vendor).as_posix())
 
 
+def prepare_release_notes(artifacts, version):
+    selector = runpy.run_path(str(Path(__file__).with_name('release.py')))['release_notes']
+    notes = selector((REPO / 'CHANGELOG.md').read_text(encoding='utf-8'), version)
+    path = Path(artifacts) / 'release-notes.md'
+    path.write_text(notes, encoding='utf-8')
+    return path
+
+
 def package(skip_build=False, output=None, version=None):
     actual_version = project_version()
     version = version or actual_version
@@ -150,6 +159,9 @@ def package(skip_build=False, output=None, version=None):
         raise ValueError('Test versions require a separate --output directory')
     artifacts = Path(output).resolve() if output else REPO / 'artifacts'
     artifacts.mkdir(parents=True, exist_ok=True)
+    # Disposable upgrade versions use the candidate's notes, not a made-up
+    # historical entry. Both updater and GitHub notes are version-scoped.
+    notes_path = prepare_release_notes(artifacts, actual_version)
     publish = artifacts / 'publish'
     dest = artifacts / 'staging'
     release = artifacts / 'releases'
@@ -188,7 +200,7 @@ def package(skip_build=False, output=None, version=None):
          '--packTitle', 'Brisa', '--packAuthors', 'insxnsive; GoLiveBypass contributors', '--packDir', dest,
          '--mainExe', 'Brisa.exe', '--channel', 'win', '--runtime', 'win-x64', '--delta', 'None',
          '--icon', REPO / 'src/Brisa/Assets/Brisa.ico', '--shortcuts', 'StartMenuRoot',
-         '--releaseNotes', REPO / 'CHANGELOG.md', '--outputDir', release, '--skip-updates'])
+         '--releaseNotes', notes_path, '--outputDir', release, '--skip-updates'])
     copy(dest / 'source.zip', release / ('Brisa-' + version + '-source.zip'))
     write_checksums(release)
     result = {'version': version, 'releaseDirectory': str(release), 'sourceCommit': commit, 'files': file_manifest(release)}
