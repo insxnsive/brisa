@@ -1,4 +1,13 @@
 import Foundation
+import Darwin
+
+private func stopOwnedHelper(_ process: Process) {
+    guard process.isRunning else { return }
+    process.terminate()
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+        if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGKILL) }
+    }
+}
 
 public enum AccountError: Error, Equatable, LocalizedError {
     case missingHelper, invalidReply, timedOut, cancelled, invalidInput, invalidCredentials
@@ -183,7 +192,7 @@ public struct AccountClient {
                 }
                 group.addTask {
                     try? await Task.sleep(nanoseconds: UInt64(max(0.01, limit) * 1_000_000_000))
-                    if process.isRunning { process.terminate() }
+                    stopOwnedHelper(process)
                     return true
                 }
                 let first = await group.next() ?? true
@@ -191,7 +200,7 @@ public struct AccountClient {
                 return first
             }
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            stopOwnedHelper(process)
         }
         if Task.isCancelled { throw AccountError.cancelled }
         if timedOut { throw AccountError.timedOut }

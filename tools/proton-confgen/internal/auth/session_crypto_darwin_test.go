@@ -4,10 +4,13 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -102,6 +105,49 @@ func TestNativeKeychainConcurrentCreateUsesOneKey(t *testing.T) {
 			t.Fatal("concurrent creation returned different keys")
 		}
 		defer clear(key)
+	}
+}
+
+func TestNativeKeychainAcrossProcesses(t *testing.T) {
+	const value = "synthetic process-restart fixture"
+	if service := os.Getenv("BRISA_TEST_KEYCHAIN_SERVICE"); service != "" {
+		if !strings.HasPrefix(service, "dev.insxnsive.brisa.test.") {
+			t.Fatal("refusing a non-disposable Keychain target")
+		}
+		ownTarget := activeSessionKeychainTarget
+		activeSessionKeychainTarget = sessionKeychainTarget{service: service, account: ownTarget.account}
+		defer func() { activeSessionKeychainTarget = ownTarget }()
+		raw, err := os.ReadFile(os.Getenv("BRISA_TEST_ENCRYPTED_FIXTURE"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		opened, encrypted, err := openSessionPayload(raw)
+		if err != nil || !encrypted || string(opened) != value {
+			t.Fatalf("Keychain-backed fixture did not survive process restart: %v", err)
+		}
+		return
+	}
+	sealed, err := sealSessionPayload([]byte(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte(value)) {
+		t.Fatal("plaintext appeared in encrypted fixture")
+	}
+	file := filepath.Join(t.TempDir(), "fixture.enc")
+	if err := os.WriteFile(file, sealed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, executable, "-test.run=^TestNativeKeychainAcrossProcesses$")
+	child.Env = append(os.Environ(), "BRISA_TEST_KEYCHAIN_SERVICE="+activeSessionKeychainTarget.service, "BRISA_TEST_ENCRYPTED_FIXTURE="+file)
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("owned fixture process failed: %v; %s", err, output)
 	}
 }
 

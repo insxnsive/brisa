@@ -35,23 +35,47 @@ enum NativeSmoke {
     private static func require(_ condition: Bool, _ message: String) throws {
         if !condition { throw Failure.assertion(message) }
     }
-    private static func elements(_ root: Any) -> [any NSAccessibilityProtocol] {
+    private struct Element {
+        let object: NSObject
+        func value(_ name: String) -> Any? {
+            let selector = NSSelectorFromString(name)
+            guard object.responds(to: selector) else { return nil }
+            return object.perform(selector)?.takeUnretainedValue()
+        }
+        var identifier: String? { value("accessibilityIdentifier") as? String }
+        func boolean(_ name: String) throws -> Bool {
+            let selector = NSSelectorFromString(name)
+            guard object.responds(to: selector) else { throw Failure.assertion("Missing native method \(name)") }
+            typealias Function = @convention(c) (AnyObject, Selector) -> Bool
+            return unsafeBitCast(object.method(for: selector), to: Function.self)(object, selector)
+        }
+        func setValue(_ text: String) throws {
+            let selector = NSSelectorFromString("setAccessibilityValue:")
+            guard object.responds(to: selector) else { throw Failure.assertion("Native field is not editable") }
+            typealias Function = @convention(c) (AnyObject, Selector, AnyObject) -> Void
+            unsafeBitCast(object.method(for: selector), to: Function.self)(object, selector, text as NSString)
+        }
+    }
+    private static func elements(_ root: Any) -> [Element] {
         var seen = Set<ObjectIdentifier>()
-        func visit(_ value: Any) -> [any NSAccessibilityProtocol] {
-            guard let item = value as? any NSAccessibilityProtocol,
-                  seen.insert(ObjectIdentifier(item as AnyObject)).inserted else { return [] }
-            guard seen.count < 2000 else { return [] }
-            return [item] + (item.accessibilityChildren() ?? []).flatMap(visit)
+        func visit(_ value: Any) -> [Element] {
+            guard let object = value as? NSObject,
+                  seen.insert(ObjectIdentifier(object)).inserted, seen.count < 2000 else { return [] }
+            let item = Element(object: object)
+            var children = item.value("accessibilityChildren") as? [Any] ?? []
+            if let window = object as? NSWindow, let content = window.contentView { children.append(content) }
+            if let view = object as? NSView { children.append(contentsOf: view.subviews) }
+            return [item] + children.flatMap(visit)
         }
         return visit(root)
     }
-    private static func element(_ id: String, in window: NSWindow) throws -> any NSAccessibilityProtocol {
-        if let found = elements(window).first(where: { $0.accessibilityIdentifier() == id }) { return found }
-        let identifiers = elements(window).compactMap { $0.accessibilityIdentifier() }
+    private static func element(_ id: String, in window: NSWindow) throws -> Element {
+        if let found = elements(window).first(where: { $0.identifier == id }) { return found }
+        let identifiers = elements(window).compactMap { $0.identifier }
         throw Failure.assertion("Missing native control \(id); found \(identifiers)")
     }
     private static func press(_ id: String, in window: NSWindow) throws {
-        try require(try element(id, in: window).accessibilityPerformPress(), "Native button did not activate: \(id)")
+        try require(try element(id, in: window).boolean("accessibilityPerformPress"), "Native button did not activate: \(id)")
     }
     private static func capture(_ name: String, window: NSWindow, output: URL) throws {
         guard let view = window.contentView else { throw Failure.assertion("Missing window content") }
@@ -70,12 +94,13 @@ enum NativeSmoke {
         let windows = NSApplication.shared.windows.filter { $0.isVisible && $0.contentView != nil }
         try require(windows.count == 1, "Expected exactly one real application window")
         let window = windows[0]
+        try capture("startup-debug", window: window, output: output)
         var screens: [String] = []
         for (theme, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
             window.appearance = NSAppearance(named: appearance)
             try await pause()
             try require(model.page == .home, "Home page did not render")
-            try require(!(try element("connect", in: window)).isAccessibilityEnabled(), "Unavailable VPN must not be enabled")
+            try require(!(try element("connect", in: window).boolean("isAccessibilityEnabled")), "Unavailable VPN must not be enabled")
             try capture(theme + "-home", window: window, output: output)
             screens.append(theme + "-home")
             try press("nav-account", in: window)
@@ -83,8 +108,8 @@ enum NativeSmoke {
             try require(model.page == .account, "Account button did not navigate")
             try capture(theme + "-account", window: window, output: output)
             screens.append(theme + "-account")
-            try element("username", in: window).setAccessibilityValue("fixture")
-            try element("password", in: window).setAccessibilityValue("synthetic-fixture-only")
+            try element("username", in: window).setValue("fixture")
+            try element("password", in: window).setValue("synthetic-fixture-only")
             try await pause()
             try require(model.username == "fixture" && model.password == "synthetic-fixture-only", "Native text input did not update bindings")
             try press("back", in: window)

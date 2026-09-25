@@ -71,6 +71,12 @@ jobs:
           python3 macos/scripts/ui_acceptance.py "$app"
           (cd "artifacts/macos/${{ matrix.arch }}" && shasum -a 256 -c SHA256SUMS)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ always() }}
+        with:
+          name: Brisa-macOS-${{ matrix.arch }}-ui-evidence
+          path: artifacts/macos/${{ matrix.arch }}/ui-evidence
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Brisa-macOS-${{ matrix.arch }}-development
           path: artifacts/macos/${{ matrix.arch }}/*
