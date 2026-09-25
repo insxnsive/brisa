@@ -9,6 +9,7 @@ This branch develops a native SwiftUI app for macOS 13 or newer, with separate A
 The app starts signed out and makes no network request on launch. Sign In and Check Saved Session are explicit actions. Account requests invoke the bundled Go helper at `Brisa.app/Contents/Helpers/protonvpn-wg` directly.
 
 - Passwords and authenticator codes travel through private stdin JSON, not process arguments, environment variables or logs.
+- One nonblocking owner pumps helper input/output; cancellation joins the owned process and I/O before a replacement request can start. Leaving Account clears password/code fields immediately and again when cleanup finishes.
 - Helper errors map to fixed messages. Arbitrary diagnostic text and verification URLs are not displayed or opened.
 - Browser-based Proton verification challenges are not supported yet.
 - Sessions use AES-256-GCM with random nonces and a key in the local macOS login Keychain. The encrypted file lives under `~/Library/Application Support/Brisa/`, with private directory/file permissions.
@@ -31,14 +32,14 @@ python3 macos/scripts/package.py
 python3 macos/scripts/ui_acceptance.py "artifacts/macos/$(uname -m)/Brisa.app"
 ```
 
-Packaging builds the Go helper natively with CGO, vendors its dependency source, checks both binary architectures and ad-hoc-signs the app. Output under `artifacts/macos/<architecture>/` includes the app ZIP, matching source ZIP and SHA-256 checksums. The source archive includes helper dependencies and their license files, build recipes, native code and the project GPL license. Private user state and build caches are excluded.
+Packaging builds the Go helper natively with CGO, pins its compiler/linker deployment target to macOS 13, vendors its dependency source, checks both binary architectures and actual Mach-O minimum versions, and ad-hoc-signs the app. Output under `artifacts/macos/<architecture>/` includes the app ZIP, matching source ZIP and SHA-256 checksums. The source archive includes helper dependencies and their license files, build recipes, native code and the project GPL license. Private user state and build caches are excluded.
 
 Development ZIPs are **not Developer ID signed or notarized**, and ad-hoc signing is not publisher verification. Gatekeeper may block downloaded builds. Do not disable Gatekeeper globally. Review the source or use macOS's explicit approval for a build you trust; distribution acceptance remains outstanding.
 
 ## Verification boundaries
 
-The Mac workflow runs on native Apple Silicon and Intel runners. It tests the account subprocess protocol, timeout/cancellation, secret transport and disposable Keychain encryption, then builds and packages the real app. Native UI acceptance launches the packaged executable directly and through Launch Services, renders light/dark Home, Account and Settings, and uses real AppKit buttons and field editors for navigation and text input. It must produce screenshots and a passing JSON report; an early process exit is not startup acceptance.
+The Mac workflow runs on native Apple Silicon and Intel runners. It tests the account subprocess protocol, timeout/cancellation, repeated large-input cancellations, secret transport and disposable Keychain encryption, then builds and packages the real app. Native UI acceptance launches the packaged executable directly and through Launch Services, renders light/dark Home, Account and Settings, and uses named control anchors, mouse events and real field editors for navigation and text input. It checks rendered surface appearance and sensitive-field clearing, then quits through Command-Q. Both a passing screenshot/JSON report and normal process exit are required; an early process exit is not startup acceptance.
 
-CI never signs into a real account or changes networking. Keychain tests use randomly named disposable items and synthetic session data. Development artifacts do not publish a GitHub Release, touch the Windows updater feed or bump an application release version.
+Offline UI mode blocks account actions even if an automation target is wrong. CI never signs into a real account or changes networking. Keychain tests use randomly named disposable items and synthetic session data. Development artifacts do not publish a GitHub Release, touch the Windows updater feed or bump an application release version.
 
-Real Proton sign-in, two-factor/browser challenges, friend-run Mac acceptance, upgrade behavior and trusted signing remain unverified. The next networking milestone needs an accepted engine, privilege model, per-process isolation, DNS/IPv6/UDP behavior and disconnect/exit ownership before Connect can be enabled.
+Real Proton sign-in, two-factor/browser challenges, friend-run Mac acceptance, macOS 13 device acceptance, upgrade behavior and trusted signing remain unverified. The current native runners are macOS 14 on Apple Silicon and macOS 15 on Intel; a checked deployment target is not hardware acceptance. The next networking milestone needs an accepted engine, privilege model, per-process isolation, DNS/IPv6/UDP behavior and disconnect/exit ownership before Connect can be enabled.

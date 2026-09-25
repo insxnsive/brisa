@@ -33,6 +33,9 @@ if not swift_binary.is_file():
 shutil.copy2(swift_binary, MACOS / "Brisa")
 helper = HELPERS / "protonvpn-wg"
 env = dict(os.environ, GOOS="darwin", GOARCH={"arm64": "arm64", "x86_64": "amd64"}[ARCH], CGO_ENABLED="1")
+env["MACOSX_DEPLOYMENT_TARGET"] = "13.0"
+for flag in ("CGO_CFLAGS", "CGO_LDFLAGS"):
+    env[flag] = env.get(flag, "-O2 -g") + " -mmacosx-version-min=13.0"
 subprocess.run(["go", "mod", "vendor"], cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
 subprocess.run(["go", "build", "-mod=vendor", "-trimpath", "-o", str(helper), "./cmd/protonvpn-wg"],
                cwd=ROOT / "tools" / "proton-confgen", env=env, check=True)
@@ -51,6 +54,7 @@ for binary in (helper, MACOS / "Brisa"):
     architectures = subprocess.check_output(["lipo", "-archs", str(binary)], text=True).split()
     if architectures != [ARCH]:
         raise SystemExit(f"Wrong architecture in {binary}: {architectures}")
+    subprocess.run([sys.executable, str(ROOT / "macos/scripts/verify_macos_target.py"), str(binary)], check=True)
     subprocess.run(["codesign", "--force", "--sign", "-", str(binary)], check=True)
 subprocess.run(["codesign", "--force", "--sign", "-", str(APP)], check=True)
 subprocess.run(["codesign", "--verify", "--deep", "--strict", str(APP)], check=True)
