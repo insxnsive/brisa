@@ -1,19 +1,44 @@
 # Brisa for macOS: development milestone
 
-This is an experimental native SwiftUI app for macOS 13 or newer, built separately for Apple Silicon and Intel Macs. Home, Account and Settings stay in one window. Account requests use the bundled Go helper at `Brisa.app/Contents/Helpers/protonvpn-wg`.
+This branch develops a native SwiftUI app for macOS 13 or newer, with separate Apple Silicon (`arm64`) and Intel (`x86_64`) builds. Home, Account and Settings share one window. Windows development and distribution remain on `brisa`.
 
-**VPN tunneling is unavailable.** The Connect button is disabled. The app never claims that traffic is protected. There is no tunnel engine, driver, privileged install, or background network service in this milestone.
+**This is not a working Mac VPN yet.** Connect is disabled and the app does not claim to protect traffic. This milestone has no tunnel engine, privileged installation, driver, DNS changes or background network service.
 
-The app starts signed out and makes no network request on launch. Sign in and Check saved session are explicit actions. Passwords and authenticator codes are sent to the helper through a private stdin JSON envelope; they are not put in process arguments, environment variables, settings, or logs. A Proton verification challenge that needs a browser is currently unsupported. The app does not open challenge URLs. Sign out removes only the app's explicit local session file under `~/Library/Application Support/Brisa/`.
+## Account foundation
 
-The helper's Darwin session encryption must be provided by its Keychain-backed implementation before real account use. There is no plaintext fallback permitted. CI uses disposable fixtures and never signs into a real account.
+The app starts signed out and makes no network request on launch. Sign In and Check Saved Session are explicit actions. Account requests invoke the bundled Go helper at `Brisa.app/Contents/Helpers/protonvpn-wg` directly.
 
-## Build and test on a Mac
+- Passwords and authenticator codes travel through private stdin JSON, not process arguments, environment variables or logs.
+- Helper errors map to fixed messages. Arbitrary diagnostic text and verification URLs are not displayed or opened.
+- Browser-based Proton verification challenges are not supported yet.
+- Sessions use AES-256-GCM with random nonces and a key in the local macOS login Keychain. The encrypted file lives under `~/Library/Application Support/Brisa/`, with private directory/file permissions.
+- Missing, inaccessible or malformed keys fail closed. Darwin builds without CGO/native Keychain support fail closed. There is no plaintext fallback or automatic import of Windows/legacy session files.
+- The development helper explicitly uses the local login Keychain, not the entitlement-gated Data Protection Keychain. Keychain access remains subject to the user's lock/access-control settings. Stable Developer ID signing and behavior across app upgrades still need qualification; an ad-hoc rebuild may require renewed Keychain authorization.
+- Sign Out removes the explicit local session file, not other applications' state. It is not a server-side token-revocation feature.
 
-Run `swift test` and `swift build -c release` in `macos/`, then run `python3 macos/scripts/package.py` from the repository. The script builds the Go helper natively with CGO enabled, verifies both binary architectures, and creates an ad-hoc-signed `.app`, ZIPs, and SHA-256 checksums under `artifacts/macos/<architecture>/`. The source ZIP contains the Mac source, helper source, workflow, this document, and GPL license. It excludes build output and private user state.
+## Build on a Mac
 
-CI runs the Swift and Go tests, packages on native arm64 and x86_64 runners, and launches the packaged app in an explicit no-network smoke mode. CI artifacts are development builds. They have no Developer ID signature or notarization and are not releases. No automatic updater or Windows release feed is used.
+Install Xcode Command Line Tools, Go matching `tools/proton-confgen/go.mod`, and Python 3. From this branch:
 
-The focused XCTest expectations for signed-out state, secret transport, helper failures, challenges, cancellation, timeout, session identity and local sign-out were written before the Swift implementation. On the Windows development host, `swift test` cannot run because Swift is not installed; RED/GREEN execution and packaged app behavior require the native CI jobs.
+```sh
+cd macos
+swift test
+swift build -c release
+cd ..
+python3 -m unittest discover -s macos/Tests -v
+(cd tools/proton-confgen && go test ./...)
+python3 macos/scripts/package.py
+python3 macos/scripts/ui_acceptance.py "artifacts/macos/$(uname -m)/Brisa.app"
+```
 
-Account UI and helper protocol require Mac-native acceptance with fixture-only process tests. Real sign-in, two-factor and human verification remain unverified. Tunneling additionally needs an accepted engine, privilege model, DNS/IPv6/UDP behavior, and tunnel ownership rules before Connect can be enabled.
+Packaging builds the Go helper natively with CGO, vendors its dependency source, checks both binary architectures and ad-hoc-signs the app. Output under `artifacts/macos/<architecture>/` includes the app ZIP, matching source ZIP and SHA-256 checksums. The source archive includes helper dependencies and their license files, build recipes, native code and the project GPL license. Private user state and build caches are excluded.
+
+Development ZIPs are **not Developer ID signed or notarized**, and ad-hoc signing is not publisher verification. Gatekeeper may block downloaded builds. Do not disable Gatekeeper globally. Review the source or use macOS's explicit approval for a build you trust; distribution acceptance remains outstanding.
+
+## Verification boundaries
+
+The Mac workflow runs on native Apple Silicon and Intel runners. It tests the account subprocess protocol, timeout/cancellation, secret transport and disposable Keychain encryption, then builds and packages the real app. Native UI acceptance launches the packaged executable directly and through Launch Services, renders light/dark Home, Account and Settings, and uses native accessibility controls for navigation and field input. It must produce screenshots and a passing JSON report; an early process exit is not startup acceptance.
+
+CI never signs into a real account or changes networking. Keychain tests use randomly named disposable items and synthetic session data. Development artifacts do not publish a GitHub Release, touch the Windows updater feed or bump an application release version.
+
+Real Proton sign-in, two-factor/browser challenges, friend-run Mac acceptance, upgrade behavior and trusted signing remain unverified. The next networking milestone needs an accepted engine, privilege model, per-process isolation, DNS/IPv6/UDP behavior and disconnect/exit ownership before Connect can be enabled.

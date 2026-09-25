@@ -71,7 +71,9 @@ enum NativeSmoke {
     }
     private static func element(_ id: String, in window: NSWindow) throws -> Element {
         if let found = elements(window).first(where: { $0.identifier == id }) { return found }
-        let identifiers = elements(window).compactMap { $0.identifier }
+        let identifiers = elements(window).prefix(80).map { item in
+            "\(type(of: item.object)): id=\(item.identifier ?? "-") role=\(item.value("accessibilityRole") ?? "-") title=\(item.value("title") ?? "-") label=\(item.value("accessibilityLabel") ?? "-")"
+        }
         throw Failure.assertion("Missing native control \(id); found \(identifiers)")
     }
     private static func press(_ id: String, in window: NSWindow) throws {
@@ -81,8 +83,11 @@ enum NativeSmoke {
         guard let view = window.contentView else { throw Failure.assertion("Missing window content") }
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()
-        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw Failure.assertion("No rendered bitmap") }
-        view.cacheDisplay(in: view.bounds, to: bitmap)
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow,
+                                                  CGWindowID(window.windowNumber), [.boundsIgnoreFraming, .bestResolution]) else {
+            throw Failure.assertion("No image for the owned application window")
+        }
+        let bitmap = NSBitmapImageRep(cgImage: image)
         guard let data = bitmap.representation(using: .png, properties: [:]) else { throw Failure.assertion("PNG encoding failed") }
         try data.write(to: output.appendingPathComponent(name + ".png"))
     }
@@ -94,7 +99,10 @@ enum NativeSmoke {
         let windows = NSApplication.shared.windows.filter { $0.isVisible && $0.contentView != nil }
         try require(windows.count == 1, "Expected exactly one real application window")
         let window = windows[0]
-        try capture("startup-debug", window: window, output: output)
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        try await pause()
+        try? capture("startup-debug", window: window, output: output)
         var screens: [String] = []
         for (theme, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
             window.appearance = NSAppearance(named: appearance)

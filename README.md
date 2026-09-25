@@ -1,5 +1,9 @@
 # Brisa
 
+> **Experimental macOS branch:** native SwiftUI development, with no VPN tunneling yet. See [Mac builds and limitations](docs/macos.md). The Windows instructions below do not install the Mac app.
+>
+> **Branch experimental para macOS:** desenvolvimento nativo em SwiftUI, ainda sem túnel VPN. Veja [compilação e limitações do Mac](docs/macos.md). As instruções para Windows abaixo não instalam o aplicativo Mac.
+
 Brisa roteia apenas o tráfego do Discord pelo WireGuard, sem colocar os outros aplicativos do computador na VPN. É um aplicativo nativo para Windows, feito com .NET e WPF; um backend Node coordena a rede e um auxiliar Go gera perfis Proton.
 
 **[Português (Brasil)](#português-brasil) · [English](#english)**

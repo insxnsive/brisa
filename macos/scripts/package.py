@@ -47,7 +47,7 @@ with (CONTENTS / "Info.plist").open("wb") as stream:
         "NSHighResolutionCapable": True,
     }, stream)
 
-for binary in (MACOS / "Brisa", helper):
+for binary in (helper, MACOS / "Brisa"):
     architectures = subprocess.check_output(["lipo", "-archs", str(binary)], text=True).split()
     if architectures != [ARCH]:
         raise SystemExit(f"Wrong architecture in {binary}: {architectures}")
