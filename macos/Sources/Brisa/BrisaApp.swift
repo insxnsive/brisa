@@ -2,12 +2,33 @@ import SwiftUI
 import BrisaCore
 
 @main
+@MainActor
 struct BrisaApp: App {
+    @NSApplicationDelegateAdaptor(BrisaDelegate.self) private var delegate
     init() { NSApplication.shared.setActivationPolicy(.regular) }
 
     var body: some Scene {
-        Window("Brisa", id: "main") { ContentView() }
+        Window("Brisa", id: "main") { ContentView(model: delegate.model) }
             .defaultSize(width: 440, height: 440)
+    }
+}
+
+@MainActor
+final class BrisaDelegate: NSObject, NSApplicationDelegate {
+    let model = AppModel()
+    private var terminating = false
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if !terminating {
+            terminating = true
+            Task {
+                await model.cancel()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return .terminateLater
     }
 }
 
@@ -37,8 +58,30 @@ final class AppModel: ObservableObject {
 
     init(client: AccountService? = try? AccountClient.bundled()) { self.client = client }
 
-    func back() { cancel(); page = .home }
-    func cancel() { requestID += 1; task?.cancel(); busy = false }
+    private func joinCancelledRequest() async -> Int {
+        requestID += 1
+        let current = requestID
+        let pending = task
+        busy = true
+        password = ""; code = ""
+        pending?.cancel()
+        await pending?.value
+        return current
+    }
+
+    private func finishCancellation(_ current: Int) {
+        guard current == requestID else { return }
+        task = nil
+        password = ""; code = ""
+        busy = false
+    }
+
+    func back() async { await cancel(); page = .home }
+
+    func cancel() async {
+        let current = await joinCancelledRequest()
+        finishCancellation(current)
+    }
     func signIn() {
         guard !busy else { return }
         guard let client else { message = AccountError.missingHelper.localizedDescription; return }
@@ -77,21 +120,25 @@ final class AppModel: ObservableObject {
             } catch { if !Task.isCancelled, current == requestID { message = AccountError.helperFailure.localizedDescription } }
         }
     }
-    func signOut() {
-        cancel()
-        do { try client?.signOut(); signedIn = false; username = ""; message = "Signed out on this Mac." }
+    func signOut() async {
+        guard !busy else { return }
+        let current = await joinCancelledRequest()
+        guard current == requestID else { return }
+        defer { finishCancellation(current) }
+        guard let client else { message = AccountError.missingHelper.localizedDescription; return }
+        do { try client.signOut(); signedIn = false; username = ""; message = "Signed out on this Mac." }
         catch { message = AccountError.storageFailure.localizedDescription }
     }
 }
 
 private struct ContentView: View {
-    @StateObject private var model = AppModel()
+    @ObservedObject var model: AppModel
     private let capability = AccountState()
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 if model.page != .home {
-                    Button { model.back() } label: { Label("Back", systemImage: "chevron.left") }
+                    Button { Task { await model.back() } } label: { Label("Back", systemImage: "chevron.left") }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("back")
                 }
@@ -110,7 +157,7 @@ private struct ContentView: View {
         .padding(24)
         .frame(minWidth: 400, minHeight: 420)
         .onAppear { NativeSmoke.start(model: model) }
-        .onDisappear { model.cancel() }
+        .onDisappear { Task { await model.cancel() } }
     }
 
     private var home: some View {
@@ -138,15 +185,18 @@ private struct ContentView: View {
             if !model.signedIn {
                 TextField("Username", text: $model.username)
                     .textContentType(.username).accessibilityIdentifier("username")
+                    .disabled(model.busy)
                 SecureField("Password", text: $model.password)
                     .textContentType(.password).accessibilityIdentifier("password")
+                    .disabled(model.busy)
                 SecureField("Authenticator code, if requested", text: $model.code)
+                    .disabled(model.busy)
                 HStack {
                     Button("Sign In") { model.signIn() }.disabled(model.busy)
                     Button("Check Saved Session") { model.check() }.disabled(model.busy)
                 }
             } else {
-                Button("Sign Out on This Mac") { model.signOut() }.disabled(model.busy)
+                Button("Sign Out on This Mac") { Task { await model.signOut() } }.disabled(model.busy)
             }
             if model.busy { ProgressView().controlSize(.small) }
             if !model.message.isEmpty { Text(model.message).foregroundStyle(.secondary) }
