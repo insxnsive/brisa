@@ -19,13 +19,23 @@ import (
 
 var testServerIP = netip.MustParseAddr("10.70.0.1")
 var testClientIP = netip.MustParseAddr("10.70.0.2")
+var testServerIP6 = netip.MustParseAddr("fd70::1")
+var testClientIP6 = netip.MustParseAddr("fd70::2")
 
 const testName = "brisa-check.invalid"
+const testV6OnlyName = "brisa-v6-only.invalid"
 
 // SelfTest exercises encrypted WireGuard traffic between disposable loopback
 // peers. It never reads configuration, uses external endpoints, or creates a
 // host tunnel interface.
 func SelfTest(parent context.Context) error {
+	if err := selfTestIPv4(parent); err != nil {
+		return err
+	}
+	return selfTestIPv6(parent)
+}
+
+func selfTestIPv4(parent context.Context) error {
 	if parent == nil {
 		return errors.New("nil context")
 	}
@@ -77,17 +87,17 @@ func SelfTest(parent context.Context) error {
 	go func() { defer workers.Done(); tcpResult <- serveTestTCP(tcpListener, deadline) }()
 	go func() { defer workers.Done(); udpResult <- serveTestUDP(udpListener, deadline) }()
 	go func() { defer workers.Done(); dnsResult <- serveTestDNS(dnsListener, deadline) }()
-	defer func() { tcpListener.Close(); udpListener.Close(); dnsListener.Close(); workers.Wait() }()
+	defer func() { client.Close(); tcpListener.Close(); udpListener.Close(); dnsListener.Close(); workers.Wait() }()
 	tcpAddress := net.JoinHostPort(testServerIP.String(), strconv.Itoa(tcpListener.Addr().(*net.TCPAddr).Port))
 	udpAddress := net.JoinHostPort(testServerIP.String(), strconv.Itoa(udpListener.LocalAddr().(*net.UDPAddr).Port))
-	if err := testTCP(ctx, client, tcpAddress, deadline); err != nil {
+	if err := testTCP(ctx, client, "tcp4", tcpAddress, deadline); err != nil {
 		return errors.New("self-test TCP failed")
 	}
-	if err := testUDP(ctx, client, udpAddress, deadline); err != nil {
+	if err := testUDP(ctx, client, "udp4", udpAddress, deadline); err != nil {
 		return errors.New("self-test UDP failed")
 	}
 	nameAddress := net.JoinHostPort(testName, strconv.Itoa(tcpListener.Addr().(*net.TCPAddr).Port))
-	if err := testTCP(ctx, client, nameAddress, deadline); err != nil {
+	if err := testTCP(ctx, client, "tcp4", nameAddress, deadline); err != nil {
 		return errors.New("self-test DNS dial failed")
 	}
 	for _, result := range []<-chan error{tcpResult, udpResult, dnsResult} {
@@ -111,6 +121,183 @@ func SelfTest(parent context.Context) error {
 	}
 	if err := server.Close(); err != nil {
 		return errors.New("self-test shutdown failed")
+	}
+	return nil
+}
+
+// selfTestIPv6 uses fresh keys and the same loopback-only outer bind as IPv4.
+// All IPv6 listeners and addresses exist solely inside the userspace stacks.
+func selfTestIPv6(parent context.Context) error {
+	if parent == nil {
+		return errors.New("nil context")
+	}
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+	defer cancel()
+	if ctx.Err() != nil {
+		return errors.New("self-test cancelled")
+	}
+	serverKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		return errors.New("self-test key generation failed")
+	}
+	clientKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		return errors.New("self-test key generation failed")
+	}
+	encode := func(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
+	server, err := newEngine(Config{PrivateKey: encode(serverKey.Bytes()), PeerPublicKey: encode(clientKey.PublicKey().Bytes()), Endpoint: netip.MustParseAddrPort("127.0.0.1:1"), Addresses: []netip.Addr{testServerIP, testServerIP6}, Routes: []netip.Prefix{netip.MustParsePrefix("10.70.0.2/32"), netip.MustParsePrefix("fd70::2/128")}, MTU: 1280}, &loopbackBind{})
+	if err != nil {
+		return errors.New("self-test IPv6 server failed")
+	}
+	defer server.Close()
+	client, err := newEngine(Config{PrivateKey: encode(clientKey.Bytes()), PeerPublicKey: encode(serverKey.PublicKey().Bytes()), Endpoint: netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), server.ListenPort()), Addresses: []netip.Addr{testClientIP, testClientIP6}, Routes: []netip.Prefix{netip.MustParsePrefix("10.70.0.1/32"), netip.MustParsePrefix("fd70::1/128")}, DNS: []netip.Addr{testServerIP6}, MTU: 1280}, &loopbackBind{})
+	if err != nil {
+		return errors.New("self-test IPv6 client failed")
+	}
+	defer client.Close()
+	tcpListener, err := server.net.ListenTCPAddrPort(netip.AddrPortFrom(testServerIP6, 0))
+	if err != nil {
+		return errors.New("self-test IPv6 TCP listener failed")
+	}
+	defer tcpListener.Close()
+	udpListener, err := server.net.ListenUDPAddrPort(netip.AddrPortFrom(testServerIP6, 0))
+	if err != nil {
+		return errors.New("self-test IPv6 UDP listener failed")
+	}
+	defer udpListener.Close()
+	dnsListener, err := server.net.ListenUDPAddrPort(netip.AddrPortFrom(testServerIP6, 53))
+	if err != nil {
+		return errors.New("self-test IPv6 DNS listener failed")
+	}
+	defer dnsListener.Close()
+	deadline, _ := ctx.Deadline()
+	var workers sync.WaitGroup
+	tcpResult, udpResult, dnsResult := make(chan error, 1), make(chan error, 1), make(chan error, 1)
+	workers.Add(3)
+	go func() { defer workers.Done(); tcpResult <- serveTestTCP(tcpListener, deadline) }()
+	go func() { defer workers.Done(); udpResult <- serveTestUDP(udpListener, deadline) }()
+	go func() { defer workers.Done(); dnsResult <- serveTestDNS6(dnsListener, deadline) }()
+	defer func() { client.Close(); tcpListener.Close(); udpListener.Close(); dnsListener.Close(); workers.Wait() }()
+	tcpAddress := net.JoinHostPort(testServerIP6.String(), strconv.Itoa(tcpListener.Addr().(*net.TCPAddr).Port))
+	udpAddress := net.JoinHostPort(testServerIP6.String(), strconv.Itoa(udpListener.LocalAddr().(*net.UDPAddr).Port))
+	if err := testTCP(ctx, client, "tcp6", tcpAddress, deadline); err != nil {
+		return errors.New("self-test IPv6 TCP failed")
+	}
+	if err := testUDP(ctx, client, "udp6", udpAddress, deadline); err != nil {
+		return errors.New("self-test IPv6 UDP failed")
+	}
+	nameAddress := net.JoinHostPort(testName, strconv.Itoa(tcpListener.Addr().(*net.TCPAddr).Port))
+	if err := testTCP(ctx, client, "tcp6", nameAddress, deadline); err != nil {
+		return errors.New("self-test IPv6 DNS dial failed")
+	}
+	wrongFamilyName := net.JoinHostPort(testV6OnlyName, strconv.Itoa(tcpListener.Addr().(*net.TCPAddr).Port))
+	if c, err := client.DialContext(ctx, "tcp4", wrongFamilyName); err == nil || err.Error() != "no routed address in requested family" {
+		if c != nil {
+			c.Close()
+		}
+		return errors.New("self-test DNS family fallback accepted")
+	}
+	for _, result := range []<-chan error{tcpResult, udpResult, dnsResult} {
+		select {
+		case err := <-result:
+			if err != nil {
+				return errors.New("self-test IPv6 peer failed")
+			}
+		case <-ctx.Done():
+			return errors.New("self-test IPv6 timed out")
+		}
+	}
+	for _, tc := range []struct{ network, address string }{{"tcp4", tcpAddress}, {"udp4", udpAddress}, {"tcp6", "10.70.0.1:80"}, {"udp6", "[fe80::1%en0]:53"}, {"tcp6", "[::ffff:10.70.0.1]:80"}, {"tcp6", "[fd71::1]:80"}} {
+		if c, err := client.DialContext(ctx, tc.network, tc.address); err == nil || err.Error() != "unsupported dial address" {
+			if c != nil {
+				c.Close()
+			}
+			return errors.New("self-test IPv6 family gate failed")
+		}
+	}
+	querySeen := make(chan struct{}, 1)
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		b := make([]byte, 512)
+		if n, _, err := dnsListener.ReadFrom(b); err == nil && n > 0 {
+			querySeen <- struct{}{}
+		}
+	}()
+	pendingDone := make(chan error, 1)
+	go func() {
+		defer workers.Done()
+		c, err := client.DialContext(ctx, "tcp6", "unanswered.invalid:80")
+		if c != nil {
+			c.Close()
+		}
+		pendingDone <- err
+	}()
+	select {
+	case <-querySeen:
+	case <-ctx.Done():
+		return errors.New("self-test IPv6 pending DNS missing")
+	}
+	if err := client.Close(); err != nil {
+		return errors.New("self-test IPv6 shutdown failed")
+	}
+	select {
+	case err := <-pendingDone:
+		if err == nil {
+			return errors.New("self-test IPv6 pending dial escaped")
+		}
+	case <-ctx.Done():
+		return errors.New("self-test IPv6 pending dial did not join")
+	}
+	if c, err := client.DialContext(ctx, "tcp6", tcpAddress); err != ErrClosed {
+		if c != nil {
+			c.Close()
+		}
+		return errors.New("self-test IPv6 late dial accepted")
+	}
+	return server.Close()
+}
+
+func serveTestDNS6(c net.PacketConn, deadline time.Time) error {
+	c.SetDeadline(deadline)
+	b := make([]byte, 512)
+	seen := map[string]map[dnsmessage.Type]bool{testName + ".": {}, testV6OnlyName + ".": {}}
+	for range 4 {
+		n, addr, err := c.ReadFrom(b)
+		if err != nil {
+			return err
+		}
+		var query dnsmessage.Message
+		if err = query.Unpack(b[:n]); err != nil || len(query.Questions) != 1 {
+			return errors.New("invalid dual-stack DNS query")
+		}
+		q := query.Questions[0]
+		name := q.Name.String()
+		if seen[name] == nil || (q.Type != dnsmessage.TypeA && q.Type != dnsmessage.TypeAAAA) || seen[name][q.Type] {
+			return errors.New("unexpected dual-stack DNS query")
+		}
+		seen[name][q.Type] = true
+		header := dnsmessage.ResourceHeader{Name: q.Name, Type: q.Type, Class: dnsmessage.ClassINET, TTL: 10}
+		var body dnsmessage.ResourceBody = &dnsmessage.AResource{A: testServerIP.As4()}
+		if q.Type == dnsmessage.TypeAAAA {
+			body = &dnsmessage.AAAAResource{AAAA: testServerIP6.As16()}
+		}
+		response := dnsmessage.Message{Header: dnsmessage.Header{ID: query.Header.ID, Response: true, Authoritative: true, RecursionAvailable: true}, Questions: query.Questions}
+		if name == testName+"." || q.Type == dnsmessage.TypeAAAA {
+			response.Answers = []dnsmessage.Resource{{Header: header, Body: body}}
+		}
+		packed, err := response.Pack()
+		if err != nil {
+			return err
+		}
+		if _, err = c.WriteTo(packed, addr); err != nil {
+			return err
+		}
+	}
+	for _, family := range seen {
+		if !family[dnsmessage.TypeA] || !family[dnsmessage.TypeAAAA] {
+			return errors.New("missing DNS family query")
+		}
 	}
 	return nil
 }
@@ -174,8 +361,8 @@ func serveTestDNS(c net.PacketConn, deadline time.Time) error {
 	return err
 }
 
-func testTCP(ctx context.Context, e *Engine, address string, deadline time.Time) error {
-	c, err := e.DialContext(ctx, "tcp4", address)
+func testTCP(ctx context.Context, e *Engine, network, address string, deadline time.Time) error {
+	c, err := e.DialContext(ctx, network, address)
 	if err != nil {
 		return err
 	}
@@ -195,8 +382,8 @@ func testTCP(ctx context.Context, e *Engine, address string, deadline time.Time)
 	return nil
 }
 
-func testUDP(ctx context.Context, e *Engine, address string, deadline time.Time) error {
-	c, err := e.DialContext(ctx, "udp4", address)
+func testUDP(ctx context.Context, e *Engine, network, address string, deadline time.Time) error {
+	c, err := e.DialContext(ctx, network, address)
 	if err != nil {
 		return err
 	}

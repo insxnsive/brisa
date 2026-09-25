@@ -10,8 +10,9 @@ import runpy
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts/transport_acceptance.py'
-PASS = {'schemaVersion': 1, 'scope': 'loopback-only', 'tcp': True,
-        'udp': True, 'dns': True, 'shutdown': True}
+PASS = {'schemaVersion': 2, 'scope': 'loopback-only', 'tcp4': True,
+        'udp4': True, 'dnsA': True, 'tcp6': True, 'udp6': True,
+        'dnsAAAA': True, 'familyGate': True, 'shutdown': True}
 
 
 class ReportTests(unittest.TestCase):
@@ -22,11 +23,15 @@ class ReportTests(unittest.TestCase):
 
     def test_rejects_incomplete_ambiguous_or_non_loopback_evidence(self):
         validate = runpy.run_path(str(SCRIPT))['validate_report']
-        invalid = [dict(PASS, tcp=False), dict(PASS, udp=1), dict(PASS, dns=None),
+        invalid = [dict(PASS, tcp4=False), dict(PASS, udp4=1), dict(PASS, dnsA=None),
                    dict(PASS, shutdown="true"), dict(PASS, schemaVersion=True),
                    dict(PASS, scope="live"), dict(PASS, privateKey="fixture-secret"),
-                   {key: value for key, value in PASS.items() if key != 'dns'},
+                   {key: value for key, value in PASS.items() if key != 'dnsAAAA'},
                    [], None]
+        invalid += [{'schemaVersion': 1, 'scope': 'loopback-only', 'tcp': True,
+                     'udp': True, 'dns': True, 'shutdown': True},
+                    {key: value for key, value in PASS.items() if key != 'tcp6'},
+                    dict(PASS, tcp6=False), dict(PASS, dnsAAAA=1)]
         raw_invalid = [json.dumps(value).encode() for value in invalid]
         raw_invalid += [b'{"schemaVersion":0,' + json.dumps(PASS).encode()[1:],
                         json.dumps(PASS).encode() + b' {}', b'bad json', b'\xff',

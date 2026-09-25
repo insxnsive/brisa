@@ -7,8 +7,9 @@ from pathlib import Path
 import subprocess
 
 
-EXPECTED = {"schemaVersion": 1, "scope": "loopback-only", "tcp": True,
-            "udp": True, "dns": True, "shutdown": True}
+EXPECTED = {"schemaVersion": 2, "scope": "loopback-only", "tcp4": True,
+            "udp4": True, "dnsA": True, "tcp6": True, "udp6": True,
+            "dnsAAAA": True, "familyGate": True, "shutdown": True}
 
 
 def validate_report(raw):
@@ -41,7 +42,7 @@ class AcceptanceFailure(Exception):
 
 def accept(binary, output):
     binary = Path(binary).resolve()
-    result = {"schemaVersion": 1, "scope": "loopback-only", "status": "failed",
+    result = {"schemaVersion": 2, "scope": "loopback-only", "status": "failed",
               "binary": binary.name}
     try:
         try:

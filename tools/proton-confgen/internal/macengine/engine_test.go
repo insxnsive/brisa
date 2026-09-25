@@ -63,6 +63,44 @@ func TestInvalidConfigHasNoSideEffects(t *testing.T) {
 	}
 }
 
+func TestDualStackValidation(t *testing.T) {
+	base := testConfig(t)
+	base.Addresses = []netip.Addr{base.Address, netip.MustParseAddr("fd70::2")}
+	base.Routes = []netip.Prefix{base.AllowedIP, netip.MustParsePrefix("fd70::1/128")}
+	base.Address, base.AllowedIP = netip.Addr{}, netip.Prefix{}
+	base.DNS = []netip.Addr{netip.MustParseAddr("10.70.0.1"), netip.MustParseAddr("fd70::1")}
+	if _, _, err := validate(base); err != nil {
+		t.Fatal(err)
+	}
+	defaults := base
+	defaults.Routes = []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+	if _, _, err := validate(defaults); err != nil {
+		t.Fatal("canonical dual-stack default routes rejected:", err)
+	}
+	cases := map[string]func(*Config){
+		"mixed legacy":           func(c *Config) { c.Address = netip.MustParseAddr("10.70.0.2") },
+		"missing family route":   func(c *Config) { c.Routes = c.Routes[:1] },
+		"missing family address": func(c *Config) { c.Addresses = c.Addresses[:1] },
+		"link local":             func(c *Config) { c.Addresses[1] = netip.MustParseAddr("fe80::2") },
+		"scoped":                 func(c *Config) { c.Addresses[1] = netip.MustParseAddr("fd70::2%en0") },
+		"mapped":                 func(c *Config) { c.Addresses[1] = netip.MustParseAddr("::ffff:10.70.0.2") },
+		"dns wrong family":       func(c *Config) { c.DNS[1] = netip.MustParseAddr("fd71::1") },
+		"route noncanonical":     func(c *Config) { c.Routes[1] = netip.MustParsePrefix("fd70::2/64") },
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			c := base
+			c.Addresses = append([]netip.Addr(nil), base.Addresses...)
+			c.Routes = append([]netip.Prefix(nil), base.Routes...)
+			c.DNS = append([]netip.Addr(nil), base.DNS...)
+			change(&c)
+			if _, _, err := validate(c); err == nil {
+				t.Fatal("accepted invalid dual stack config")
+			}
+		})
+	}
+}
+
 func TestCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -140,7 +178,7 @@ func TestUnsupportedDialCannotUseHostResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	for _, tc := range []struct{ network, address string }{{"tcp6", "[::1]:80"}, {"udp6", "[::1]:53"}, {"tcp4", "[::1]:80"}, {"tcp4", "localhost:80"}, {"icmp", "10.70.0.1:1"}} {
+	for _, tc := range []struct{ network, address string }{{"tcp6", "[::1]:80"}, {"udp6", "[::1]:53"}, {"tcp4", "[::1]:80"}, {"tcp4", "localhost:80"}, {"tcp", "10.70.0.1:80"}, {"udp", "10.70.0.1:53"}, {"icmp", "10.70.0.1:1"}} {
 		if conn, err := e.DialContext(context.Background(), tc.network, tc.address); err == nil {
 			conn.Close()
 			t.Fatalf("accepted %s %s", tc.network, tc.address)
@@ -254,8 +292,8 @@ func TestCloseInterruptsDNSAfterEncryptedRequest(t *testing.T) {
 	}
 	select {
 	case err := <-dialDone:
-		if err == nil {
-			t.Fatal("dial succeeded without DNS answer")
+		if !errors.Is(err, ErrClosed) {
+			t.Fatalf("pending DNS lost close identity: %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("pending dial did not join")

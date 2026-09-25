@@ -9,7 +9,7 @@ import (
 	"protonvpn-wg-confgen/internal/macengine"
 )
 
-const success = `{"schemaVersion":1,"scope":"loopback-only","tcp":true,"udp":true,"dns":true,"shutdown":true}`
+const success = `{"schemaVersion":2,"scope":"loopback-only","tcp4":true,"udp4":true,"dnsA":true,"tcp6":true,"udp6":true,"dnsAAAA":true,"familyGate":true,"shutdown":true}`
 
 func run(args []string, out, errout io.Writer) int {
 	if len(args) != 1 || args[0] != "--self-test" {

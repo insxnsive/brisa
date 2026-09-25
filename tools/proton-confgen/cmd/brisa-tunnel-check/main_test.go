@@ -17,12 +17,12 @@ func TestArgumentGateAndExactSuccess(t *testing.T) {
 	if code := run([]string{"--self-test"}, &out, &errout); code != 0 {
 		t.Fatalf("self-test exit %d", code)
 	}
-	const want = "{\"schemaVersion\":1,\"scope\":\"loopback-only\",\"tcp\":true,\"udp\":true,\"dns\":true,\"shutdown\":true}\n"
+	const want = "{\"schemaVersion\":2,\"scope\":\"loopback-only\",\"tcp4\":true,\"udp4\":true,\"dnsA\":true,\"tcp6\":true,\"udp6\":true,\"dnsAAAA\":true,\"familyGate\":true,\"shutdown\":true}\n"
 	if out.String() != want {
 		t.Fatal("unexpected output")
 	}
 	var object map[string]any
-	if err := json.Unmarshal(out.Bytes(), &object); err != nil || len(object) != 6 {
+	if err := json.Unmarshal(out.Bytes(), &object); err != nil || len(object) != 10 {
 		t.Fatal("invalid schema")
 	}
 }
