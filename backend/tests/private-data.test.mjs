@@ -8,6 +8,10 @@ import { assertPrivateDataTreeSync, secureNewPrivateDirectorySync, validateAclRe
 
 const scratch = process.env.TMPDIR || os.tmpdir();
 const safeError = /Brisa data directory is not private\./;
+const ps = (script, input) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '$ErrorActionPreference = "Stop"; ' + script], {
+  input, encoding: 'utf8', timeout: 5000, windowsHide: true,
+  env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH')),
+});
 
 test('ACL decision rejects grants to other principals, including inherited grants', () => {
   const user = 'S-1-5-21-1';
@@ -31,18 +35,23 @@ test('legacy ownership decision rejects a foreign owner and reparse point while 
   assert.equal(validateTrustedRecords([{ ...broad, reparse: true }], user), false);
 });
 
+test('fixture ACL commands work through a PowerShell 7 parent without elevation', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(scratch, 'brisa-fixture-acl-'));
+  try {
+    const owner = ps('$ErrorActionPreference = "Stop"; $p = [Console]::In.ReadToEnd(); $a = Get-Acl -LiteralPath $p; Set-Acl -LiteralPath $p -AclObject $a; (Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value', root).trim();
+    assert.match(owner, /^S-1-/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('new private directory accepts an Administrators owner when running elevated', { skip: process.platform !== 'win32' }, t => {
-  const elevated = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    '$p = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent(); $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)'],
-  { encoding: 'utf8', windowsHide: true }).trim() === 'True';
+  const elevated = ps('$p = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent(); $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)').trim() === 'True';
   if (!elevated) return t.skip('Fixture cannot assign Administrators ownership without an elevated token.');
   const root = fs.mkdtempSync(path.join(scratch, 'brisa-admin-owner-'));
   try {
     const child = path.join(root, 'private');
     fs.mkdirSync(child);
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      '$p = [Console]::In.ReadToEnd(); $a = Get-Acl -LiteralPath $p; $a.SetOwner([Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")); Set-Acl -LiteralPath $p -AclObject $a'],
-    { input: child, encoding: 'utf8', windowsHide: true });
+    const owner = ps('$p = [Console]::In.ReadToEnd(); $a = Get-Acl -LiteralPath $p; $a.SetOwner([Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")); Set-Acl -LiteralPath $p -AclObject $a; (Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value', child).trim();
+    assert.equal(owner, 'S-1-5-32-544');
     assert.doesNotThrow(() => secureNewPrivateDirectorySync(child));
     assert.doesNotThrow(() => assertPrivateDataTreeSync(child));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -51,7 +60,6 @@ test('new private directory accepts an Administrators owner when running elevate
 test('NTFS readback accepts a private parent and child, rejects broad parent and file grants', { skip: process.platform !== 'win32' }, () => {
   fs.mkdirSync(scratch, { recursive: true });
   const root = fs.mkdtempSync(path.join(scratch, 'brisa-acl-'));
-  const ps = (script, input) => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { input, encoding: 'utf8', timeout: 5000, windowsHide: true });
   const sid = ps('[Security.Principal.WindowsIdentity]::GetCurrent().User.Value').trim();
   const icacls = (...args) => execFileSync('icacls.exe', args, { encoding: 'utf8', timeout: 5000, windowsHide: true });
   try {
