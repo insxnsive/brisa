@@ -135,6 +135,8 @@ public struct AccountClient {
         guard FileManager.default.isExecutableFile(atPath: helper.path) else { throw AccountError.missingHelper }
         do { try prepareDirectory() } catch { throw AccountError.storageFailure }
         let process = Process()
+        let exit = HelperExit()
+        process.terminationHandler = { _ in exit.signal() }
         process.executableURL = helper
         process.arguments = args + ["-session-file", sessionFile.path]
         // Inherit only a minimal environment; no app supplied secret or helper override.
@@ -156,12 +158,7 @@ public struct AccountClient {
         let timedOut: Bool = await withTaskCancellationHandler {
             await withTaskGroup(of: Bool.self) { group in
                 group.addTask {
-                    await withCheckedContinuation { continuation in
-                        DispatchQueue.global().async {
-                            process.waitUntilExit()
-                            continuation.resume()
-                        }
-                    }
+                    await exit.wait()
                     return false
                 }
                 group.addTask {
