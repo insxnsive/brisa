@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -163,7 +164,15 @@ func TestLoadRejectsIncompleteCachedSession(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "proton-session.json")
 	store := NewSessionStore(file)
-	if err := os.WriteFile(file, []byte(`{"username":"audit@example.com","expires_at":"2099-01-01T00:00:00Z"}`), 0o600); err != nil {
+	fixture := []byte(`{"username":"audit@example.com","expires_at":"2099-01-01T00:00:00Z"}`)
+	if runtime.GOOS == "darwin" {
+		var err error
+		fixture, err = sealSessionPayload(fixture)
+		if err != nil {
+			t.Fatalf("seal incomplete fixture: %v", err)
+		}
+	}
+	if err := os.WriteFile(file, fixture, 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	if session, _, err := store.Load("audit@example.com"); session != nil || err != nil {

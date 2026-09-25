@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -47,13 +48,10 @@ type SavedSession struct {
 }
 
 const encryptedSessionHeader = "GoLiveBypass-DPAPI-Session-v1\n"
+const darwinSessionHeader = "Brisa-Keychain-Session-v1\n"
 const maxSessionFileBytes int64 = 1 << 20
 const maxRefreshResponseBytes int64 = 1 << 20
 
-// sealSessionPayload protects the on-disk representation when the helper is
-// running inside the Windows plugin. Other platforms keep the historical
-// owner-only file format because their standalone clients do not have a
-// portable OS keychain contract; the plugin itself is Windows x64 only.
 func sealSessionPayload(payload []byte) ([]byte, error) {
 	if !sessionStorageUsesEncryption() {
 		return append([]byte(nil), payload...), nil
@@ -62,18 +60,32 @@ func sealSessionPayload(payload []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	sealed := make([]byte, 0, len(encryptedSessionHeader)+len(ciphertext))
-	sealed = append(sealed, encryptedSessionHeader...)
+	header := encryptedSessionHeader
+	if runtime.GOOS == "darwin" {
+		header = darwinSessionHeader
+	}
+	sealed := make([]byte, 0, len(header)+len(ciphertext))
+	sealed = append(sealed, header...)
 	sealed = append(sealed, ciphertext...)
 	return sealed, nil
 }
 
 func openSessionPayload(raw []byte) (payload []byte, encrypted bool, err error) {
+	if bytes.HasPrefix(raw, []byte(darwinSessionHeader)) {
+		if runtime.GOOS != "darwin" {
+			return nil, true, fmt.Errorf("unsupported encrypted session format")
+		}
+		payload, err = unprotectSessionBytes(raw[len(darwinSessionHeader):])
+		return payload, true, err
+	}
 	if !bytes.HasPrefix(raw, []byte(encryptedSessionHeader)) {
+		if runtime.GOOS == "darwin" {
+			return nil, false, fmt.Errorf("unsupported session format")
+		}
 		return append([]byte(nil), raw...), false, nil
 	}
-	if !sessionStorageUsesEncryption() {
-		return nil, true, fmt.Errorf("encrypted Proton session requires the Windows plugin helper")
+	if runtime.GOOS != "windows" {
+		return nil, true, fmt.Errorf("unsupported encrypted session format")
 	}
 	payload, err = unprotectSessionBytes(raw[len(encryptedSessionHeader):])
 	return payload, true, err
@@ -99,7 +111,7 @@ func (s *SessionStore) ensureStorageDirectory() error {
 	if err := s.validateStorageDirectory(); err != nil {
 		return err
 	}
-	if !sessionStorageUsesEncryption() {
+	if runtime.GOOS != "windows" {
 		if err := os.Chmod(directory, 0o700); err != nil {
 			return fmt.Errorf("failed to protect session directory: %w", err)
 		}
@@ -286,7 +298,7 @@ func (s *SessionStore) readPayloadLocked() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt session file: %w", err)
 	}
-	if !encrypted && sessionStorageUsesEncryption() {
+	if !encrypted && runtime.GOOS == "windows" {
 		// The legacy handle is closed before replacement. On Windows this is
 		// required for MoveFileEx to replace the same cache atomically.
 		protected, protectErr := sealSessionPayload(payload)

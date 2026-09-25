@@ -1,0 +1,68 @@
+name: macOS development artifacts
+
+on:
+  push:
+    branches: [macos]
+  pull_request:
+    branches: [macos]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tools/proton-confgen/go.mod
+          cache-dependency-path: tools/proton-confgen/go.sum
+      - name: Check native runner and toolchains
+        shell: bash
+        run: |
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          swift --version
+          go version
+      - name: Run isolated Swift process tests
+        working-directory: macos
+        run: swift test
+      - name: Run Go helper tests
+        working-directory: tools/proton-confgen
+        run: go test ./internal/auth ./internal/config ./cmd/protonvpn-wg
+      - name: Build native Swift app
+        working-directory: macos
+        run: swift build -c release
+      - name: Package matching native helper and source
+        run: python3 macos/scripts/package.py
+      - name: Exercise packaged app without network
+        shell: bash
+        run: |
+          app="artifacts/macos/${{ matrix.arch }}/Brisa.app"
+          test "$(lipo -archs "$app/Contents/MacOS/Brisa")" = "${{ matrix.arch }}"
+          test "$(lipo -archs "$app/Contents/Helpers/protonvpn-wg")" = "${{ matrix.arch }}"
+          "$app/Contents/Helpers/protonvpn-wg" -help > /dev/null 2>&1
+          fixture_dir="$(mktemp -d)"
+          trap 'rm -rf "$fixture_dir"' EXIT
+          "$app/Contents/Helpers/protonvpn-wg" -check-session -json -session-file "$fixture_dir/missing.enc" |
+            python3 -c 'import json,sys; r=json.loads(sys.stdin.read().splitlines()[-1]); assert r["success"] is False and r["valid"] is False'
+          "$app/Contents/MacOS/Brisa" --smoke-no-network | grep 'signed out; tunnel unavailable'
+          open -W -n "$app" --args --smoke-no-network
+          (cd "artifacts/macos/${{ matrix.arch }}" && shasum -a 256 -c SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Brisa-macOS-${{ matrix.arch }}-development
+          path: artifacts/macos/${{ matrix.arch }}/*
+          if-no-files-found: error

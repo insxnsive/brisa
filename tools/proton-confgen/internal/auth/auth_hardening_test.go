@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -199,6 +200,12 @@ func TestExpiredSessionIsRemovedLocallyAndAccountSwitchDoesNotDeleteOtherAccount
 	data, err := json.Marshal(expired)
 	if err != nil {
 		t.Fatalf("Marshal(expired) error = %v", err)
+	}
+	if sessionStorageUsesEncryption() && runtime.GOOS == "darwin" {
+		data, err = sealSessionPayload(data)
+		if err != nil {
+			t.Fatalf("seal expired fixture: %v", err)
+		}
 	}
 	if err := os.WriteFile(file, data, 0o600); err != nil {
 		t.Fatalf("WriteFile(expired) error = %v", err)
