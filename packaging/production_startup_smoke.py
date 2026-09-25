@@ -5,6 +5,7 @@ initializer. Only read-only requests and an invalid login schema are sent: no
 account credentials, sign-in, tunnel control, driver installation or updates.
 """
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import argparse
 import json
 import os
@@ -56,16 +57,31 @@ def check(app_directory):
         env['BRISA_RESOURCE_DIR'] = str(app / 'resources')
         request_text = ''.join(json.dumps(request) + '\n' for request in REQUESTS)
         for phase in ('fresh', 'restart'):
-            result = subprocess.run(
+            process = subprocess.Popen(
                 [str(app / 'runtime/node.exe'), str(app / 'backend/backend.cjs')],
-                cwd=app, env=env, input=request_text, text=True, encoding='utf-8',
-                capture_output=True, timeout=75,
+                cwd=app, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, text=True, encoding='utf-8',
             )
-            if result.returncode != 0:
-                # Raw stderr can contain paths or third-party prose. This probe
-                # needs only the exit code; production data is never attached.
-                raise AssertionError(f'Production backend {phase} exited {result.returncode}')
-            verify_responses(result.stdout)
+            # The real host owns the backend lifetime. Elevated inspection can
+            # leave an idle worker alive after replies; EOF is not a stop API.
+            with ThreadPoolExecutor(max_workers=1) as reader:
+                try:
+                    response = reader.submit(lambda: ''.join(
+                        process.stdout.readline(1024 * 1024 + 1) for _ in REQUESTS
+                    ))
+                    process.stdin.write(request_text)
+                    process.stdin.flush()
+                    verify_responses(response.result(timeout=75))
+                    if process.poll() not in (None, 0):
+                        raise AssertionError(f'Production backend {phase} exited {process.returncode}')
+                finally:
+                    # Only the exact Node child this probe created is stopped.
+                    # No tunnel or service control command is ever sent.
+                    if process.poll() is None:
+                        process.kill()
+                    process.wait(timeout=10)
+                    process.stdin.close()
+                    process.stdout.close()
             if not (base / 'native-data').is_dir():
                 raise AssertionError('Production private storage was not initialized')
             if any((base / 'native-data' / name).exists() for name in (
