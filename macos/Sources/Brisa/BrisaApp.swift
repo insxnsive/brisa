@@ -14,6 +14,15 @@ struct BrisaApp: App {
 enum Page: Equatable { case home, account, settings }
 
 @MainActor
+protocol AccountService {
+    func signIn(username: String, password: String, code: String) async throws -> AccountResult
+    func checkSession() async throws -> AccountResult
+    func signOut() throws
+}
+
+extension AccountClient: AccountService {}
+
+@MainActor
 final class AppModel: ObservableObject {
     @Published var page: Page = .home
     @Published var signedIn = AccountState().signedIn
@@ -24,7 +33,9 @@ final class AppModel: ObservableObject {
     @Published var busy = false
     private var task: Task<Void, Never>?
     private var requestID = 0
-    private let client: AccountClient? = try? AccountClient.bundled()
+    private let client: AccountService?
+
+    init(client: AccountService? = try? AccountClient.bundled()) { self.client = client }
 
     func back() { cancel(); page = .home }
     func cancel() { requestID += 1; task?.cancel(); busy = false }

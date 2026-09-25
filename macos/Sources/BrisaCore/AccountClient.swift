@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-private func stopOwnedHelper(_ process: Process) {
+func stopOwnedHelper(_ process: Process) {
     guard process.isRunning else { return }
     let pid = process.processIdentifier
     guard pid > 1 else { return }
@@ -51,21 +51,6 @@ private struct Reply: Decodable {
     let valid: Bool?
     let username: String?
     let code: String?
-}
-
-private final class OutputBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var bytes = Data()
-    private var overflow = false
-    func append(_ data: Data) {
-        lock.lock(); defer { lock.unlock() }
-        if bytes.count + data.count > 64 * 1024 { overflow = true }
-        else { bytes.append(data) }
-    }
-    func result() -> Data? {
-        lock.lock(); defer { lock.unlock() }
-        return overflow ? nil : bytes
-    }
 }
 
 public struct AccountClient {
@@ -146,6 +131,7 @@ public struct AccountClient {
     }
 
     private func invoke(_ args: [String], input: Data?) async throws -> Reply {
+        guard !Task.isCancelled else { throw AccountError.cancelled }
         guard FileManager.default.isExecutableFile(atPath: helper.path) else { throw AccountError.missingHelper }
         do { try prepareDirectory() } catch { throw AccountError.storageFailure }
         let process = Process()
@@ -157,24 +143,10 @@ public struct AccountClient {
         process.standardOutput = stdout
         process.standardError = stderr
         process.standardInput = stdin
-        let output = OutputBox(), diagnostics = OutputBox()
-        stdout.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { handle.readabilityHandler = nil }
-            else { output.append(data) }
-        }
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { handle.readabilityHandler = nil }
-            else { diagnostics.append(data) }
-        }
-        defer {
-            stdout.fileHandleForReading.readabilityHandler = nil
-            stderr.fileHandleForReading.readabilityHandler = nil
-            try? stdout.fileHandleForReading.close()
-            try? stderr.fileHandleForReading.close()
-        }
+        let output = try HelperOutputReader(stdout: stdout.fileHandleForReading, stderr: stderr.fileHandleForReading)
+        defer { output.close() }
         do { try process.run() } catch { throw AccountError.missingHelper }
+        output.start(process: process)
         // JSON is bounded above before process launch; write on a queue so cancellation remains responsive.
         DispatchQueue.global().async {
             if let input { try? stdin.fileHandleForWriting.write(contentsOf: input) }
@@ -204,15 +176,12 @@ public struct AccountClient {
         } onCancel: {
             stopOwnedHelper(process)
         }
+        let captured = await output.result()
         if Task.isCancelled { throw AccountError.cancelled }
         if timedOut { throw AccountError.timedOut }
-        stdout.fileHandleForReading.readabilityHandler = nil
-        stderr.fileHandleForReading.readabilityHandler = nil
-        output.append(stdout.fileHandleForReading.readDataToEndOfFile())
-        diagnostics.append(stderr.fileHandleForReading.readDataToEndOfFile())
         // The existing helper may print status lines before its final JSON record.
         // Accept only a bounded, complete final JSON line and never display preceding output.
-        guard let data = output.result(), data.count <= 64 * 1024,
+        guard let data = captured, data.count <= 64 * 1024,
               let text = String(data: data, encoding: .utf8),
               let last = text.split(whereSeparator: \.isNewline).last,
               let reply = try? JSONDecoder().decode(Reply.self, from: Data(last.utf8)) else {

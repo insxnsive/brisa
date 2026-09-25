@@ -8,6 +8,6 @@ let package = Package(
     targets: [
         .target(name: "BrisaCore"),
         .executableTarget(name: "Brisa", dependencies: ["BrisaCore"]),
-        .testTarget(name: "BrisaCoreTests", dependencies: ["BrisaCore"])
+        .testTarget(name: "BrisaCoreTests", dependencies: ["BrisaCore", "Brisa"])
     ]
 )
