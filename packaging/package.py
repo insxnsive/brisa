@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -164,6 +165,9 @@ def package(skip_build=False, output=None, version=None):
     copy(tool('node'), dest / 'runtime/node.exe')
     copy(REPO / 'backend/dist/backend.cjs', dest / 'backend/backend.cjs')
     copy(REPO / 'tools/proton-confgen/build/proton-confgen.exe', dest / 'resources/extra/proton-confgen/proton-confgen.exe')
+    # Fixture UI cannot prove production initialization. Exercise the real
+    # coordinator from the .NET-filled application working directory first.
+    run([sys.executable, REPO / 'packaging/production_startup_smoke.py', dest], timeout=180)
     vendor = artifacts / 'go-vendor'
     run([tool('go'), 'mod', 'vendor', '-o', vendor], cwd=REPO / 'tools/proton-confgen')
     collect_licenses(publish, dest, vendor)

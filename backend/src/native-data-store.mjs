@@ -9,7 +9,9 @@ const error = 'Brisa private data migration failed safely.';
 const script = `
 $ErrorActionPreference = 'Stop'
 $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
-Add-Type -TypeDefinition ([string]$request.source)
+# Resolve references from the running Windows PowerShell framework. Relative
+# defaults can bind to Brisa's bundled .NET System.dll in the app working folder.
+Add-Type -TypeDefinition ([string]$request.source) -ReferencedAssemblies @([object].Assembly.Location, [System.Collections.Generic.Stack[int]].Assembly.Location)
 [BrisaStorageTransaction]::Run([string]$request.base, [bool]$request.allowed, [int]$request.failAfter, [int]$request.failAfterDelete)
 `;
 

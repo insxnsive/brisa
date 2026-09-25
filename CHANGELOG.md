@@ -1,5 +1,11 @@
 # Changes
 
+## 0.1.0-beta.8
+
+- Fix the packaged backend exiting before status and sign-in become available. Windows PowerShell now compiles the private-storage helper against its own .NET Framework assemblies, not Brisa's bundled .NET assemblies in the application working directory.
+- Gate packaging on real production-backend startup from the packaged app directory, with disposable account-free storage. Check fresh startup, restart, status, helper availability and account-request validation without signing in or changing tunnels. The existing UI fixtures alone did not cover this path.
+- Preserve the private-storage permission checks, migration safeguards and tunnel-ownership protections.
+
 ## 0.1.0-beta.7
 
 - Fix the failed-startup exit loop. A terminal, idle backend failure now offers **Exit Brisa**, and the window close button exits instead of hiding a broken window. Normal working connections still close to the tray.

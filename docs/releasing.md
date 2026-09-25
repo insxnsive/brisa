@@ -3,7 +3,7 @@
 Updates come from `insxnsive/brisa` GitHub Releases, on Velopack's `win` channel. Do not point a build at upstream GoLiveBypass releases.
 
 1. Change `<Version>` in `src/Brisa/Brisa.csproj` and update `CHANGELOG.md`.
-2. Run `python packaging/test.py` and inspect the app in isolated UI mode.
+2. Run `python packaging/test.py` and inspect the app in isolated UI mode. Packaging also runs `packaging/production_startup_smoke.py` against the real bundled backend from the app working directory using disposable storage. This production-startup gate is required in addition to, not replaced by, `--ui-test`.
 3. Commit the implementation. If `scripts/install.ps1` changed, update both README bootstrap blocks to that full commit ID and the exact script SHA-256. Run the bootstrap fixtures and commit the README before tagging.
 4. Tag the final source commit as `v<version>`, then push the branch and tag. The release workflow validates the tag/version, runs the offline suites and builds the Windows artifacts.
 5. Check the workflow and release assets before sharing the download. Never restore mutable branch piping or equate a checksum with signing.

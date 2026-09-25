@@ -1,5 +1,15 @@
 # Preview verification
 
+## Beta.8 packaged-startup repair
+
+A user report after beta.7 publication exposed a missing acceptance boundary: the real production backend starts with the self-contained app directory as its working directory, while the storage unit tests ran from the repository and `--ui-test` replaced the backend entirely. The installed executable, assembly, Node runtime, backend and Proton helper matched the published beta.7 artifacts.
+
+The failure was reproduced with the unmodified published backend and an empty disposable data directory. Windows PowerShell's `Add-Type` resolved the bundled .NET `System.dll` instead of its .NET Framework reference, failed to compile `Stack<T>`, and exited before status or account requests were available. The identical helper succeeded from the repository working directory and failed from the packaged working directory; explicit references to assemblies already loaded by Windows PowerShell fixed the latter. This was not disabled sign-in, a wrong password, or an administrator-permission workaround.
+
+Beta.8 pins those compilation references without changing storage permissions, migration rules or tunnel ownership. `packaging/production_startup_smoke.py` failed against the original beta.7 payload and passed against the same runtime with the rebuilt backend. Packaging now requires that gate against its actual staged payload: fresh startup and restart, a real snapshot, packaged helper availability and rejection of an invalid account-request schema. All state is disposable; the probe never sends credentials, signs in, connects, disconnects or installs a driver.
+
+The complete offline runner passed: 40 packaging tests; 77 backend passes and one elevation-only skip; the Go suites; 23 core tests; 85 navigation, 150 appearance and 57 lifecycle assertions; and C#–Node integration. Independent source review found no concrete blocker in this narrow fix and gate. These checks establish production initialization, not a real Proton login or live routing. The existing installation and tunnels were left untouched.
+
 ## Published beta.7
 
 [v0.1.0-beta.7](https://github.com/insxnsive/brisa/releases/tag/v0.1.0-beta.7) is a published, unsigned prerelease from commit `c63aeb55c2cd25b1eb71c2a77da1ab8b88bbf426`.
