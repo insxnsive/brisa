@@ -9,6 +9,7 @@ Brisa roteia apenas o tráfego do Discord pelo WireGuard, sem colocar os outros 
 ### Índice
 
 - [Instalar](#instalar)
+- [macOS experimental](#macos-experimental)
 - [Primeira conexão](#primeira-conexão)
 - [Atualizações](#atualizações)
 - [Janela e bandeja](#janela-e-bandeja)
@@ -16,22 +17,28 @@ Brisa roteia apenas o tráfego do Discord pelo WireGuard, sem colocar os outros 
 
 ### Instalar
 
-Abra o PowerShell e cole o bloco abaixo. Ele baixa uma revisão fixa do [script de instalação](scripts/install.ps1), confere seu SHA-256 antes de executá-lo e remove a cópia temporária no final:
+No Windows, abra o PowerShell e cole esta linha:
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-$p = Join-Path ([IO.Path]::GetTempPath()) ('Brisa-install-' + [guid]::NewGuid().ToString('N') + '.ps1')
-try {
-    Invoke-WebRequest 'https://raw.githubusercontent.com/insxnsive/brisa/ab6a626bc8c9390b3361dc335a8508a24f3b1f23/scripts/install.ps1' -OutFile $p -UseBasicParsing -TimeoutSec 180
-    if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne '5dbb59c2a0c32c69217a4f7d3ff1e0f541f2a7361919b2c3e5c190fc6bf8c4af') { throw 'Brisa script checksum mismatch. Nothing was executed.' }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p
-    if ($LASTEXITCODE -ne 0) { throw "Brisa installer exited with code $LASTEXITCODE." }
-} finally { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
 ```
+
+A linha baixa e executa o [script atual do projeto](https://github.com/insxnsive/brisa/blob/brisa/scripts/install.ps1). Prefere conferir o script antes de executá-lo? Use a [opção com revisão fixa e verificação de hash](docs/install.md).
 
 O instalador verifica se o WebView2 Runtime está presente e, se faltar, baixa o instalador oficial da Microsoft e confere a assinatura digital. Depois baixa o instalador mais recente publicado do Brisa pelo GitHub e confere o SHA-256 antes de executá-lo. As janelas dos instaladores ficam visíveis; não há instalação silenciosa. A conferência de hash não é uma assinatura de editor: o Brisa continua sem assinatura Authenticode.
 
 O comando não precisa ser executado como administrador. Ele instala o Brisa e o WebView2 quando necessário. Requer Windows 64 bits (x64). O aplicativo e os runtimes do .NET e Node já vêm no pacote. O WireSock não é incluído no instalador do Brisa.
+
+### macOS experimental
+
+Baixe a versão nativa em SwiftUI para macOS 13 ou superior:
+
+- [Apple Silicon (arm64)](https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10889601492)
+- [Intel (x86_64)](https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10890150525)
+
+**Esta versão ainda não é uma VPN funcional. O botão Conectar está desativado.** Os ZIPs não têm assinatura Developer ID nem notarização. É preciso entrar no GitHub para baixar os artefatos do Actions, que têm prazo de validade. Extraia o artefato e depois o `Brisa-macOS-…-development.zip` dentro dele para obter `Brisa.app`.
+
+Veja o [status, as instruções de compilação e as limitações do Mac](https://github.com/insxnsive/brisa/blob/macos/docs/macos.md). O comando PowerShell acima instala apenas a versão Windows.
 
 ### Primeira conexão
 
@@ -51,7 +58,7 @@ Fechar a janela mantém o Brisa e a conexão ativos na bandeja do sistema. Use *
 
 ### Desenvolvimento e licença
 
-O guia de [configuração, desenvolvimento e testes](docs/development.md) explica como compilar o Brisa. O Brisa é um fork somente para Windows do [GoLiveBypass](https://github.com/bezumiya/GoLiveBypass). A interface Electron e o plugin foram removidos. O código do Brisa está sob [GPL-3.0-or-later](LICENSE), sem garantia. Os avisos de direitos autorais originais foram mantidos. Consulte os [avisos de terceiros](THIRD-PARTY-NOTICES.md).
+O guia de [configuração, desenvolvimento e testes](docs/development.md) explica como compilar o Brisa. O Brisa é um fork nativo do [GoLiveBypass](https://github.com/bezumiya/GoLiveBypass). A interface Electron e o plugin foram removidos. O código do Brisa está sob [GPL-3.0-or-later](LICENSE), sem garantia. Os avisos de direitos autorais originais foram mantidos. Consulte os [avisos de terceiros](THIRD-PARTY-NOTICES.md).
 
 O auxiliar Proton vem de [hatemosphere/protonvpn-wg-confgen](https://github.com/hatemosphere/protonvpn-wg-confgen), com mudanças herdadas do GoLiveBypass e correções do Brisa. O Brisa não é afiliado ao Discord, Proton ou WireSock. As primeiras versões são previews; relate problemas em [Issues](https://github.com/insxnsive/brisa/issues). Nunca publique senhas, códigos de verificação, arquivos de sessão ou perfis VPN.
 
@@ -62,6 +69,7 @@ Brisa routes Discord traffic through WireGuard without putting the rest of your 
 ### Contents
 
 - [Quick Install](#quick-install)
+- [macOS Preview](#macos-preview)
 - [First Connection](#first-connection)
 - [Updates](#updates)
 - [Window and Tray](#window-and-tray)
@@ -69,22 +77,28 @@ Brisa routes Discord traffic through WireGuard without putting the rest of your 
 
 ### Quick Install
 
-Open PowerShell and paste this block. It downloads an immutable revision of the [installer script](scripts/install.ps1), checks its SHA-256 before execution, and removes the temporary copy afterward:
+On Windows, open PowerShell and paste this line:
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-$p = Join-Path ([IO.Path]::GetTempPath()) ('Brisa-install-' + [guid]::NewGuid().ToString('N') + '.ps1')
-try {
-    Invoke-WebRequest 'https://raw.githubusercontent.com/insxnsive/brisa/ab6a626bc8c9390b3361dc335a8508a24f3b1f23/scripts/install.ps1' -OutFile $p -UseBasicParsing -TimeoutSec 180
-    if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ne '5dbb59c2a0c32c69217a4f7d3ff1e0f541f2a7361919b2c3e5c190fc6bf8c4af') { throw 'Brisa script checksum mismatch. Nothing was executed.' }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p
-    if ($LASTEXITCODE -ne 0) { throw "Brisa installer exited with code $LASTEXITCODE." }
-} finally { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
 ```
+
+The command downloads and runs the [current project script](https://github.com/insxnsive/brisa/blob/brisa/scripts/install.ps1). To verify the script before running it, use the [pinned, hash-checked alternative](docs/install.md).
 
 The installer checks for the WebView2 Runtime. If it is missing, it downloads Microsoft's official installer and verifies its digital signature. It then downloads the latest published Brisa setup from GitHub and checks the SHA-256 digest before running it. Installer windows stay visible; nothing is installed silently. Hash verification is not publisher signing: Brisa is still not Authenticode-signed.
 
 You do not need to run the command as administrator. It installs Brisa and WebView2 if needed and requires 64-bit Windows (x64). The app, .NET and Node runtimes are already included in the package. WireSock is not bundled with Brisa Setup.
+
+### macOS Preview
+
+Download the native SwiftUI development build for macOS 13 or newer:
+
+- [Apple Silicon (arm64)](https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10889601492)
+- [Intel (x86_64)](https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10890150525)
+
+**This is not a working VPN yet. Connect is disabled.** These ZIPs are not Developer ID signed or notarized. GitHub requires sign-in to download Actions artifacts, which expire. Extract the artifact, then the `Brisa-macOS-…-development.zip` inside it to get `Brisa.app`.
+
+See [Mac status, build instructions and limitations](https://github.com/insxnsive/brisa/blob/macos/docs/macos.md). The PowerShell command above installs Windows only.
 
 ### First Connection
 
@@ -104,6 +118,6 @@ Closing the window keeps Brisa and the connection running in the system tray. Ch
 
 ### Development and License
 
-See the [development and test guide](docs/development.md) to build Brisa. Brisa is a Windows-only fork of [GoLiveBypass](https://github.com/bezumiya/GoLiveBypass). The Electron interface and plugin were removed. Brisa is licensed under [GPL-3.0-or-later](LICENSE), without warranty. Original copyright notices remain. See [third-party notices](THIRD-PARTY-NOTICES.md).
+See the [development and test guide](docs/development.md) to build Brisa. Brisa is a native fork of [GoLiveBypass](https://github.com/bezumiya/GoLiveBypass). The Electron interface and plugin were removed. Brisa is licensed under [GPL-3.0-or-later](LICENSE), without warranty. Original copyright notices remain. See [third-party notices](THIRD-PARTY-NOTICES.md).
 
 The Proton helper comes from [hatemosphere/protonvpn-wg-confgen](https://github.com/hatemosphere/protonvpn-wg-confgen), with changes inherited from GoLiveBypass and fixes made for Brisa. Brisa is not affiliated with Discord, Proton or WireSock. Early releases are previews; report problems in [Issues](https://github.com/insxnsive/brisa/issues). Never post passwords, verification codes, session files or VPN profiles.

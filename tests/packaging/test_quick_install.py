@@ -43,11 +43,55 @@ class QuickInstallTests(unittest.TestCase):
         for anchor in toc_links:
             self.assertIn(anchor, slugs, f'broken README section link: #{anchor}')
 
-    def test_readme_bootstrap_verifies_an_immutable_script_before_execution(self):
+    def test_readme_quick_install_is_one_short_line(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
         blocks = re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL)
         self.assertEqual(len(blocks), 2)
         self.assertEqual(blocks[0], blocks[1])
+        self.assertEqual(len(blocks[0].splitlines()), 1)
+        self.assertLessEqual(len(blocks[0]), 120)
+        self.assertEqual(blocks[0], 'irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex')
+        self.assertEqual(readme.count('](docs/install.md)'), 2)
+
+    def test_readme_lists_experimental_mac_builds_and_limits(self):
+        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        pt, en = readme.split('## English', 1)
+        for section in (pt, en):
+            self.assertIn('https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10889601492', section)
+            self.assertIn('https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10890150525', section)
+            self.assertIn('macOS 13', section)
+        self.assertIn('não é uma VPN funcional', pt)
+        self.assertIn('Connect is disabled', en)
+        self.assertIn('not Developer ID signed or notarized', en)
+
+    def test_readme_one_liner_runs_real_installer_in_each_windows_shell(self):
+        if os.name != 'nt':
+            self.skipTest('The installer targets Windows')
+        shells = [path for name in ('powershell', 'pwsh') if (path := shutil.which(name))]
+        if not shells:
+            self.skipTest('PowerShell is needed for the one-line fixture')
+        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        snippet = re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL)[0]
+        for shell in shells:
+            for scenario in ('present', 'webview-absent', 'hash-mismatch', 'webview-bad-signature', 'bootstrap-download-failed', 'download-failed', 'setup-cancel'):
+                with self.subTest(shell=shell, scenario=scenario):
+                    data, _ = self.run_installer_fixture(scenario, powershell=shell, bootstrap=snippet)
+                    self.assertEqual(data['bootstraps'], 1, data)
+                    if scenario in ('present', 'webview-absent'):
+                        self.assertIsNone(data['error'], data)
+                        expected = ['Brisa-win-Setup.exe'] if scenario == 'present' else ['MicrosoftEdgeWebView2Setup.exe', 'Brisa-win-Setup.exe']
+                        self.assertEqual(data['launches'], expected, data)
+                    else:
+                        self.assertIsNotNone(data['error'], data)
+                        expected = ['Brisa-win-Setup.exe'] if scenario == 'setup-cancel' else []
+                        self.assertEqual(data['launches'], expected, data)
+                    if scenario == 'hash-mismatch':
+                        self.assertIn('SHA-256 does not match', data['error'])
+
+    def test_advanced_bootstrap_verifies_an_immutable_script_before_execution(self):
+        guide = (ROOT / 'docs/install.md').read_text(encoding='utf-8')
+        blocks = re.findall(r'```powershell\n(.*?)\n```', guide, re.DOTALL)
+        self.assertEqual(len(blocks), 1)
         snippet = blocks[0]
         self.assertRegex(snippet, r'https://raw[.]githubusercontent[.]com/insxnsive/brisa/[0-9a-f]{40}/scripts/install[.]ps1')
         self.assertIn(hashlib.sha256((ROOT / 'scripts/install.ps1').read_bytes()).hexdigest(), snippet)
@@ -113,8 +157,8 @@ class QuickInstallTests(unittest.TestCase):
         self.assertNotRegex(script, r"/quiet|/silent|Invoke-Expression")
         self.assertIn('Start-Process', script)
 
-    def run_installer_fixture(self, scenario):
-        powershell = shutil.which('powershell') or shutil.which('pwsh')
+    def run_installer_fixture(self, scenario, powershell=None, bootstrap=None):
+        powershell = powershell or shutil.which('powershell') or shutil.which('pwsh')
         if not powershell:
             self.skipTest('PowerShell is needed for the real-script fixture')
         scratch = Path(os.environ.get('TMPDIR') or ROOT / 'artifacts/test-temp')
@@ -122,10 +166,15 @@ class QuickInstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='quick-install-fixture-', dir=scratch) as folder:
             result = Path(folder) / 'result.json'
             env = fixture_environment(folder)
-            process = subprocess.run([powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+            command = [powershell, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
                 '-File', str(ROOT / 'tests/packaging/quick_install_fixture.ps1'),
                 '-ScriptPath', str(ROOT / 'scripts/install.ps1'), '-Scenario', scenario,
-                '-EvidencePath', str(result)], env=env, capture_output=True, text=True, timeout=25)
+                '-EvidencePath', str(result)]
+            if bootstrap is not None:
+                bootstrap_path = Path(folder) / 'readme-command.ps1'
+                bootstrap_path.write_text(bootstrap, encoding='utf-8')
+                command.extend(['-BootstrapPath', str(bootstrap_path)])
+            process = subprocess.run(command, env=env, capture_output=True, text=True, timeout=25)
             self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
             data = json.loads(result.read_text(encoding='utf-8-sig'))
             self.assertEqual(data['leftovers'], 0, data)

@@ -23,7 +23,7 @@ The Node distribution's `LICENSE` must sit beside `node.exe` when packaging. Use
 - `tests`: native lifecycle, appearance, transport and packaging checks.
 - `packaging`: build scripts and release validation.
 
-The repository intentionally has no Electron app, Vencord/Equicord plugin, web frontend or Linux/macOS application.
+This Windows branch has no Electron app, Vencord/Equicord plugin, web frontend or Linux/macOS application. A separate [native macOS port](https://github.com/insxnsive/brisa/tree/macos) is in development; its preview does not route traffic yet.
 
 ## Tests
 
