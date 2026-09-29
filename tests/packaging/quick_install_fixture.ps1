@@ -1,9 +1,10 @@
 # Run the real quick installer with all network, registry and launch effects stubbed.
-param([string]$ScriptPath, [string]$Scenario, [string]$EvidencePath)
+param([string]$ScriptPath, [string]$Scenario, [string]$EvidencePath, [string]$BootstrapPath)
 $ErrorActionPreference = 'Stop'
 $global:present = $Scenario -notlike 'webview-*'
 $global:launches = [Collections.Generic.List[string]]::new()
 $global:downloads = [Collections.Generic.List[string]]::new()
+$global:bootstraps = 0
 $global:bytes = [Text.Encoding]::UTF8.GetBytes('Brisa installer test fixture; not an executable')
 $sha = [Security.Cryptography.SHA256]::Create()
 $global:digest = ([BitConverter]::ToString($sha.ComputeHash($global:bytes))).Replace('-', '').ToLowerInvariant()
@@ -23,6 +24,12 @@ function Invoke-WebRequest {
 }
 function Invoke-RestMethod {
     param($Uri, $Headers, $TimeoutSec)
+    if ($Uri -eq 'https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1' -and $BootstrapPath) {
+        $global:bootstraps++
+        if ($Scenario -eq 'bootstrap-download-failed') { throw 'Fixture bootstrap download failed' }
+        return [IO.File]::ReadAllText($ScriptPath)
+    }
+    if ($Uri -ne 'https://api.github.com/repos/insxnsive/brisa/releases?per_page=30') { throw 'Unexpected fixture URL' }
     $url = 'https://github.com/insxnsive/brisa/releases/download/v0.1.0-beta.4/Brisa-win-Setup.exe'
     if ($Scenario -eq 'foreign-url') { $url = 'https://example.invalid/Brisa-win-Setup.exe' }
     if ($Scenario -eq 'wrong-tag-url') { $url = $url.Replace('v0.1.0-beta.4', 'v0.0.1') }
@@ -54,8 +61,8 @@ function Start-Process {
     return [pscustomobject]@{ ExitCode = $code }
 }
 $errorText = $null
-try { & $ScriptPath }
+try { if ($BootstrapPath) { & $BootstrapPath } else { & $ScriptPath } }
 catch { $errorText = $_.Exception.Message }
 $leftovers = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'Brisa-QuickInstall-*')
-[ordered]@{ error = $errorText; launches = @($global:launches); downloads = @($global:downloads); leftovers = $leftovers.Count } |
+[ordered]@{ bootstraps = $global:bootstraps; error = $errorText; launches = @($global:launches); downloads = @($global:downloads); leftovers = $leftovers.Count } |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $EvidencePath -Encoding UTF8

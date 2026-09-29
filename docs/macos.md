@@ -4,6 +4,15 @@ This branch develops a native SwiftUI app for macOS 13 or newer, with separate A
 
 **This is not a working Mac VPN yet.** Connect is disabled and the app does not claim to protect traffic. A userspace WireGuard transport and an explicit loopback diagnostic are available for development, but the app has no macOS traffic interception, privileged installation, driver, system DNS changes or background network service.
 
+## Download the verified development build
+
+- [Apple Silicon (arm64)](https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10889601492)
+- [Intel (x86_64)](https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10890150525)
+
+Both come from [passing CI run 36194386622](https://github.com/insxnsive/brisa/actions/runs/36194386622), source `0c1f4f626eb2f876b70214c4b34e78047757ddd5`. GitHub requires sign-in for Actions downloads, and artifacts expire. Extract the downloaded artifact and then its `Brisa-macOS-…-development.zip` to obtain `Brisa.app`. Matching source and SHA-256 checksums are included.
+
+These are not Developer ID signed or notarized. Connect remains disabled; downloading a build does not provide VPN protection. Do not disable Gatekeeper globally.
+
 ## Account foundation
 
 The app starts signed out and makes no network request on launch. Sign In and Check Saved Session are explicit actions. Account requests invoke the bundled Go helper at `Brisa.app/Contents/Helpers/protonvpn-wg` directly.
