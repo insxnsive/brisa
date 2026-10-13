@@ -8,12 +8,23 @@ Brisa roteia apenas o tráfego do Discord pelo WireGuard, sem colocar os outros 
 
 ### Índice
 
-- [Instalar](#instalar)
-- [macOS experimental](#macos-experimental)
-- [Primeira conexão](#primeira-conexão)
-- [Atualizações](#atualizações)
-- [Janela e bandeja](#janela-e-bandeja)
-- [Desenvolvimento e licença](#desenvolvimento-e-licença)
+- [Brisa](#brisa)
+  - [Português (Brasil)](#português-brasil)
+    - [Índice](#índice)
+    - [Instalar](#instalar)
+    - [macOS experimental](#macos-experimental)
+    - [Primeira conexão](#primeira-conexão)
+    - [Atualizações](#atualizações)
+    - [Janela e bandeja](#janela-e-bandeja)
+    - [Desenvolvimento e licença](#desenvolvimento-e-licença)
+  - [English](#english)
+    - [Contents](#contents)
+    - [Quick Install](#quick-install)
+    - [macOS Preview](#macos-preview)
+    - [First Connection](#first-connection)
+    - [Updates](#updates)
+    - [Window and Tray](#window-and-tray)
+    - [Development and License](#development-and-license)
 
 ### Instalar
 
@@ -44,7 +55,7 @@ Veja o [status, as instruções de compilação e as limitações do Mac](https:
 
 1. Abra o Brisa pelo menu Iniciar usando **Executar como administrador**.
 2. Entre na sua conta Proton ou importe seu próprio perfil WireGuard em Configurações → Avançado.
-3. Ao conectar pela primeira vez, se o WireSock estiver ausente, o Brisa baixa o instalador oficial, confere o hash e mostra a instalação do WireSock. Leia e aceite os termos do WireSock e aprove a solicitação do Windows. O Brisa continua a conexão depois da instalação.
+3. Ao conectar pela primeira vez, se o WireSock estiver ausente, o Brisa baixa o instalador oficial, confere o hash e mostra a instalação do WireSock. Leia e aceite os termos do WireSock e aprove a solicitação do Windows. O Brisa continua a conexão depois da instalação..
 
 O WireSock é um componente de terceiros. O nível Free do SDK é descrito para avaliação não comercial ou prova de conceito interna, não para produção. O uso não comercial do Brisa e o download direto não garantem permissão para uma versão pública de produção; a confirmação por escrito continua pendente. O Brisa não inclui o SDK nem oculta os avisos do fornecedor e do Windows.
 
@@ -68,12 +79,23 @@ Brisa routes Discord traffic through WireGuard without putting the rest of your 
 
 ### Contents
 
-- [Quick Install](#quick-install)
-- [macOS Preview](#macos-preview)
-- [First Connection](#first-connection)
-- [Updates](#updates)
-- [Window and Tray](#window-and-tray)
-- [Development and License](#development-and-license)
+- [Brisa](#brisa)
+  - [Português (Brasil)](#português-brasil)
+    - [Índice](#índice)
+    - [Instalar](#instalar)
+    - [macOS experimental](#macos-experimental)
+    - [Primeira conexão](#primeira-conexão)
+    - [Atualizações](#atualizações)
+    - [Janela e bandeja](#janela-e-bandeja)
+    - [Desenvolvimento e licença](#desenvolvimento-e-licença)
+  - [English](#english)
+    - [Contents](#contents)
+    - [Quick Install](#quick-install)
+    - [macOS Preview](#macos-preview)
+    - [First Connection](#first-connection)
+    - [Updates](#updates)
+    - [Window and Tray](#window-and-tray)
+    - [Development and License](#development-and-license)
 
 ### Quick Install
 
