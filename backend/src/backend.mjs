@@ -427,12 +427,14 @@ export function createBackend(deps, paths) {
         // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só uma leitura
         // iniciada e concluída no mesmo estado, sem mutação em curso, pode dizer que não há
         // túnel próprio.
-        const fresh = entry.key === `${generation}:${mutationSeq}` && !mutationBusy;
-        const ownPresent = fresh ? hasOwned(status) : (ownsTunnel(status) || sessionOwned);
+        // Reavaliado a cada uso: um disconnect que comece durante os awaits abaixo
+        // também invalida este snapshot.
+        const isFresh = () => entry.key === `${generation}:${mutationSeq}` && !mutationBusy;
+        const ownPresent = isFresh() ? hasOwned(status) : (ownsTunnel(status) || sessionOwned);
         const tunnelKey = tunnelActive ? ownedTunnelKey(status) : null;
         // Publish inspection-derived state before any unrelated await, and only while this
         // snapshot is still current, so a late snapshot cannot overwrite a newer tunnel.
-        if (fresh) {
+        if (isFresh()) {
           if (!tunnelActive) {
             resetRoute();
             // A positively identified native tunnel (mixed or partly readable) may still be
@@ -451,12 +453,12 @@ export function createBackend(deps, paths) {
           const age = lastRouteCheck ? now() - lastRouteCheck : Infinity;
           // Never block a snapshot (or ExitGuard) on the route probes; the verdict lands
           // in a later snapshot once the re-check completes.
-          if (discordRunning && age >= ROUTE_STALE_AFTER_MS && !routeRecheck && fresh) startRouteRecheck(tunnelKey);
+          if (discordRunning && age >= ROUTE_STALE_AFTER_MS && !routeRecheck && isFresh()) startRouteRecheck(tunnelKey);
         }
         const verdictAge = lastRouteCheck ? now() - lastRouteCheck : null;
         const verified = routeVerification.verified && verdictAge !== null && verdictAge < ROUTE_VERDICT_MAX_AGE_MS;
         return {
-          connected: !installerUnknown && tunnelActive && discordRunning && verified && fresh,
+          connected: !installerUnknown && tunnelActive && discordRunning && verified && isFresh(),
           tunnelActive,
           hasOwnedTunnel: ownPresent,
           requiresElevation: deps.requiresElevation === true,

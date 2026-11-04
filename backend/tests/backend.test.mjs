@@ -1299,3 +1299,31 @@ test("a snapshot that overlapped a mutation cannot clear the session ownership",
   assert.ok(discordArgs.some(apps => Array.isArray(apps) && apps.length), "the session apps must survive");
   assert.equal(after.hasOwnedTunnel, true);
 });
+
+test("a snapshot is not connected when the generation moves during its awaits", async () => {
+  // Freshness is re-evaluated at every use, not once after the inspection: the snapshot awaits
+  // username() and discordRunning() before it reports connected, and a change that lands in that
+  // window must win. cancel() is used because it moves the generation without also clearing the
+  // route, which would make the assertion pass for an unrelated reason.
+  let releaseDiscord;
+  let holdDiscord = false;
+  const discordGate = () => new Promise(resolve => { releaseDiscord = resolve; });
+  let gate = null;
+  const { backend, files, setInspection } = harness({
+    start: async () => { setInspection({ active: true, owned: true, reliable: true }); },
+    stop: async () => ({ stopped: true, servicesResidual: [], processResidual: [] }),
+    discordRunning: async () => {
+      if (holdDiscord) { holdDiscord = false; gate = discordGate(); await gate; }
+      return true;
+    },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  assert.equal((await backend.execute("connect", {})).success, true);
+  holdDiscord = true;
+  const snapshot = backend.execute("snapshot", {});
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await backend.execute("cancel", {});
+  releaseDiscord();
+  const result = await snapshot;
+  assert.equal(result.connected, false, "a generation change during the awaits must invalidate the snapshot");
+});
