@@ -194,6 +194,19 @@ internal static class Program
                 Check(((TextBlock)main.FindName("RouteChevron")).Text == "\uE76C"
                     && ((TextBlock)main.FindName("RouteHelper")).Visibility == Visibility.Collapsed,
                     "idle route row keeps the chevron and no helper");
+                var toolbarButton = (Button)connected.FindName("SettingsButton");
+                toolbarButton.IsEnabled = false;
+                connected.UpdateLayout();
+                Check(toolbarButton.Opacity < 1.0, "disabled toolbar action fades instead of filling");
+                Capture(connected, theme + "-ToolbarDisabled");
+                toolbarButton.IsEnabled = true;
+                var accountButton = (Button)connected.FindName("AccountButton");
+                connected.Activate();
+                accountButton.Focus();
+                System.Windows.Input.Keyboard.Focus(accountButton);
+                connected.UpdateLayout();
+                Check(accountButton.IsKeyboardFocused, "toolbar action takes keyboard focus");
+                Capture(connected, theme + "-ToolbarFocus");
                 connected.Width = connected.MinWidth; connected.Height = connected.MinHeight;
                 ((Button)connected.FindName("AccountButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var signedInAccount = (AccountView)((ContentControl)connected.FindName("PageHost")).Content;

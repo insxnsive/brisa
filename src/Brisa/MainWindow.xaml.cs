@@ -399,6 +399,7 @@ public partial class MainWindow : Window
         PageTransition.Stop(HomeContent);
         _currentPage = page; PageHost.Content = page;
         PageTitle.Text = title;
+        PageTitle.Visibility = Visibility.Visible;
         HomeContent.Visibility = HomeActions.Visibility = Visibility.Collapsed;
         PageHost.Visibility = BackButton.Visibility = Visibility.Visible;
         PageTransition.Show(PageHost);
@@ -432,7 +433,10 @@ public partial class MainWindow : Window
             PageHost.Visibility = BackButton.Visibility = Visibility.Collapsed;
             HomeContent.Visibility = HomeActions.Visibility = Visibility.Visible;
             PageTransition.Show(HomeContent);
-            PageTitle.Text = "Connection";
+            // A home não tem título: o nome do app já está na barra, e qualquer palavra acima do
+            // estado ("Connected") só repete o estado.
+            PageTitle.Text = "";
+            PageTitle.Visibility = Visibility.Collapsed;
             _navigationEpoch++;
             await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(5));
         }
