@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { WIRESOCK_SIGNER_THUMBPRINT, candidateIsTrusted, wireSockTrustScript } from "../src/wiresock-trust.mjs";
+import { WIRESOCK_SIGNER_SUBJECT, candidateIsTrusted, wireSockTrustScript } from "../src/wiresock-trust.mjs";
 
 const genuine = path.win32.join(process.env.ProgramFiles ?? "C:\\Program Files", "WireSock Secure Connect", "sdk");
 const genuineExe = path.win32.join(genuine, "wiresock-client.exe");
@@ -13,7 +13,9 @@ const installed = fs.existsSync(genuineExe) && fs.existsSync(genuineBooster);
 
 test("the trust check pins the vendor signer and inspects the parent chain", () => {
   const script = wireSockTrustScript("C:\\Program Files\\WireSock Secure Connect\\sdk\\wiresock-client.exe", "C:\\Program Files\\WireSock Secure Connect\\sdk\\wgbooster.dll");
-  assert.match(script, new RegExp(WIRESOCK_SIGNER_THUMBPRINT));
+  assert.match(script, new RegExp(WIRESOCK_SIGNER_SUBJECT.cn));
+  assert.match(script, /ReparsePoint/);
+  assert.match(script, /acl.Owner/);
   assert.match(script, /Get-AuthenticodeSignature/);
   assert.match(script, /Get-Acl/);
   // The volume root is skipped: authenticated users may create folders there, which cannot

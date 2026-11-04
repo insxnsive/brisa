@@ -7,6 +7,7 @@ import { quotePowerShell } from "./network/powershell.ts";
 import { WireSockSetupError } from "./wiresock-setup.mjs";
 import { classifyStartResult, WireSockStartError } from "./wiresock-start-result.mjs";
 import { wireSockSearchRoots } from "./wiresock-discovery.mjs";
+import { candidateIsTrusted } from "./wiresock-trust.mjs";
 import { ensureWireSockCandidate, inspectWireSockAsync, learnCandidateLease, type WireSockCandidateLease } from "./network/vpn-windows.ts";
 import { formatAllowedApps, sanitizeWireGuardConfig, validateWireGuardConfig } from "./network/vpn-types.ts";
 
@@ -85,6 +86,9 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   const lease = await learnCandidateLease(candidate, signal);
   if (lease) options?.onLease?.(lease);
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
+  // Revalidar imediatamente antes do uso elevado: a seleção e o lançamento estão separados por
+  // uma janela em que o par poderia ser trocado, e o lease sozinho não prova identidade.
+  if (!candidateIsTrusted(candidate.executable, candidate.booster)) throw new WireSockStartError("START_NOT_APPROVED");
   options?.onStage?.("starting-tunnel");
 
   const target = path.resolve(configPath);

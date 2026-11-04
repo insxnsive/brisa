@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly IUpdateService? _updates;
     private readonly Action<string> _exitWarning;
     private readonly Action<string> _notice;
+    private readonly Func<string, bool> _exitConfirm;
     private readonly SemaphoreSlim _operation = new(1, 1);
     private HomeState _state = new(ConnectionPhase.Loading, null);
     private CancellationTokenSource _lifetime = new();
@@ -107,10 +108,13 @@ public partial class MainWindow : Window
         SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
     }
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null)
     {
         InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
         _exitWarning = exitWarning ?? (message => { MessageBox.Show(this, message, "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); });
+        // Leaving with an unknown installer state is allowed, but only after the user says so:
+        // the window may still be showing a vendor installer, and Discord was already closed.
+        _exitConfirm = exitConfirm ?? (message => MessageBox.Show(this, message, "Exit Brisa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes);
         _notice = notice ?? (message => { MessageBox.Show(this, message, "Route", MessageBoxButton.OK, MessageBoxImage.Warning); });
         SetState(_state);
         _statusTimer.Tick += RefreshStatus;
@@ -484,7 +488,12 @@ public partial class MainWindow : Window
             if (!acquired) throw new InvalidOperationException("The current operation is still stopping. Please try exiting again.");
             var decision = await ExitGuard.DecideAsync(_backend, mayBeActive);
             var safeToApplyUpdate = decision.SafeToApplyUpdate;
-            if (decision.Warning is { } warning) _exitWarning(warning);
+            if (decision.Warning is { } warning && !_exitConfirm(warning))
+            {
+                _closing = false; _explicitExit = false; _applyUpdateOnExit = false;
+                _lifetime.Dispose(); _lifetime = new();
+                return;
+            }
             await _backend.DisposeAsync();
             if (_updates is not null) await _updates.DisposeAsync();
             if (safeToApplyUpdate && _updates?.HasPendingUpdate == true)

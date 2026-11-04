@@ -40,7 +40,7 @@ export function readWireSockInstallLocations(run = execFileSync) {
 export function wireSockSearchRoots(env = process.env, installed = readWireSockInstallLocations()) {
   const defaults = [env.ProgramW6432, env.ProgramFiles, env["ProgramFiles(x86)"], "C:\\Program Files"]
     .filter(Boolean).map(directory => path.win32.join(directory, "WireSock Secure Connect"));
-  if (env.LOCALAPPDATA) defaults.push(path.win32.join(env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages"));
+  if (env.ProgramFiles) defaults.push(path.win32.join(env.ProgramFiles, "WinGet", "Packages"));
   const roots = new Map();
   for (const value of [...installed, ...defaults]) {
     // Registry metadata is untrusted: accept local absolute directories only.

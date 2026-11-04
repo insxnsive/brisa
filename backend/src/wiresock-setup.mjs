@@ -10,6 +10,8 @@ export class WireSockSetupError extends Error {
 }
 
 export function wireSockSetupFailure(error) {
+  // Os caminhos pesquisados saem da mensagem: eles carregam o nome de usuário e o suporte os
+  // recebe em capturas de tela. O código e a orientação bastam para o usuário agir.
   return { success: false, code: "WIRESOCK_SETUP_REQUIRED",
-    message: `${error.cancelled === true ? "WireSock setup was cancelled." : "WireSock SDK setup could not be completed."} ${WIRESOCK_SETUP_GUIDANCE}${error.searchedRoots.length ? ` Searched folders (directly and under sdk): ${error.searchedRoots.join("; ")}.` : ""}` };
+    message: `${error.cancelled === true ? "WireSock setup was cancelled." : "WireSock SDK setup could not be completed."} ${WIRESOCK_SETUP_GUIDANCE}` };
 }

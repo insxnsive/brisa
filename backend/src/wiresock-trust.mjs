@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
 
 /**
- * Impressão digital do certificado do fornecedor (The Anti-Cloud Corporation). O binário
- * escolhido é executado como administrador, então a origem importa mais que a versão.
+ * Identidade do fornecedor (The Anti-Cloud Corporation), fixada pelo sujeito do certificado e
+ * não pela impressão digital: a renovação troca a impressão digital, não o emissor.
  */
-export const WIRESOCK_SIGNER_THUMBPRINT = "013371A3E52D87E59DA1C93A305732B1501FFE5A";
+export const WIRESOCK_SIGNER_SUBJECT = { cn: "The Anti-Cloud Corporation", o: "The Anti-Cloud Corporation" };
 
 /** Escrita, exclusão, troca de dono ou de permissões: qualquer uma permite trocar o binário. */
 const RISKY_FILE_RIGHTS = 852310;
@@ -22,17 +22,23 @@ export function wireSockTrustScript(executable, booster) {
   return `$ErrorActionPreference='Stop'
 $risky = ${RISKY_FILE_RIGHTS}
 $allowed = @(${allowed})
-$pin = '${WIRESOCK_SIGNER_THUMBPRINT}'
 foreach ($p in @(${quote(executable)}, ${quote(booster)})) {
   $sig = Get-AuthenticodeSignature -LiteralPath $p
-  if (($sig.Status -ne 'Valid') -or ($null -eq $sig.SignerCertificate) -or ($sig.SignerCertificate.Thumbprint -ne $pin)) { 'UNTRUSTED'; exit }
+  if (($sig.Status -ne 'Valid') -or ($null -eq $sig.SignerCertificate)) { 'UNTRUSTED'; exit }
+  $subject = $sig.SignerCertificate.Subject
+  if (($subject -notmatch 'CN=${WIRESOCK_SIGNER_SUBJECT.cn}') -or ($subject -notmatch 'O=${WIRESOCK_SIGNER_SUBJECT.o}')) { 'UNTRUSTED'; exit }
+  if (([IO.File]::GetAttributes($p) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { 'UNTRUSTED'; exit }
 }
 $dir = [IO.Path]::GetDirectoryName(${quote(executable)})
 while ($dir) {
   # A raiz do volume aceita criação de pastas por Usuários autenticados; isso não permite
   # trocar o binário, então a caminhada para antes dela.
   if ([IO.Path]::GetPathRoot($dir) -eq $dir) { break }
+  if (((Get-Item -LiteralPath $dir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { 'UNTRUSTED'; exit }
   $acl = Get-Acl -LiteralPath $dir
+  $owner = ''
+  try { $owner = (New-Object Security.Principal.NTAccount($acl.Owner)).Translate([Security.Principal.SecurityIdentifier]).Value } catch { $owner = '' }
+  if ($allowed -notcontains $owner) { 'UNTRUSTED'; exit }
   foreach ($rule in $acl.Access) {
     if ($rule.AccessControlType -ne 'Allow') { continue }
     $sid = ''

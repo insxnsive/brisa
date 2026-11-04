@@ -5,6 +5,12 @@ using Brisa.Models;
 
 namespace Brisa.Services;
 
+public sealed class BackendRefusalException : InvalidOperationException
+{
+    public BackendRefusalException(string? code, string message) : base(message) => Code = code;
+    public string? Code { get; }
+}
+
 public sealed class BackendClient : IBackendClient
 {
     private readonly Process _process;
@@ -71,7 +77,7 @@ public sealed class BackendClient : IBackendClient
             // example an installer whose supervision was lost) must not look like a clean cancel.
             var idle = await CommandAsync("waitForIdle", new { }, timeout.Token);
             if (!idle.Success)
-                throw new InvalidOperationException(string.IsNullOrWhiteSpace(idle.Message)
+                throw new BackendRefusalException(idle.Code, string.IsNullOrWhiteSpace(idle.Message)
                     ? "The native backend did not confirm that it became idle. Brisa will stay open."
                     : idle.Message);
         }

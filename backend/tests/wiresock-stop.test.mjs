@@ -158,7 +158,7 @@ test("optional network cleanup is skipped without a session executable", async (
 test("a fresh session lease is used for the optional lock reset exactly once", async () => {
   const { runtime, calls } = fakeRuntime({ snapshots: [activeOwned, inactive, inactive] });
   const { lease } = sessionLease();
-  const result = await stopOwnedWireSock(config, quietLog, { runtime, candidateLease: lease });
+  const result = await stopOwnedWireSock(config, quietLog, { runtime, candidateLease: lease, isTrusted: () => true });
   assert.equal(result.networkLockReset, true);
   assert.equal(calls.filter(call => call === "wiresock-client.exe reset-network-lock").length, 1);
 });
@@ -168,7 +168,7 @@ test("a stale lease skips the optional reset instead of running changed bytes", 
   const { lease } = sessionLease();
   // Same path and same mtime, different bytes: only the digest can catch this.
   fs.writeFileSync(lease.executable, "tampered-bytes");
-  const result = await stopOwnedWireSock(config, quietLog, { runtime, candidateLease: lease });
+  const result = await stopOwnedWireSock(config, quietLog, { runtime, candidateLease: lease, isTrusted: () => true });
   assert.equal(result.stopped, true, "the tunnel itself is still reported stopped");
   assert.equal(result.networkLockReset, false);
   assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no reset may run on stale evidence");
@@ -182,7 +182,7 @@ test("a budget that expires during the freshness proof never runs the reset", as
   let probes = 0;
   const result = await stopOwnedWireSock(config, quietLog, {
     runtime,
-    candidateLease: lease,
+    candidateLease: lease, isTrusted: () => true,
     timeoutMs: 5_000,
     freshness: async () => { probes += 1; clock.t += 10_000; return true; },
   });
@@ -200,7 +200,7 @@ test("a freshness proof that never settles still times out inside the budget", a
   const started = Date.now();
   const result = await stopOwnedWireSock(config, quietLog, {
     runtime,
-    candidateLease: lease,
+    candidateLease: lease, isTrusted: () => true,
     timeoutMs: 700,
     freshness: () => new Promise(() => {}),
   });
@@ -216,7 +216,7 @@ test("a foreign tunnel appearing after the freshness proof skips the reset", asy
   const { lease } = sessionLease();
   const result = await stopOwnedWireSock(config, quietLog, {
     runtime,
-    candidateLease: lease,
+    candidateLease: lease, isTrusted: () => true,
     freshness: async () => true,
   });
   assert.equal(result.stopped, false);

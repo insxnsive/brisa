@@ -878,6 +878,8 @@ export interface StopOwnedOptions {
     candidateLease?: WireSockCandidateLease | null;
     /** Sonda de frescor injetável: produção usa `leaseIsFresh`. */
     freshness?: (lease: WireSockCandidateLease, guard: () => void) => Promise<boolean>;
+    /** Checagem de confiança injetável: produção usa `candidateIsTrusted`. */
+    isTrusted?: (executable: string, booster: string) => boolean;
 }
 
 class StopCancelledError extends Error {
@@ -1119,8 +1121,14 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
                 blocked = await blockedBeforeGlobalAction();
                 if (blocked) return blocked;
                 scope.check();
-                const result = await runtime.run(lease.executable, ["reset-network-lock"], scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset), scope.signal);
-                networkLockReset = result.ok;
+                // O reset também é elevado: revalidar a assinatura e o caminho do binário agora,
+                // não só quando o par foi escolhido.
+                if (!(options.isTrusted ?? candidateIsTrusted)(lease.executable, path.join(path.dirname(lease.executable), "wgbooster.dll"))) {
+                    networkLockReset = false;
+                } else {
+                    const result = await runtime.run(lease.executable, ["reset-network-lock"], scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset), scope.signal);
+                    networkLockReset = result.ok;
+                }
             }
         }
         if (scope.live) {

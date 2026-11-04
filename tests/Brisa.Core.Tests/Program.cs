@@ -52,7 +52,7 @@ var tests = new (string Name, Action Run)[]
         var state = HomeState.FromSnapshot(snapshot);
         Assert(state.Phase == ConnectionPhase.Blocked && state.Detail!.Contains("installation status is unknown"));
         Assert(!state.Detail.Contains("administrator"));
-        var backend = new UiTestBackendClient(snapshot);
+        var backend = new UiTestBackendClient(snapshot) { RefuseCancel = true };
         var decision = ExitGuard.DecideAsync(backend, true).GetAwaiter().GetResult();
         Assert(decision.Warning is not null && !decision.SafeToApplyUpdate);
         Assert(!backend.Commands.Contains("disconnect"));

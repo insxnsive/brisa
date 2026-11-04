@@ -22,6 +22,13 @@ public static class ExitGuard
             await GetCancellation(backend).WaitAsync(TimeSpan.FromSeconds(6));
             state = await backend.SnapshotAsync(timeout.Token);
         }
+        catch (BackendRefusalException refusal) when (refusal.Code == "SDK_INSTALL_SUPERVISION_LOST")
+        {
+            // A refused cancel is expected in exactly the state this guard exists for. The raw
+            // inspection below decides whether leaving is safe; rethrowing here would keep the
+            // app open forever, which is the trap this path is meant to remove.
+            state = await backend.SnapshotAsync(timeout.Token);
+        }
         catch (BackendUnavailableException) when (!nativeOperationMayBeActive)
         {
             return new ExitDecision(false);
@@ -30,7 +37,7 @@ public static class ExitGuard
         // unreliable. That must not become a one-way door: the raw inspection is still valid,
         // so an app with no owned tunnel may leave, without authorizing an update.
         if (!state.Reliable && state.InspectionReliable && !state.HasOwnedTunnel)
-            return new ExitDecision(false, "WireSock installation status is unknown. Brisa will close; check the tunnel before reconnecting.");
+            return new ExitDecision(false, "WireSock installation status is unknown, and a WireSock installer window may still be open. Discord was closed. Exit Brisa anyway? Check the tunnel before reconnecting.");
         if (!state.Reliable && (nativeOperationMayBeActive || state.HasOwnedTunnel))
             throw new InvalidOperationException("Tunnel ownership could not be verified. The app will stay open.");
         // Mixed ownership: Brisa's tunnel cannot be stopped while another one exists, and

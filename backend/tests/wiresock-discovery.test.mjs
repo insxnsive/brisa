@@ -24,7 +24,7 @@ test("custom executable without its adjacent booster DLL is rejected", () => {
 
 test("installed locations are normalized, deduplicated, and reject relative or control-character paths", () => {
   assert.deepEqual(wireSockSearchRoots(env, [custom, custom.toLowerCase(), "relative", "D:\\bad\npath", "\\\\server\\share"]),
-    [custom, String.raw`C:\Program Files\WireSock Secure Connect`]);
+    [custom, String.raw`C:\Program Files\WireSock Secure Connect`, String.raw`C:\Program Files\WinGet\Packages`]);
 });
 
 

@@ -23,7 +23,12 @@ public sealed class UiTestBackendClient : IBackendClient
         if (command == "logout") _state = _state with { SignedIn = false, Username = "" };
         return new CommandResult(true, Route: _state.Route);
     }
-    public Task CancelAsync() => Task.CompletedTask;
+    public Task CancelAsync() => RefuseCancel
+        ? Task.FromException(new BackendRefusalException("SDK_INSTALL_SUPERVISION_LOST", "WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again."))
+        : Task.CompletedTask;
+    // Reproduces the state that used to make exit impossible: the backend refuses the cancel
+    // because installer supervision was lost.
+    public bool RefuseCancel { get; set; }
     public Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default) => Task.FromResult("UI test backend\nNetwork access: disabled\nTunnel actions: simulated");
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

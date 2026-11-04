@@ -858,7 +858,8 @@ for (const restored of [true, false]) {
     assert.match(result.message, /WireSock Secure Connect SDK/);
     assert.match(result.message, /https:\/\/wiresock.net\/wiresock-sdk/);
     assert.match(result.message, /standalone.*GUI/);
-    assert.ok(result.message.includes(String.raw`D:\Programas\Wiresock`));
+    // The searched folders carry the user name; the message must not repeat them.
+    assert.equal(result.message.includes(String.raw`D:\Programas\Wiresock`), false);
     assert.match(result.message, /terms.*Windows.*prompt/);
     assert.doesNotMatch(result.message, /synthetic-private/);
     assert.equal(result.message.includes("could not confirm"), !restored);
