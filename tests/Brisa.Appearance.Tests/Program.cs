@@ -186,6 +186,14 @@ internal static class Program
                 connected.Show(); connected.InitializeAsync().GetAwaiter().GetResult(); connected.UpdateLayout();
                 Check(((Button)connected.FindName("PrimaryButton")).Content as string == "Disconnect", "connected action stays Disconnect");
                 Check(!((Button)connected.FindName("RouteButton")).IsEnabled, "connected route selection stays disabled");
+                Check(((TextBlock)connected.FindName("RouteChevron")).Text == "\uE72E", "connected route row shows the lock glyph");
+                Check(((TextBlock)connected.FindName("RouteHelper")).Visibility == Visibility.Visible,
+                    "connected route row says how to unlock it");
+                Check(((Button)connected.FindName("RouteButton")).IsTabStop == false || !((Button)connected.FindName("RouteButton")).IsEnabled,
+                    "locked route row is not a tab stop");
+                Check(((TextBlock)main.FindName("RouteChevron")).Text == "\uE76C"
+                    && ((TextBlock)main.FindName("RouteHelper")).Visibility == Visibility.Collapsed,
+                    "idle route row keeps the chevron and no helper");
                 connected.Width = connected.MinWidth; connected.Height = connected.MinHeight;
                 ((Button)connected.FindName("AccountButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var signedInAccount = (AccountView)((ContentControl)connected.FindName("PageHost")).Content;

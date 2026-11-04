@@ -27,8 +27,8 @@
         <Button x:Name="RouteButton" Grid.Row="1" AutomationProperties.Name="Choose route" Click="Route_Click" Padding="14,10" HorizontalContentAlignment="Stretch">
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel><TextBlock FontSize="12" Opacity=".75" Text="Route"/><TextBlock x:Name="RouteText" Margin="0,2,12,0" FontSize="14" Text="Automatic" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="RouteServerText" Margin="0,3,12,0" FontSize="12" Style="{StaticResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/></StackPanel>
-            <TextBlock Grid.Column="1" FontFamily="Segoe Fluent Icons" FontSize="12" VerticalAlignment="Center" Text="&#xE76C;"/>
+            <StackPanel x:Name="RouteDetails"><TextBlock FontSize="12" Opacity=".75" Text="Route"/><TextBlock x:Name="RouteText" Margin="0,2,12,0" FontSize="14" Text="Automatic" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="RouteServerText" Margin="0,3,12,0" FontSize="12" Style="{StaticResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/><TextBlock x:Name="RouteHelper" Margin="0,4,12,0" FontSize="12" Style="{StaticResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="Disconnect to change the route" Visibility="Collapsed"/></StackPanel>
+            <TextBlock x:Name="RouteChevron" Grid.Column="1" FontFamily="Segoe Fluent Icons" FontSize="12" VerticalAlignment="Center" Text="&#xE76C;"/>
           </Grid>
         </Button>
       </Grid>

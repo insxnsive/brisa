@@ -84,9 +84,9 @@ public sealed class SettingsStore
         {
             // Idle, hover e pressionado existem porque o Fluent claro usava a mesma cor nos três: sem
             // degrau, o botão não responde ao ponteiro. Todos mantêm o rótulo acima de 4.5:1.
-            var accentFill = dark ? "#F38064" : "#CF3B17";
-            var accentHover = dark ? "#FA9E88" : "#BE3410";
-            var accentPressed = dark ? "#DB6B50" : "#A62D0D";
+            var accentFill = dark ? "#F38064" : "#C74626";
+            var accentHover = dark ? "#FA9E88" : "#B64023";
+            var accentPressed = dark ? "#DB6B50" : "#A53A1F";
             var accentLabel = dark ? "#000000" : "#FFFFFF";
             app.Resources["AccentButtonBackground"] = Brush(accentFill);
             app.Resources["AccentButtonBackgroundPointerOver"] = Brush(accentHover);

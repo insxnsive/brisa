@@ -191,6 +191,14 @@ public partial class MainWindow : Window
             RouteServerText.Text = "";
             RouteServerText.Visibility = Visibility.Collapsed;
         }
+        // Enquanto existe um túnel a rota não pode mudar, e o botão desabilitado sozinho não diz por
+        // quê: o chevron vira cadeado, o texto esmaece e a linha explica o que fazer.
+        var routeLocked = state.Snapshot?.HasOwnedTunnel == true
+            || state.Phase is ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Connected;
+        RouteChevron.Text = routeLocked ? "\uE72E" : "\uE76C";
+        RouteHelper.Visibility = routeLocked ? Visibility.Visible : Visibility.Collapsed;
+        // O esmaecimento vem do próprio botão desabilitado. Somar opacidade aqui escurecia a linha de
+        // ajuda abaixo do mínimo de contraste, e a instrução é justamente o que precisa ser lido.
         // Conectado é o único estado com acento: o resto fica neutro, e o Limited usa o escudo de
         // administrador porque um cadeado aberto lê como "livre", o oposto do que ele significa.
         var connected = state.Phase == ConnectionPhase.Connected;

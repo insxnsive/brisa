@@ -11,7 +11,7 @@ public sealed class UiTestBackendClient : IBackendClient
     public UiTestBackendClient(NativeSnapshot? initial = null, TimeSpan? commandDelay = null, RouteInfo? route = null)
     {
         _route = route;
-        _state = initial ?? new(false, false, true, false, "", route);
+        _state = (initial ?? new(false, false, true, false, "", null)) with { Route = route ?? initial?.Route };
         _commandDelay = commandDelay ?? TimeSpan.Zero;
     }
     public Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(_state);
