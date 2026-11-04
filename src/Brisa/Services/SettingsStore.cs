@@ -5,7 +5,7 @@ using System.Windows;
 namespace Brisa.Services;
 
 public enum AppTheme { System, Light, Dark }
-public sealed record UserSettings(AppTheme Theme = AppTheme.System, bool StartWithWindows = false);
+public sealed record UserSettings(AppTheme Theme = AppTheme.System, bool StartWithWindows = false, bool ShowDetails = true);
 
 public sealed class SettingsStore
 {
@@ -63,6 +63,15 @@ public sealed class SettingsStore
         var systemLight = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1);
         var dark = Current.Theme == AppTheme.Dark || Current.Theme == AppTheme.System && systemLight is int value && value == 0;
         System.Windows.Media.SolidColorBrush Brush(string hex) => new((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+        // O preenchimento do gráfico é a cor do teal com opacidade, não uma cor misturada à mão:
+        // assim ele acompanha o tema sem manter uma segunda paleta.
+        System.Windows.Media.SolidColorBrush FadedBrush(string hex, double opacity)
+        {
+            var brush = Brush(hex);
+            brush.Opacity = opacity;
+            brush.Freeze();
+            return brush;
+        }
         app.Resources["NativeBackground"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowBrush : Brush(dark ? "#202020" : "#F3F3F3");
         app.Resources["NativeForeground"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#F4F4F4" : "#1A1A1A");
         app.Resources["NativeSurface"] = SystemParameters.HighContrast ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#2B2B2B" : "#FFFFFF");
@@ -81,6 +90,13 @@ public sealed class SettingsStore
             ? System.Windows.SystemColors.HighlightBrush : Brush(dark ? "#1E3A35" : "#E3F1EE");
         app.Resources["NativeStatusConnected"] = SystemParameters.HighContrast
             ? System.Windows.SystemColors.HighlightTextBrush : Brush(dark ? "#4FD1B8" : "#125B50");
+        // O gráfico usa o teal do estado conectado: o preenchimento é a mesma cor a 15%, e a linha
+        // de upload é neutra e tracejada, porque só o download é o dado que importa ler.
+        var chartTint = dark ? "#4FD1B8" : "#125B50";
+        app.Resources["NativeChartFill"] = SystemParameters.HighContrast
+            ? System.Windows.SystemColors.HighlightBrush : FadedBrush(chartTint, 0.15);
+        app.Resources["NativeChartLine"] = SystemParameters.HighContrast
+            ? System.Windows.SystemColors.GrayTextBrush : Brush(dark ? "#B4B4B4" : "#5A5A5A");
         // A cor de destaque é da marca, não a do Windows. O Fluent deriva o botão primário do accent
         // do sistema, e nesta máquina ele saía vermelho de erro no tema claro. Mesma matiz do salmão
         // do tema escuro, escurecida no claro até passar 4.5:1 contra o rótulo branco.

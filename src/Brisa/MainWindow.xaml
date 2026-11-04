@@ -16,7 +16,8 @@
     <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,20" Padding="20">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <StackPanel VerticalAlignment="Center" Margin="0,0,0,16">
+        <Grid>
+        <StackPanel x:Name="StatusBlock" VerticalAlignment="Center" Margin="0,0,0,16">
           <Border x:Name="StatusBadge" Width="56" Height="56" CornerRadius="28" Background="{DynamicResource NativeIconSurface}" HorizontalAlignment="Center">
             <TextBlock x:Name="StatusIcon" FontFamily="Segoe Fluent Icons" FontSize="24" Text="&#xE785;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
@@ -24,6 +25,41 @@
           <TextBlock x:Name="DetailText" Style="{StaticResource SecondaryText}" Margin="0,8,0,0" TextAlignment="Center" MinHeight="38"/>
           <ProgressBar x:Name="ConnectionProgress" AutomationProperties.Name="Connection in progress" Width="104" Height="4" Margin="0,8,0,0" Visibility="Hidden" IsIndeterminate="False" HorizontalAlignment="Center"/>
         </StackPanel>
+        <!-- Conectado: o status encolhe para uma linha de cabeçalho alinhada à esquerda e o painel
+             de detalhes ocupa o espaço que o bloco centralizado usava. Desconectado não mostra
+             painel nenhum: zero e travessão são piores que a ausência do dado. -->
+        <StackPanel x:Name="DetailsHost" Visibility="Collapsed" VerticalAlignment="Top" Margin="0,0,0,16">
+          <StackPanel Orientation="Horizontal">
+            <Border x:Name="CompactBadge" Width="40" Height="40" CornerRadius="20" Background="{DynamicResource NativeStatusConnectedSurface}">
+              <TextBlock x:Name="CompactIcon" FontFamily="Segoe Fluent Icons" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE73E;"/>
+            </Border>
+            <TextBlock x:Name="CompactStatusText" Margin="12,0,0,0" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" AutomationProperties.Name="Connection status" Text="Connected"/>
+          </StackPanel>
+          <Grid Margin="0,16,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock FontSize="11" Opacity=".75" Text="Connected for"/><TextBlock x:Name="DurationValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" AutomationProperties.Name="Connected for" Text="0:00"/></StackPanel>
+            <StackPanel Grid.Column="1"><TextBlock FontSize="11" Opacity=".75" Text="Total traffic"/><TextBlock x:Name="TrafficValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" AutomationProperties.Name="Total traffic" Text="0 B"/></StackPanel>
+            <StackPanel Grid.Column="2"><TextBlock FontSize="11" Opacity=".75" Text="Protocol"/><TextBlock Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" Text="WireGuard (UDP)"/></StackPanel>
+          </Grid>
+          <Border Margin="0,12,0,0" Style="{StaticResource SettingsSurface}" Padding="12">
+            <StackPanel>
+              <Grid>
+                <TextBlock FontSize="12" Opacity=".75" VerticalAlignment="Center" Text="Discord traffic"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                  <TextBlock x:Name="DownRateText" FontSize="12" VerticalAlignment="Center" AutomationProperties.Name="Download rate" Text="0 B/s"/>
+                  <TextBlock x:Name="UpRateText" Margin="10,0,0,0" FontSize="12" Opacity=".75" VerticalAlignment="Center" AutomationProperties.Name="Upload rate" Text="0 B/s"/>
+                </StackPanel>
+              </Grid>
+              <Grid x:Name="ChartHost" Height="56" Margin="0,8,0,0" ClipToBounds="True">
+                <Canvas x:Name="ChartCanvas" ClipToBounds="True">
+                  <Polygon x:Name="DownArea" Fill="{DynamicResource NativeChartFill}" Stroke="{DynamicResource NativeStatusConnected}" StrokeThickness="1.5" StrokeLineJoin="Round" Points=""/>
+                  <Polyline x:Name="UpLine" Stroke="{DynamicResource NativeChartLine}" StrokeThickness="1.5" StrokeDashArray="3 3" Points=""/>
+                </Canvas>
+              </Grid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+        </Grid>
         <Button x:Name="RouteButton" Grid.Row="1" AutomationProperties.Name="Choose route" Click="Route_Click" Padding="14,10" HorizontalContentAlignment="Stretch">
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

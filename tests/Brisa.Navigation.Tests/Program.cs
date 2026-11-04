@@ -181,7 +181,10 @@ internal static class Program
             Check(!((Button)main.FindName("BackButton")).IsKeyboardFocused, "opening a page does not focus Back");
             Check(host.Content is AdvancedView, "Advanced opens as a page from the Settings page");
             Check(Application.Current.Windows.Count == 1, "Advanced opens in the same window");
+            // O foco de entrada vai para a página, não para um controle: ela não pode desenhar
+            // retângulo de foco, senão a região inteira aparece emoldurada na navegação por mouse.
             var advancedPage = (AdvancedView)host.Content;
+            Check(advancedPage.FocusVisualStyle is null, "the page that takes entry focus paints no focus rectangle");
             Check(((TextBlock)advancedPage.FindName("VersionText")).Text.Contains(AppVersion.Current), "Advanced shows the packaged Brisa version");
             Check(!((Button)advancedPage.FindName("CheckUpdateButton")).IsEnabled, "isolated navigation never enables network update checks");
             var credits = (Expander)advancedPage.FindName("CreditsExpander");

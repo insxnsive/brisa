@@ -50,6 +50,9 @@ public partial class App : System.Windows.Application
         if (!isolated) Security.VerificationProfileStore.Cleanup();
         if (isolated && e.Args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.Ordinal)) is { } themeArg && Enum.TryParse<AppTheme>(themeArg[8..], true, out var theme))
             settings.Save(settings.Current with { Theme = theme });
+        // Fixture da preferência do painel: item 9 acrescenta a caixa em Settings, aqui só o estado.
+        if (isolated && e.Args.Contains("--no-details", StringComparer.OrdinalIgnoreCase))
+            settings.Save(settings.Current with { ShowDetails = false });
         settings.ApplyTheme();
         // Visual fixtures only: --route=HT gives the isolated backend a route so the Home card can be
         // photographed in a real state instead of "Automatic".
@@ -79,10 +82,13 @@ public partial class App : System.Windows.Application
             }
             catch { _updates = null; }
         }
-        var window = new MainWindow(backend, settings, smokeOutput, _updates);
+        // Sessão isolada não mede tráfego de verdade: o contador é simulado, e o título diz isso
+        // para que nenhuma captura pareça um número real.
+        var traffic = isolated ? new SimulatedTrafficSource() : null;
+        var window = new MainWindow(backend, settings, smokeOutput, _updates, traffic: traffic);
         MainWindow = window;
         _tray = new TrayService(window, settings);
-        if (isolated) window.Title = "Brisa — UI Test (No Network)";
+        if (isolated) window.Title = traffic is null ? "Brisa — UI Test (No Network)" : "Brisa — UI Test (No Network, simulated counters)";
         window.Show();
         await window.InitializeAsync(openAccount: !startupLaunch);
     }

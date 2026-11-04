@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -40,6 +41,18 @@ public partial class MainWindow : Window
     private long _appliedSequence;
     private bool _operationOwnsUi;
     private readonly System.Windows.Threading.DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(10) };
+    // Painel de detalhes: um único timer de 1 s, que só roda com o painel na tela e a janela
+    // visível. Sessenta amostras dão uma janela de um minuto, que é o que cabe no gráfico.
+    private const int ChartSamples = 60;
+    private readonly System.Windows.Threading.DispatcherTimer _detailsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly double[] _downSamples = new double[ChartSamples];
+    private readonly double[] _upSamples = new double[ChartSamples];
+    private readonly ITrafficSource _traffic;
+    private TrafficReading? _lastReading;
+    private DateTime _connectedSince;
+    private ulong _totalReceived, _totalSent;
+    private int _sampleCount;
+    private bool _detailsVisible;
 
     private readonly record struct SnapshotTicket(long Operation, long Navigation, long Sequence, bool FromOperation);
 
@@ -112,9 +125,10 @@ public partial class MainWindow : Window
         SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
     }
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null)
     {
         InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
+        _traffic = traffic ?? new InterfaceTrafficSource();
         _exitWarning = exitWarning ?? (message => { MessageBox.Show(this, message, "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); });
         // Leaving with an unknown installer state is allowed, but only after the user says so:
         // the window may still be showing a vendor installer, and Discord was already closed.
@@ -122,10 +136,13 @@ public partial class MainWindow : Window
         _notice = notice ?? (message => { MessageBox.Show(this, message, "Route", MessageBoxButton.OK, MessageBoxImage.Warning); });
         SetState(_state);
         _statusTimer.Tick += RefreshStatus;
-        Closed += (_, _) => _statusTimer.Stop();
+        _detailsTimer.Tick += (_, _) => RenderDetails();
+        ChartHost.SizeChanged += (_, _) => DrawChart();
+        StateChanged += (_, _) => SyncDetailsTimer();
+        Closed += (_, _) => { _statusTimer.Stop(); _detailsTimer.Stop(); };
         Closing += OnClosing;
         // The timer is paused while hidden in the tray, so refresh once when the window comes back.
-        IsVisibleChanged += (_, e) => { if (e.NewValue is true) RefreshStatus(this, EventArgs.Empty); };
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) { RefreshStatus(this, EventArgs.Empty); SyncDetailsTimer(); } else SyncDetailsTimer(); };
         PreviewKeyDown += OnNavigationKeyDown;
     }
 
@@ -217,6 +234,27 @@ public partial class MainWindow : Window
             : state.Phase is ConnectionPhase.Blocked or ConnectionPhase.Error ? "\uE7BA" : "\uE785";
         StatusBadge.SetResourceReference(Border.BackgroundProperty, connected ? "NativeStatusConnectedSurface" : "NativeIconSurface");
         StatusIcon.SetResourceReference(TextBlock.ForegroundProperty, connected ? "NativeStatusConnected" : "NativeForeground");
+
+        // Conectado e com a preferência ligada, o painel substitui o bloco centralizado. Em
+        // qualquer outro estado ele não existe: zero e travessão mentem mais do que a ausência.
+        var showDetails = connected && _settings.Current.ShowDetails;
+        if (showDetails && !_detailsVisible)
+        {
+            // A sessão conta a partir do momento em que o painel aparece, então o número na tela é
+            // o mesmo intervalo que o gráfico cobre.
+            _connectedSince = DateTime.UtcNow;
+            _lastReading = _traffic.Read();
+            _totalReceived = _totalSent = 0;
+            Array.Clear(_downSamples);
+            Array.Clear(_upSamples);
+            _sampleCount = 0;
+            RenderDetails();
+        }
+        _detailsVisible = showDetails;
+        StatusBlock.Visibility = showDetails ? Visibility.Collapsed : Visibility.Visible;
+        DetailsHost.Visibility = showDetails ? Visibility.Visible : Visibility.Collapsed;
+        CompactStatusText.Text = state.StatusText;
+        SyncDetailsTimer();
     }
 
     // O nome do pais vem do .NET, sem pacote e sem tabela. EnglishName e nao DisplayName: o ICU
@@ -227,6 +265,94 @@ public partial class MainWindow : Window
         try { return new System.Globalization.RegionInfo(code).EnglishName is { Length: > 0 } name ? name : code; }
         catch (ArgumentException) { return code; }
     }
+
+    // Um timer só, e só enquanto o painel está na tela: minimizado ou na bandeja ele para, porque
+    // ninguém está lendo os números.
+    private void SyncDetailsTimer()
+    {
+        var shouldRun = _detailsVisible && IsVisible && WindowState != WindowState.Minimized && !_closing;
+        if (shouldRun && !_detailsTimer.IsEnabled) { _detailsTimer.Start(); RenderDetails(); }
+        else if (!shouldRun && _detailsTimer.IsEnabled) _detailsTimer.Stop();
+    }
+
+    private void RenderDetails()
+    {
+        if (!_detailsVisible) return;
+        var reading = _traffic.Read();
+        double down = 0, up = 0;
+        if (reading is { } current && _lastReading is { } previous)
+        {
+            // Os contadores são cumulativos e voltam a zero quando o adaptador sobe; um decréscimo
+            // vira zero, nunca um pico negativo no gráfico.
+            down = current.Received >= previous.Received ? current.Received - previous.Received : 0;
+            up = current.Sent >= previous.Sent ? current.Sent - previous.Sent : 0;
+            _totalReceived += (ulong)down;
+            _totalSent += (ulong)up;
+        }
+        _lastReading = reading ?? _lastReading;
+        _downSamples[_sampleCount % ChartSamples] = down;
+        _upSamples[_sampleCount % ChartSamples] = up;
+        _sampleCount++;
+        DurationValue.Text = DurationText(DateTime.UtcNow - _connectedSince);
+        TrafficValue.Text = SizeText(_totalReceived + _totalSent);
+        DownRateText.Text = SizeText((ulong)down) + "/s";
+        UpRateText.Text = SizeText((ulong)up) + "/s";
+        DrawChart();
+    }
+
+    private void DrawChart()
+    {
+        var width = ChartHost.ActualWidth;
+        var height = ChartHost.ActualHeight;
+        if (width <= 0 || height <= 0) return;
+        var count = Math.Min(_sampleCount, ChartSamples);
+        if (count < 2)
+        {
+            DownArea.Points = new PointCollection();
+            UpLine.Points = new PointCollection();
+            return;
+        }
+        var down = Ordered(_downSamples, count, _sampleCount);
+        var up = Ordered(_upSamples, count, _sampleCount);
+        var peak = Math.Max(1.0, Math.Max(down.Max(), up.Max()));
+        // Espaçamento fixo: a amostra mais nova encosta na direita e a linha anda para a esquerda,
+        // em vez de esticar e comprimir a cada segundo.
+        var step = width / (ChartSamples - 1);
+        var area = new PointCollection(count + 2) { new System.Windows.Point(width - (count - 1) * step, height) };
+        var line = new PointCollection(count);
+        for (var i = 0; i < count; i++)
+        {
+            var x = width - (count - 1 - i) * step;
+            area.Add(new System.Windows.Point(x, height - Math.Min(height, down[i] / peak * height)));
+            line.Add(new System.Windows.Point(x, height - Math.Min(height, up[i] / peak * height)));
+        }
+        area.Add(new System.Windows.Point(width, height));
+        DownArea.Points = area;
+        UpLine.Points = line;
+    }
+
+    // O anel guarda a amostra mais nova na posição escrita por último. Quando encheu, a mais velha
+    // é a próxima a ser sobrescrita, que é onde a leitura começa.
+    private static double[] Ordered(double[] ring, int count, int written)
+    {
+        var result = new double[count];
+        var start = written >= ring.Length ? written % ring.Length : 0;
+        for (var i = 0; i < count; i++) result[i] = ring[(start + i) % ring.Length];
+        return result;
+    }
+
+    private static string DurationText(TimeSpan elapsed) =>
+        elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}:{elapsed.Minutes:00}:{elapsed.Seconds:00}" : $"{elapsed.Minutes}:{elapsed.Seconds:00}";
+
+    // A cultura da máquina é pt-BR mesmo com a interface em inglês: sem fixar a formatação o
+    // tamanho sairia "26,1 MB" no meio de uma tela em inglês.
+    private static string SizeText(ulong bytes) => bytes switch
+    {
+        < 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes} B"),
+        < 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0.#} KB"),
+        < 1024L * 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0.#} MB"),
+        _ => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024 * 1024):0.##} GB")
+    };
 
     private async void Primary_Click(object sender, RoutedEventArgs e)
     {

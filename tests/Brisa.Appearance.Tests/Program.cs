@@ -300,6 +300,14 @@ internal static class Program
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 Check(((ContentControl)connected.FindName("PageHost")).Content is null,
                     "signed-in account returns to Connection");
+                // O painel de detalhes existe só conectado: com o bloco centralizado no lugar, os
+                // três rótulos de métrica e o protocolo ficam escondidos.
+                var detailsHost = (StackPanel)connected.FindName("DetailsHost");
+                var statusBlock = (StackPanel)connected.FindName("StatusBlock");
+                Check(detailsHost.Visibility == Visibility.Visible, "a connected window shows the details panel");
+                Check(statusBlock.Visibility == Visibility.Collapsed, "the centred status block steps aside while the panel shows");
+                Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "WireGuard (UDP)"), "the protocol cell names WireGuard over UDP");
+                Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "Total traffic"), "the panel carries a total traffic cell");
                 Capture(connected, theme + "-Connected");
                 connected.RequestExit();
                 main.RequestExit();
