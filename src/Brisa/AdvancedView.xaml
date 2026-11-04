@@ -2,7 +2,7 @@
         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
   <!-- A página rola: com os créditos abertos o conteúdo passa da altura mínima da janela, e sem
        rolagem o botão de atualização saía da vista. -->
-  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,10,0">
     <StackPanel>
       <TextBlock Style="{StaticResource SecondaryText}" Text="Import a profile or view sanitized diagnostics."/>
       <WrapPanel Margin="0,16,0,0">

@@ -168,6 +168,9 @@ internal static class Program
                         status.Text = "Updates are unavailable in this isolated session.";
                         window.Width = 460; window.Height = 540;
                         pageScroll.ScrollToTop(); window.UpdateLayout();
+                        credits.IsExpanded = true; window.UpdateLayout(); Spin(120);
+                        Capture(window, theme + "-Advanced-Credits");
+                        credits.IsExpanded = false; window.UpdateLayout();
                     }
                     foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string && b.Name != "CheckUpdateButton"))
                     {
@@ -182,6 +185,9 @@ internal static class Program
                         var key = control switch { PasswordBox => "DefaultPasswordBoxStyle", TextBox => "DefaultTextBoxStyle", ListBox => "DefaultListBoxStyle", CheckBox => "DefaultCheckBoxStyle", RadioButton => "DefaultRadioButtonStyle", _ => null };
                         if (key is not null) Check(MatchesTemplate(control, key), control.GetType().Name + " retains its Fluent template");
                     }
+                    // A transição de página anima a opacidade: capturar antes do fim entrega uma
+                    // página lavada, que não serve para julgar contraste.
+                    Spin(320);
                     Capture(window, theme + "-" + view.GetType().Name);
                     if (inline)
                     {
@@ -195,6 +201,19 @@ internal static class Program
                         Check(((ContentControl)main.FindName("PageHost")).Content is null, "inline Back restores Home");
                     }
                     else window.Close();
+                }
+                foreach (var (phase, message, label) in new[]
+                {
+                    (UpdatePhase.Current, "Brisa is up to date.", "UpToDate"),
+                    (UpdatePhase.Ready, "Version 0.1.0-beta.10 is ready. Restart to update.", "UpdateAvailable"),
+                })
+                {
+                    // Fixture render, rotulado: o app isolado só produz o estado "unavailable".
+                    var fixture = new FixtureUpdates(new(phase, message, "0.1.0-beta.10"));
+                    var host = new Window { Width = 460, Height = 540, Background = main.Background, Content = new AdvancedView(backend, null, updates: fixture) };
+                    host.Show(); host.UpdateLayout(); Spin(200);
+                    Capture(host, theme + "-Advanced-" + label);
+                    host.Close();
                 }
                 var connectedBackend = new UiTestBackendClient(new(true, false, true, true, "", new("", "Country")));
                 var connected = new MainWindow(connectedBackend, store);
@@ -274,6 +293,30 @@ internal static class Program
 
     // Storyboards de duração zero só pintam no próximo ciclo de render: sem esse flush, a
     // verificação lê a opacidade anterior e o teste mente.
+    // Deixa a animação de transição terminar: sem isso a captura pega a página em fade.
+    private static void Spin(int milliseconds)
+    {
+        var until = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < until)
+        {
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
+            System.Threading.Thread.Sleep(15);
+        }
+    }
+
+    private sealed class FixtureUpdates : IUpdateService
+    {
+        public FixtureUpdates(UpdateStatus status) => Status = status;
+        public UpdateStatus Status { get; private set; }
+        public bool HasPendingUpdate => Status.Phase == UpdatePhase.Ready;
+        public event EventHandler<UpdateStatus>? StatusChanged;
+        public void Start() { }
+        public Task CheckNowAsync(CancellationToken cancellationToken = default) { StatusChanged?.Invoke(this, Status); return Task.CompletedTask; }
+        public void PrepareApply(bool restart) { }
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private static void Settle(Window window)
     {
         window.UpdateLayout();
