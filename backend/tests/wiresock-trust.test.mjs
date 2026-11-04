@@ -18,6 +18,12 @@ test("the trust check pins the vendor signer and inspects the parent chain", () 
   assert.match(script, /acl.Owner/);
   assert.match(script, /Get-AuthenticodeSignature/);
   assert.match(script, /Get-Acl/);
+  // Generic rights have no bit in common with the specific ones, and an inherit-only ACE does
+  // not apply to the object itself (the stock CREATOR OWNER ACE is GENERIC_ALL).
+  assert.match(script, /0x10000000/);
+  assert.match(script, /InheritOnly/);
+  // The files themselves are checked, not only their parent directories.
+  assert.match(script, /Test-BrisaAcl \$p/);
   // The volume root is skipped: authenticated users may create folders there, which cannot
   // replace a binary inside Program Files.
   assert.match(script, /GetPathRoot/);
