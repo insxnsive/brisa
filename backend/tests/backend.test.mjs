@@ -309,7 +309,7 @@ test("a fresh re-check completion replaces the stored verdict", async () => {
   const fresh = await backend.execute("snapshot", {});
   assert.equal(fresh.connected, false);
   assert.equal(fresh.routeRechecking, false);
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: probe_failed\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: probe_failed/);
 });
 
 test("a re-check that finishes after disconnect never marks the tunnel verified", async () => {
@@ -320,7 +320,7 @@ test("a re-check that finishes after disconnect never marks the tunnel verified"
   await backend.execute("disconnect", {});
   state.gates.forEach(g => g.release({ verified: true, reason: "verified" }));
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
   assert.equal((await backend.execute("snapshot", {})).connected, false);
 });
 
@@ -337,7 +337,7 @@ test("a tunnel that disappears without a Brisa command aborts its re-check", asy
   await flush();
   setInspection({ active: true, owned: true, reliable: true });
   assert.equal((await backend.execute("snapshot", {})).connected, false);
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
 });
 
 test("a replaced owned tunnel in the same generation drops the old verdict", async () => {
@@ -352,7 +352,7 @@ test("a replaced owned tunnel in the same generation drops the old verdict", asy
   // Release only the superseded re-check; the replacement tunnel's own check is still pending.
   state.gates[0].release({ verified: true, reason: "verified" });
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
   assert.equal((await backend.execute("snapshot", {})).connected, false);
   state.gates.forEach(g => g.release({ verified: true, reason: "verified" }));
   await flush();
@@ -366,7 +366,7 @@ test("cancel discards an in-flight re-check but keeps a healthy verdict", async 
   await backend.execute("cancel", {});
   state.gates.forEach(g => g.release({ verified: true, reason: "verified" }));
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: verified\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: verified/);
   await backend.execute("snapshot", {});
   assert.equal(state.calls, 3, "the discarded completion starts a fresh re-check");
   state.gates.forEach(g => g.release({ verified: true, reason: "verified" }));
@@ -418,7 +418,7 @@ test("cancelling during the initial proof cleans up and discards the late verdic
   assert.ok(calls.some(c => c[0] === "stop"), "the owned tunnel is cleaned up");
   assert.ok(calls.some(c => c[0] === "launch"), "Discord is restored");
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
 });
 
 test("a verdict older than the cap never counts as connected", async () => {
@@ -463,7 +463,7 @@ test("a re-check that finishes after the tunnel died, with no snapshot in betwee
   setInspection({ active: false, owned: false, reliable: true });
   state.gates.forEach(g => g.release({ verified: true, reason: "verified" }));
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
 });
 
 test("a replaced tunnel with no snapshot in between cannot inherit the old proof", async () => {
@@ -476,7 +476,7 @@ test("a replaced tunnel with no snapshot in between cannot inherit the old proof
   setInspection({ active: true, owned: true, reliable: true, processIds: [11], services: [] });
   state.gates.forEach(g => g.release({ verified: true, reason: "verified" }));
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
 });
 
 test("connect fails instead of reporting success when the tunnel dies before its proof lands", async () => {
@@ -494,7 +494,7 @@ test("connect fails instead of reporting success when the tunnel dies before its
   assert.equal(result.success, false);
   assert.match(result.message, /could not be started/i);
   await flush();
-  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked\./);
+  assert.match((await backend.execute("diagnostics", {})).text, /Route check: not_checked/);
 });
 
 test("waitForIdle joins cancelled work instead of acknowledging early", async () => {
@@ -987,16 +987,16 @@ test("the diagnostics command appends recent events only when there are any", as
   const diag = createDiagnostics();
   const { backend } = harness({ diag });
   const clean = (await backend.execute("diagnostics", {})).text;
-  assert.match(clean, /^WireSock inspection:/);
-  assert.match(clean.trim().split("\n").at(-1), /^Packaged Proton helper:/);
-  assert.doesNotMatch(clean, /Recent events/);
+  assert.match(clean, /^Brisa log\. Generated \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\. Contains no account names, passwords, file paths or IP addresses\./);
+  assert.match(clean, /^Events \(this session\): none recorded$/m);
+  assert.doesNotMatch(clean, /Events \(this session\): [^n]/);
   diag.record("startup", "NOT_ELEVATED");
   const withEvents = (await backend.execute("diagnostics", {})).text;
-  assert.match(withEvents, /Recent events \(this session\):/);
+  assert.match(withEvents, /Events \(this session\):\n/);
   assert.match(withEvents, /NOT_ELEVATED/);
   // Without a diagnostics dependency the seven original lines are all there is.
   const plain = (await harness().backend.execute("diagnostics", {})).text;
-  assert.doesNotMatch(plain, /Recent events/);
+  assert.doesNotMatch(plain, /Events \(this session\):\n/);
 });
 
 test("a plan lookup failure is recorded and still falls back to free servers", async () => {

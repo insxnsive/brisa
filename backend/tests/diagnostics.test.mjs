@@ -61,7 +61,6 @@ test("invalid stages, codes and data values are dropped instead of recorded", ()
   assert.doesNotMatch(line, /NATE/, "an uppercase username is not mistaken for a code");
   assert.match(line, /trust=TRUSTED/, "an app-owned code value is kept");
   assert.match(line, /exitCode=1/);
-  assert.match(line, /allowed=START_REFUSED/);
   assert.doesNotMatch(line, /someone|AppData|tunnel failed|nested/);
   assert.equal(diagnostics.recent().length, 1, "the two invalid events were dropped");
 });

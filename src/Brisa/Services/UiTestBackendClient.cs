@@ -37,6 +37,29 @@ public sealed class UiTestBackendClient : IBackendClient
     // Reproduces the state that used to make exit impossible: the backend refuses the cancel
     // because installer supervision was lost.
     public bool RefuseCancel { get; set; }
-    public Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default) => Task.FromResult("UI test backend\nNetwork access: disabled\nTunnel actions: simulated");
+    // Log de fixture: mesma forma do real, dizendo na primeira linha que é fixture, para nenhuma
+    // captura ser confundida com dados de uma máquina de verdade.
+    public Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        return Task.FromResult(string.Join("\n",
+            $"Brisa log. Generated {now:yyyy-MM-ddTHH:mm:ss.fffZ}. Contains no account names, passwords, file paths or IP addresses.",
+            "",
+            "Elevated: false",
+            "Discord flavour: STABLE",
+            "WireSock SDK version: 0.9.4.0",
+            "WireSock trust: TRUSTED",
+            "Mode: PROTON",
+            "Protocol: WIREGUARD_UDP",
+            "Theme: DARK",
+            "Phase: CONNECTED",
+            "Stage: idle",
+            "Route country: HT",
+            "Route check: verified",
+            "",
+            "Events (this session):",
+            $"{now.AddMinutes(-2):yyyy-MM-ddTHH:mm:ss.fffZ} startup NOT_ELEVATED",
+            $"{now.AddMinutes(-1):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_CLIENT_EXITED exitCode=1 timedOut=false"));
+    }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

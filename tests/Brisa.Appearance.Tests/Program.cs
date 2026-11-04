@@ -110,6 +110,23 @@ internal static class Program
                         var action = (Button)view.FindName("ActionButton");
                         Check(codeBox.TranslatePoint(new Point(0, codeBox.ActualHeight), window).Y + 12 <= action.TranslatePoint(new Point(), window).Y, "2FA field clears the account footer");
                     }
+                    if (view is AdvancedView advanced)
+                    {
+                        // Item 10: sem log gerado não existe arquivo para salvar nem texto para copiar.
+                        var save = (Button)advanced.FindName("SaveLogButton");
+                        var copy = (Button)advanced.FindName("CopyLogButton");
+                        var box = (TextBox)advanced.FindName("LogBox");
+                        Check(save.Content as string == "Save…" && copy.Content as string == "Copy", "the log actions are Save… and Copy");
+                        Check(!save.IsEnabled && !copy.IsEnabled, "save and copy stay off until a log exists");
+                        Check(box.IsReadOnly, "the preview is read-only");
+                        Check(box.Text == "No log generated yet.", "the preview starts empty, not with sample text");
+                        Check(AdvancedView.SupportLogFileName(new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc)) == "brisa-log-20260304-0506.txt",
+                            "the default file name is the UTC date and time");
+                        Check(Descendants(view).OfType<Button>().Any(b => b.Name == "LogButton" && (b.Content as string) == "Generate log"),
+                            "the diagnostics action is Generate log");
+                        Check(!Descendants(view).OfType<Button>().Any(b => (b.Content as string) == "Refresh Diagnostics"),
+                            "Refresh Diagnostics is gone");
+                    }
                     if (view is SettingsView)
                     {
                         ((CheckBox)view.FindName("StartupBox")).IsChecked = true;
@@ -202,7 +219,9 @@ internal static class Program
                         Capture(window, theme + "-Advanced-Credits");
                         credits.IsExpanded = false; window.UpdateLayout();
                     }
-                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string && b.Name != "CheckUpdateButton"))
+                    // Um botão desabilitado não recebe hit test, então não pode ser cobrado aqui: a
+                    // ausência de clique é o comportamento esperado. Os estados dele são assertados.
+                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.IsEnabled && b.Content is string && b.Name != "CheckUpdateButton"))
                     {
                         Check(button.ActualHeight >= 30, $"{window.GetType().Name}: {button.Content} keeps its height");
                         var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
