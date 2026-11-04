@@ -44,7 +44,7 @@
     </ScrollViewer>
     <Grid Grid.Row="2" Margin="0,16,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Button x:Name="AdvancedButton" Click="Advanced_Click" Content="Advanced…" ToolTip="Import a configuration or view diagnostics"/>
+      <Button x:Name="AdvancedButton" Click="Advanced_Click" Content="Advanced" ToolTip="Import a configuration or view diagnostics"/>
       <Button x:Name="CancelButton" Grid.Column="2" Click="Cancel_Click" Content="Cancel" MinWidth="80"/>
       <Button x:Name="SaveButton" Grid.Column="3" Style="{StaticResource PrimaryAction}" Margin="8,0,0,0" Click="Save_Click" Content="Save" IsDefault="True"/>
     </Grid>

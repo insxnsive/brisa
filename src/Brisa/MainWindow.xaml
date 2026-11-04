@@ -1,14 +1,14 @@
-<Window x:Class="Brisa.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+<Window x:Class="Brisa.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:Brisa.Controls"
         Title="Brisa" Width="460" Height="540" MinWidth="440" MinHeight="520" MaxWidth="560" WindowStartupLocation="CenterScreen">
   <Grid Margin="24,20,24,24">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Button x:Name="BackButton" Style="{StaticResource ToolbarAction}" Visibility="Collapsed" Margin="0,0,8,0" Click="Back_Click" ToolTip="Back (Alt+Left)" AutomationProperties.Name="Back to Connection"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;"/></Button>
+      <controls:ToolbarButton x:Name="BackButton" Style="{StaticResource ToolbarAction}" Visibility="Collapsed" Margin="0,0,8,0" Click="Back_Click" ToolTip="Back (Alt+Left)" AutomationProperties.Name="Back"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;"/></controls:ToolbarButton>
       <TextBlock x:Name="PageTitle" Grid.Column="1" Style="{StaticResource PageTitle}" VerticalAlignment="Center" Visibility="Collapsed"/>
       <StackPanel x:Name="HomeActions" Grid.Column="2" Orientation="Horizontal">
-        <Button x:Name="AccountButton" Style="{StaticResource ToolbarAction}" ToolTip="Account" AutomationProperties.Name="Account" Click="Account_Click" Margin="0,0,4,0"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77B;"/></Button>
-        <Button x:Name="SettingsButton" Style="{StaticResource ToolbarAction}" ToolTip="Settings" AutomationProperties.Name="Settings" Click="Settings_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;"/></Button>
+        <controls:ToolbarButton x:Name="AccountButton" Style="{StaticResource ToolbarAction}" ToolTip="Account" AutomationProperties.Name="Account" Click="Account_Click" Margin="0,0,4,0"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77B;"/></controls:ToolbarButton>
+        <controls:ToolbarButton x:Name="SettingsButton" Style="{StaticResource ToolbarAction}" ToolTip="Settings" AutomationProperties.Name="Settings" Click="Settings_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;"/></controls:ToolbarButton>
       </StackPanel>
     </Grid>
     <Grid x:Name="HomeContent" Grid.Row="1">

@@ -178,14 +178,15 @@ internal static class Program
             Click((Button)settings.FindName("SaveButton")); Pump(() => host.Content is null);
             Check(store.Current.Theme == AppTheme.Light && home.IsVisible, "Save applies settings and returns Home");
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
-            // The Advanced button lives on the Settings page, so an open page must not block it.
-            var advancedOpened = 0;
-            main.PresentAdvanced = _ => advancedOpened++;
+            // Advanced é página agora, não diálogo: abre na mesma janela e o Voltar retorna a Settings.
             var settingsPage = (UserControl)host.Content;
             Click((Button)settingsPage.FindName("AdvancedButton"));
-            Check(advancedOpened == 1, "Advanced opens from the Settings page");
-            Check(host.Content == settingsPage, "opening Advanced keeps the Settings page underneath");
-            main.PresentAdvanced = null;
+            Pump(() => host.Content is AdvancedView);
+            Check(host.Content is AdvancedView, "Advanced opens as a page from the Settings page");
+            Check(Application.Current.Windows.Count == 1, "Advanced opens in the same window");
+            Click((Button)main.FindName("BackButton"));
+            Pump(() => host.Content is SettingsView);
+            Check(host.Content is SettingsView, "going back from Advanced returns to Settings");
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
             var cancelled = (UserControl)host.Content;
             ((RadioButton)cancelled.FindName("DarkTheme")).IsChecked = true;
@@ -293,7 +294,7 @@ internal static class Program
             Check(((TextBlock)limitedMain.FindName("DetailText")).Text.Contains("administrator"), "limited access explains the administrator requirement");
             var limitedAccount = new AccountView(limitedBackend, limitedMain, limited);
             Check(((Button)limitedAccount.FindName("ActionButton")).IsEnabled, "signing out stays available while unelevated");
-            var limitedAdvanced = new AdvancedWindow(limitedBackend, limited);
+            var limitedAdvanced = new AdvancedView(limitedBackend, limited);
             Check(((Button)limitedAdvanced.FindName("ImportButton")).IsEnabled, "importing a profile stays available while unelevated");
             limitedMain.Close(); Pump(() => !limitedMain.IsVisible);
 

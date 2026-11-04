@@ -77,20 +77,28 @@ internal static class Program
                 Capture(main, theme + "-Blocked-Minimum");
                 foreach (var pageName in new[] { "Settings", "Account", "Route", "Advanced" })
                 {
-                    var inline = pageName is "Settings" or "Account";
+                    var inline = pageName is "Settings" or "Account" or "Advanced";
                     Window window;
                     FrameworkElement view;
                     if (inline)
                     {
-                        ((Button)main.FindName(pageName + "Button")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        // Advanced fica um passo à frente de Settings: abre pelo botão de lá.
+                        if (pageName == "Advanced")
+                        {
+                            ((Button)main.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                            main.UpdateLayout();
+                            var settingsView = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
+                            ((Button)settingsView.FindName("AdvancedButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        }
+                        else ((Button)main.FindName(pageName + "Button")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                         window = main;
                         view = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
                     }
                     else
                     {
-                        window = pageName == "Route" ? new RouteWindow(main) : new AdvancedWindow(backend, null);
+                        window = new RouteWindow(main);
                         window.Owner = main; window.Show(); view = window;
-                        if (window is AdvancedWindow) { window.Width = window.MinWidth; window.Height = window.MinHeight; }
                     }
                     window.UpdateLayout();
                     if (view is AccountView)
@@ -175,13 +183,18 @@ internal static class Program
                     Capture(window, theme + "-" + view.GetType().Name);
                     if (inline)
                     {
-                        ((Button)main.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                        // Advanced devolve a Settings antes de voltar ao início, então precisa de dois Voltar.
+                        var backs = pageName == "Advanced" ? 2 : 1;
+                        for (var i = 0; i < backs; i++)
+                        {
+                            ((Button)main.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                        }
                         Check(((ContentControl)main.FindName("PageHost")).Content is null, "inline Back restores Home");
                     }
                     else window.Close();
                 }
-                var connectedBackend = new UiTestBackendClient(new(true, false, true, true, "", new("Selected server", "Country")));
+                var connectedBackend = new UiTestBackendClient(new(true, false, true, true, "", new("", "Country")));
                 var connected = new MainWindow(connectedBackend, store);
                 connected.Show(); connected.InitializeAsync().GetAwaiter().GetResult(); connected.UpdateLayout();
                 Check(((Button)connected.FindName("PrimaryButton")).Content as string == "Disconnect", "connected action stays Disconnect");
@@ -197,16 +210,39 @@ internal static class Program
                     && ((TextBlock)main.FindName("RouteHelper")).Visibility == Visibility.Collapsed,
                     "idle route row keeps the chevron and no helper");
                 var toolbarButton = (Button)connected.FindName("SettingsButton");
+                var accountButton = (Brisa.Controls.ToolbarButton)connected.FindName("AccountButton");
+                Grid Root(Button b) => (Grid)b.Template.FindName("Root", b);
+                Border Layer(Button b, string layer) => (Border)b.Template.FindName(layer, b);
+
                 toolbarButton.IsEnabled = false;
-                connected.UpdateLayout();
-                Check(toolbarButton.Opacity < 1.0, "disabled toolbar action fades instead of filling");
+                Settle(connected);
+                Check(Root(toolbarButton).Opacity < 1.0, "disabled toolbar action fades instead of filling");
                 Capture(connected, theme + "-ToolbarDisabled");
                 toolbarButton.IsEnabled = true;
-                var accountButton = (Button)connected.FindName("AccountButton");
+                Settle(connected);
+                Check(Root(toolbarButton).Opacity > 0.9, "enabling the action restores it");
+
+                // O estado é a mesma propriedade que os eventos de mouse escrevem no app.
+                accountButton.State = "MouseOver";
+                Settle(connected);
+                Check(Layer(accountButton, "Hover").Opacity > 0.5, "hover paints the toolbar action");
+                Capture(connected, theme + "-ToolbarHover");
+
+                accountButton.State = "Pressed";
+                Settle(connected);
+                Check(Layer(accountButton, "Press").Opacity > 0.5 && Layer(accountButton, "Hover").Opacity < 0.5,
+                    "press paints the toolbar action");
+
+                Capture(connected, theme + "-ToolbarPressed");
+                accountButton.State = "Normal";
+                Settle(connected);
+                Check(Layer(accountButton, "Hover").Opacity < 0.5 && Layer(accountButton, "Press").Opacity < 0.5,
+                    "leaving the action clears the hover and press paint");
+
                 connected.Activate();
                 accountButton.Focus();
                 System.Windows.Input.Keyboard.Focus(accountButton);
-                connected.UpdateLayout();
+                Settle(connected);
                 Check(accountButton.IsKeyboardFocused, "toolbar action takes keyboard focus");
                 Capture(connected, theme + "-ToolbarFocus");
                 connected.Width = connected.MinWidth; connected.Height = connected.MinHeight;
@@ -232,6 +268,14 @@ internal static class Program
         finally { app.Shutdown(); if (Directory.Exists(root)) Directory.Delete(root, true); }
 
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); assertions++; }
+    }
+
+    // Storyboards de duração zero só pintam no próximo ciclo de render: sem esse flush, a
+    // verificação lê a opacidade anterior e o teste mente.
+    private static void Settle(Window window)
+    {
+        window.UpdateLayout();
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
     }
 
     private static void Capture(Window window, string name)

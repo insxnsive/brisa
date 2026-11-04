@@ -1,5 +1,5 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:Brisa.Controls">
     <!-- Keep Microsoft's Fluent templates and their hover/focus/disabled states.
          Implicit styles without these bases fall back to legacy Aero controls. -->
     <Style TargetType="Window" BasedOn="{StaticResource DefaultWindowStyle}">
@@ -20,43 +20,49 @@
       <Setter Property="MinWidth" Value="90"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
     </Style>
-    <Style x:Key="ToolbarAction" TargetType="Button">
+    <Style x:Key="ToolbarAction" TargetType="controls:ToolbarButton">
       <!-- Template próprio: o do Fluent desenha borda e preenchimento no estado desabilitado, e um
-           ícone indisponível ficava mais chamativo que um disponível. Aqui só existem o glifo, um
-           fundo de hover e o anel de foco. -->
+           ícone indisponível ficava mais chamativo que um disponível. Os estados usam camadas com
+           opacidade animada, então dá para verificá-los fora da tela com GoToState. -->
       <Setter Property="Width" Value="36"/>
       <Setter Property="Height" Value="36"/>
       <Setter Property="Padding" Value="0"/>
       <Setter Property="FontSize" Value="16"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="2"/>
       <Setter Property="Foreground" Value="{DynamicResource NativeForeground}"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template">
         <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
+          <ControlTemplate TargetType="controls:ToolbarButton">
+            <Grid x:Name="Root">
+              <Border x:Name="Hover" Background="{DynamicResource NativeIconSurface}" CornerRadius="4" Opacity="0"/>
+              <Border x:Name="Press" Background="{DynamicResource NativeStroke}" CornerRadius="4" Opacity="0"/>
+              <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="2" CornerRadius="4">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NativeIconSurface}"/>
-              </Trigger>
-              <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NativeStroke}"/>
-              </Trigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Chrome" Property="Background" Value="Transparent"/>
-                <Setter TargetName="Chrome" Property="BorderBrush" Value="Transparent"/>
-                <Setter Property="Opacity" Value="0.4"/>
-              </Trigger>
+              <!-- O anel de foco usa a cor de texto, não o salmão de ação. -->
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource NativeForeground}"/>
               </Trigger>
+              <!-- Estados escritos pelo próprio botão (ver Controls/ToolbarButton.cs). Gatilho pinta
+                   de forma síncrona, então o mesmo valor pode ser verificado fora da tela. -->
+              <Trigger Property="State" Value="MouseOver">
+                <Setter TargetName="Hover" Property="Opacity" Value="1"/>
+                <Setter TargetName="Press" Property="Opacity" Value="0"/>
+              </Trigger>
+              <Trigger Property="State" Value="Pressed">
+                <Setter TargetName="Hover" Property="Opacity" Value="0"/>
+                <Setter TargetName="Press" Property="Opacity" Value="1"/>
+              </Trigger>
+              <Trigger Property="State" Value="Disabled">
+                <Setter TargetName="Hover" Property="Opacity" Value="0"/>
+                <Setter TargetName="Press" Property="Opacity" Value="0"/>
+                <Setter TargetName="Root" Property="Opacity" Value="0.4"/>
+              </Trigger>
             </ControlTemplate.Triggers>
+
           </ControlTemplate>
         </Setter.Value>
       </Setter>

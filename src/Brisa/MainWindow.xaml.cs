@@ -182,10 +182,9 @@ public partial class MainWindow : Window
         if (state.Snapshot?.Route is { } route)
         {
             RouteText.Text = CountryName(route.Country);
-            // Sem rótulo de servidor não existe linha: "Server " vazio, ou o marcador interno
-            // "Selected server", seriam lixo na tela em vez de informação.
+            // Sem rótulo de servidor não existe linha: "Server " vazio seria lixo na tela.
             var server = route.Server?.Trim() ?? "";
-            if (server.Length == 0 || string.Equals(server, "Selected server", StringComparison.OrdinalIgnoreCase))
+            if (server.Length == 0)
             {
                 RouteServerText.Text = "";
                 RouteServerText.Visibility = Visibility.Collapsed;
@@ -393,7 +392,11 @@ public partial class MainWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         if (_navigationBusy || _closing || UiMutationBusy) return;
-        var view = new SettingsView(_settings, _updates, RequestUpdateRestart, ShowAdvancedAsync);
+        OpenSettings();
+    }
+    private void OpenSettings()
+    {
+        var view = new SettingsView(_settings, _updates, RequestUpdateRestart, ShowAdvanced);
         view.CloseRequested += async (_, _) => await ReturnHomeAsync();
         ShowPage(view, "Settings");
     }
@@ -416,13 +419,25 @@ public partial class MainWindow : Window
         PageTransition.Show(PageHost);
         BackButton.Focus();
     }
-    private async void Back_Click(object sender, RoutedEventArgs e) => await ReturnHomeAsync();
+    private async void Back_Click(object sender, RoutedEventArgs e) => await GoBackAsync();
+
+    /// <summary>
+    /// Advanced fica um passo à frente de Settings: voltar leva de volta à página que o abriu,
+    /// não ao início, senão o caminho de volta perde um passo.
+    /// </summary>
+    private async Task GoBackAsync()
+    {
+        var toSettings = _advancedFromSettings && _currentPage is AdvancedView;
+        _advancedFromSettings = false;
+        await ReturnHomeAsync();
+        if (toSettings && !_closing) OpenSettings();
+    }
     private async void OnNavigationKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if (_currentPage is null || !(key == Key.Escape || key == Key.Left && Keyboard.Modifiers == ModifierKeys.Alt)) return;
         e.Handled = true;
-        await ReturnHomeAsync();
+        await GoBackAsync();
     }
     private Task ReturnHomeAsync()
     {
@@ -500,19 +515,16 @@ public partial class MainWindow : Window
         catch (Exception ex) { MessageBox.Show(this, SafeMessage(ex), "Route", MessageBoxButton.OK, MessageBoxImage.Error); }
         finally { EndUiMutation(); LeaveBusyPhase(); _operation.Release(); UpdateActionAvailability(); }
     }
-    /// <summary>Test seam: the real app shows a modal dialog, fixtures record the request.</summary>
-    internal Action<AdvancedWindow>? PresentAdvanced { get; set; }
+    private bool _advancedFromSettings;
 
-    private async void ShowAdvancedAsync()
+    private void ShowAdvanced()
     {
-        // The button lives on the Settings page, so an open page is the only context it exists
-        // in: refusing because one is open made the button dead. Navigating, closing and a
-        // running UI mutation still refuse, because a dialog opened mid-transition or mid-connect
-        // would work from a snapshot that no longer matches.
-        if (_navigationBusy || _closing || UiMutationBusy) return;
-        var dialog = new AdvancedWindow(_backend, _state.Snapshot, ImportConfigAsync) { Owner = this };
-        (PresentAdvanced ?? (window => window.ShowDialog()))(dialog);
-        await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(20));
+        // Advanced é página, não diálogo: mesma janela, mesmo botão Voltar do cabeçalho. O guarda
+        // continua porque navegar durante uma transição ou uma mutação trabalharia com um snapshot
+        // que já não corresponde ao estado.
+        if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not SettingsView) return;
+        _advancedFromSettings = true;
+        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync), "Advanced");
     }
 
     /// <summary>
@@ -556,7 +568,7 @@ public partial class MainWindow : Window
             Capture(this, Path.Combine(directory ?? ".", Path.GetFileNameWithoutExtension(output) + "-" + _currentPage.GetType().Name + ".png"));
             await ReturnHomeAsync();
         }
-        var surfaces = new Window[] { new RouteWindow(this), new AdvancedWindow(_backend, _state.Snapshot) };
+        var surfaces = new Window[] { new RouteWindow(this) };
         foreach (var view in surfaces)
         {
             view.Owner = this; view.Show();
