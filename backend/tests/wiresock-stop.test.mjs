@@ -326,3 +326,43 @@ test("every snapshot is asked for a real timeout", async () => {
   assert.ok(snapshotTimeouts.every(value => value > 0), "no snapshot may run without a timeout");
   assert.ok(calls.some(call => call === "snapshot"));
 });
+
+test("an uncertain pre-action read skips the global actions instead of failing the stop", async () => {
+  // Finding 7 hole: the pre-action inspection used to refuse or throw when the clock ran out,
+  // which turned a tunnel already confirmed down into stopped:false. It is advisory now.
+  const { runtime, calls } = fakeRuntime({
+    snapshots: [activeOwned, inactive, null, null, null, inactive],
+    advanceMs: 3_000,
+  });
+  const { lease } = sessionLease();
+  const result = await stopOwnedWireSock(config, quietLog, {
+    runtime,
+    candidateLease: lease, isTrusted: () => true,
+    timeoutMs: 35_000,
+    freshness: async () => true,
+  });
+  assert.equal(result.stopped, true);
+  assert.equal(result.networkLockReset, false);
+  assert.equal(result.dnsCleared, false);
+  assert.equal(result.dnsFlushed, false);
+  assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no reset without a clean read");
+  assert.ok(!calls.some(call => call.startsWith("powershell.exe")), "no DNS reset without a clean read");
+});
+
+test("a foreign tunnel during the pre-action read is reported as external, not as ours", async () => {
+  const { runtime, calls } = fakeRuntime({
+    snapshots: [activeOwned, inactive, activeForeign, activeForeign],
+    advanceMs: 1_000,
+  });
+  const { lease } = sessionLease();
+  const result = await stopOwnedWireSock(config, quietLog, {
+    runtime,
+    candidateLease: lease, isTrusted: () => true,
+    timeoutMs: 35_000,
+    freshness: async () => true,
+  });
+  assert.equal(result.stopped, false);
+  assert.ok(/externo|external/i.test(String(result.error)), `unexpected reason: ${result.error}`);
+  assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no elevated reset on a foreign tunnel");
+  assert.ok(!calls.some(call => call.startsWith("powershell.exe")), "no DNS reset on a foreign tunnel");
+});

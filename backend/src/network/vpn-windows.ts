@@ -1108,67 +1108,74 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         let dnsCleared = false;
         let dnsFlushed = false;
 
-        const blockedBeforeGlobalAction = async (): Promise<WireSockCleanupResult | null> => {
+        // Consultiva de propósito: uma ação global é opcional, então uma leitura incerta ou um
+        // prazo estourado aqui pulam a ação e todas as seguintes, e a leitura residual decide o
+        // resultado. Recusar neste ponto transformaria um túnel já comprovadamente inativo em
+        // stopped:false, que é exatamente a falha falsa que a reserva existe para evitar.
+        const canRunGlobalAction = async (): Promise<boolean> => {
+            if (scope.aborted) throw new StopCancelledError();
+            if (scope.remaining <= scope.reserveMs) return false;
             const observation = await inspectUntilReliable();
             last = observation;
-            // Cancelamento/expiração depois da espera nunca pode ser lido como sucesso.
-            scope.check();
-            if (!observation.reliable) return refuse(observation.reason || UNKNOWN_WIRESOCK_STATE, observation);
-            if (observation.active) return refuse(observation.owned ? "O WireSock próprio ainda permanece ativo." : (observation.reason || "WireSock externo apareceu durante a limpeza"), observation);
-            return null;
+            if (scope.aborted) throw new StopCancelledError();
+            if (!observation.reliable) return false;
+            if (observation.active) {
+                if (observation.owned) log("warn", "WireSock próprio ainda ativo: pulando ações globais", {});
+                else log("warn", "WireSock externo durante a limpeza: pulando ações globais", {});
+                return false;
+            }
+            return true;
         };
 
+        let skipGlobals = false;
         const lease = options.candidateLease ?? null;
-        if (lease && scope.canAfford(0)) {
-            let blocked = await blockedBeforeGlobalAction();
-            if (blocked) return blocked;
-            // A prova de frescor consome orçamento e tempo: ela precisa caber no que resta e ser
-            // seguida de um novo check. Um reset com orçamento zero roda sem timeout.
-            const probe = options.freshness ?? ((value, guard) => leaseIsFresh(value, scope.signal, guard));
-            const fresh = await withinDeadline(probe(lease, () => scope.check()), Math.max(0, scope.remaining - scope.reserveMs));
-            scope.check();
-            if (fresh) {
-                // Inatividade comprovada imediatamente antes do reset, não antes do hash.
-                blocked = await blockedBeforeGlobalAction();
-                if (blocked) return blocked;
+        if (!skipGlobals && lease && scope.canAfford(0)) {
+            if (!(await canRunGlobalAction())) { skipGlobals = true; }
+            else {
+                // A prova de frescor consome orçamento e tempo: ela precisa caber no que resta e
+                // ser seguida de um novo check.
+                const probe = options.freshness ?? ((value, guard) => leaseIsFresh(value, scope.signal, guard));
+                const fresh = await withinDeadline(probe(lease, () => scope.check()), Math.max(0, scope.remaining - scope.reserveMs));
                 scope.check();
-                // O reset também é elevado: revalidar a assinatura e o caminho do binário agora,
-                // não só quando o par foi escolhido.
-                // O reset tem timeout próprio e só começa se ele e a reserva couberem.
-                if (!scope.canAfford(STOP_STEP_TIMEOUT_MS.networkLockReset)) { networkLockReset = false; }
-                else {
-                let trustedNow = false;
-                try {
-                    trustedNow = await (options.isTrusted ?? (async () => {
-                        const fresh = await findWireSockCandidate(process.env, { signal: scope.signal, timeoutMs: scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset) });
-                        return fresh?.executable === lease.executable;
-                    }))(lease.executable, path.join(path.dirname(lease.executable), "wgbooster.dll"));
-                } catch {
-                    trustedNow = false;
-                }
-                if (!trustedNow) {
-                    networkLockReset = false;
-                } else {
-                    const result = await runtime.run(lease.executable, ["reset-network-lock"], scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset), scope.signal);
-                    networkLockReset = result.ok;
-                }
+                if (fresh) {
+                    // Inatividade comprovada imediatamente antes do reset, não antes do hash.
+                    if (!(await canRunGlobalAction())) { skipGlobals = true; }
+                    else {
+                        // O reset também é elevado: revalidar a assinatura e o caminho do binário
+                        // agora, não só quando o par foi escolhido.
+                        let trustedNow = false;
+                        try {
+                            trustedNow = await (options.isTrusted ?? (async () => {
+                                const current = await findWireSockCandidate(process.env, { signal: scope.signal, timeoutMs: scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset) });
+                                return current?.executable === lease.executable;
+                            }))(lease.executable, path.join(path.dirname(lease.executable), "wgbooster.dll"));
+                        } catch {
+                            trustedNow = false;
+                        }
+                        if (trustedNow && scope.canAfford(STOP_STEP_TIMEOUT_MS.networkLockReset)) {
+                            const result = await runtime.run(lease.executable, ["reset-network-lock"], scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset), scope.signal);
+                            networkLockReset = result.ok;
+                        }
+                    }
                 }
             }
         }
-        if (scope.canAfford(STOP_STEP_TIMEOUT_MS.dnsReset)) {
-            const blocked = await blockedBeforeGlobalAction();
-            if (blocked) return blocked;
-            const script = "Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -match 'ProTUN|WireSock' -or $_.InterfaceDescription -match 'ProTUN|WireSock' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }";
-            const result = await runtime.run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], scope.budget(STOP_STEP_TIMEOUT_MS.dnsReset), scope.signal);
-            dnsCleared = result.ok;
-            if (!result.ok) log("warn", "não consegui limpar DNS do adaptador WireSock", { timedOut: result.timedOut, aborted: result.aborted });
+        if (!skipGlobals && scope.canAfford(STOP_STEP_TIMEOUT_MS.dnsReset)) {
+            if (!(await canRunGlobalAction())) { skipGlobals = true; }
+            else {
+                const script = "Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -match 'ProTUN|WireSock' -or $_.InterfaceDescription -match 'ProTUN|WireSock' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }";
+                const result = await runtime.run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], scope.budget(STOP_STEP_TIMEOUT_MS.dnsReset), scope.signal);
+                dnsCleared = result.ok;
+                if (!result.ok) log("warn", "não consegui limpar DNS do adaptador WireSock", { timedOut: result.timedOut, aborted: result.aborted });
+            }
         }
-        if (scope.canAfford(STOP_STEP_TIMEOUT_MS.flushDns)) {
-            const blocked = await blockedBeforeGlobalAction();
-            if (blocked) return blocked;
-            const result = await runtime.run("ipconfig.exe", ["/flushdns"], scope.budget(STOP_STEP_TIMEOUT_MS.flushDns), scope.signal);
-            dnsFlushed = result.ok;
-            if (!result.ok) log("warn", "flushdns falhou", { timedOut: result.timedOut, aborted: result.aborted });
+        if (!skipGlobals && scope.canAfford(STOP_STEP_TIMEOUT_MS.flushDns)) {
+            if (!(await canRunGlobalAction())) { skipGlobals = true; }
+            else {
+                const result = await runtime.run("ipconfig.exe", ["/flushdns"], scope.budget(STOP_STEP_TIMEOUT_MS.flushDns), scope.signal);
+                dnsFlushed = result.ok;
+                if (!result.ok) log("warn", "flushdns falhou", { timedOut: result.timedOut, aborted: result.aborted });
+            }
         }
 
         // A reserva existe para isto: se o orçamento acabou apesar dela, ainda vale ler o estado
@@ -1178,11 +1185,12 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         const residual = await inspectUntilReliable(STOP_STEP_TIMEOUT_MS.snapshot);
         if (scope.aborted) throw new StopCancelledError();
         last = residual;
-        // O veredito só vale se o stop inteiro ainda estiver vivo: um abort ou um orçamento
-        // esgotado durante a última leitura não pode virar stopped:true.
-        scope.check();
+        // Só o cancelamento descarta a leitura final: um prazo estourado depois dela não muda o
+        // que o sistema operacional acabou de responder.
+        if (scope.aborted) throw new StopCancelledError();
         const stopped = residual.reliable && !residual.active;
-        if (!stopped && !residual.reliable) log("error", "limpeza não confirmou o estado final do WireSock", { motivo: residual.reason || UNKNOWN_WIRESOCK_STATE });
+        const residualReason = residual.owned ? "O WireSock próprio ainda permanece ativo." : (residual.reason || UNKNOWN_WIRESOCK_STATE);
+        if (!stopped && !residual.reliable) log("error", "limpeza não confirmou o estado final do WireSock", { motivo: residualReason });
         else if (!stopped) log("error", "limpeza deixou resíduo WireSock próprio", { services: residual.services, pids: residual.processIds });
         else if (networkLockReset) log("info", "WireSock próprio, lock e processo verificados como parados");
         else log("warn", "WireSock próprio parado (serviço e processos); o reset do network-lock não foi confirmado -- exige elevação e o Brisa não habilita esse lock", { networkLockReset });
@@ -1193,11 +1201,9 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
             networkLockReset,
             dnsCleared,
             dnsFlushed,
-            ...(stopped ? {} : {
-                error: !residual.reliable
-                    ? residual.reason || UNKNOWN_WIRESOCK_STATE
-                    : "O WireSock próprio ainda permanece ativo.",
-            }),
+            // Um túnel externo que aparece no fim não é resíduo do Brisa: o motivo precisa dizer
+            // qual dos dois é.
+            ...(stopped ? {} : { error: residualReason }),
         };
     } catch (error) {
         // Cancelamento ou estouro do orçamento do stop inteiro nunca vira stopped:true,
