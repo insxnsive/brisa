@@ -11,6 +11,14 @@ const STAGE = /^[a-z][a-z-]{1,31}$/;
 const CODE = /^[A-Z][A-Z0-9_]{2,47}$/;
 const DATA_KEY = /^[A-Za-z][A-Za-z0-9]{0,23}$/;
 const DATA_CODE = /^[A-Z][A-Z0-9_]{1,47}$/;
+// Forma não é procedência: "NATE" também passaria no regex. Um valor de texto só entra se for um
+// código que este app define, então nada que venha do Proton, do Discord, do WireSock ou de um
+// arquivo pode atravessar essa porta por acaso.
+const DATA_VALUES = new Set([
+    "TRUSTED", "UNTRUSTED", "STABLE", "PTB", "CANARY", "OTHER",
+    "PROTON", "CUSTOM", "NONE", "WIREGUARD_UDP",
+    "starting-tunnel", "stopping-tunnel", "installing-wiresock", "idle",
+]);
 const MAX_DATA_KEYS = 6;
 
 const cleanData = data => {
@@ -21,7 +29,7 @@ const cleanData = data => {
         if (!DATA_KEY.test(key)) continue;
         if (typeof value === "number" && Number.isFinite(value)) entries.push([key, String(value)]);
         else if (typeof value === "boolean") entries.push([key, String(value)]);
-        else if (typeof value === "string" && DATA_CODE.test(value)) entries.push([key, value]);
+        else if (typeof value === "string" && DATA_CODE.test(value) && DATA_VALUES.has(value)) entries.push([key, value]);
         // Anything else (a path, free text, an object) is dropped whole, never truncated.
     }
     return entries;

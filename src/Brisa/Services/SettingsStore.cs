@@ -115,6 +115,14 @@ public sealed class SettingsStore
             app.Resources["AccentButtonForegroundPointerOver"] = Brush(accentLabel);
             // Hyperlink herda a cor de destaque do sistema no Fluent: no tema claro saía vinho,
             // não o coral fixado. 4.85:1 no claro e 5.45:1 no escuro sobre o cartão.
+            // 12a: no botão de acento desabilitado o Fluent pintava texto branco sobre cinza claro
+            // (1.4:1). O rótulo desabilitado precisa ser lido: 5.63:1 no claro, 5.49:1 no escuro.
+            app.Resources["AccentButtonBackgroundDisabled"] = SystemParameters.HighContrast
+                ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#3A3A3A" : "#E8E8E8");
+            app.Resources["AccentButtonForegroundDisabled"] = SystemParameters.HighContrast
+                ? System.Windows.SystemColors.GrayTextBrush : Brush(dark ? "#B4B4B4" : "#5A5A5A");
+            app.Resources["AccentButtonBorderBrushDisabled"] = SystemParameters.HighContrast
+                ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#3A3A3A" : "#E8E8E8");
             app.Resources["NativeLinkForeground"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(accentFill);
             app.Resources["NativeLinkForegroundPointerOver"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(accentHover);
             app.Resources["AccentFillColorDefaultBrush"] = Brush(accentFill);

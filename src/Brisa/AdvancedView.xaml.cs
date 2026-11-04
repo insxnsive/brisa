@@ -13,6 +13,7 @@ namespace Brisa;
 /// </summary>
 public partial class AdvancedView : UserControl, IAsyncDisposable
 {
+    private bool _logReady;
     private readonly IBackendClient _backend;
     // A importação em produção passa pelo mesmo portão de mutação da MainWindow; fixtures usam o padrão.
     private readonly Func<string, Task<CommandResult>>? _import;
@@ -122,9 +123,61 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         finally { ImportButton.IsEnabled = true; }
     }
 
-    private async void Diagnostics_Click(object sender, RoutedEventArgs e)
+    // O log vem pronto do backend: a interface não monta linha, não redige nada e não reordena.
+    private async void GenerateLog_Click(object sender, RoutedEventArgs e)
     {
-        DiagnosticsBox.Text = "Loading…";
-        try { DiagnosticsBox.Text = await _backend.DiagnosticsAsync(); } catch { DiagnosticsBox.Text = "Diagnostics are unavailable."; }
+        LogNotice.Text = "";
+        LogBox.Text = "Generating log…";
+        KeepLogReady(false);
+        try
+        {
+            var text = await _backend.DiagnosticsAsync();
+            LogBox.Text = text;
+            _logReady = !string.IsNullOrWhiteSpace(text);
+        }
+        catch
+        {
+            LogBox.Text = "The log could not be generated.";
+            _logReady = false;
+        }
+        KeepLogReady(_logReady);
     }
+
+    private void KeepLogReady(bool ready)
+    {
+        SaveLogButton.IsEnabled = ready;
+        CopyLogButton.IsEnabled = ready;
+    }
+
+    // O nome padrão é o que o usuário anexa no e-mail de suporte: data e hora em UTC, sem espaços.
+    private void SaveLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_logReady) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save log",
+            DefaultExt = ".txt",
+            Filter = "Text file (*.txt)|*.txt",
+            FileName = SupportLogFileName(DateTime.UtcNow),
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
+        try
+        {
+            System.IO.File.WriteAllText(dialog.FileName, LogBox.Text, new System.Text.UTF8Encoding(false));
+            LogNotice.Text = "Log saved.";
+        }
+        catch { LogNotice.Text = "The log could not be saved."; }
+    }
+
+    private void CopyLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_logReady) return;
+        try { System.Windows.Clipboard.SetText(LogBox.Text); LogNotice.Text = "Log copied."; }
+        catch { LogNotice.Text = "The log could not be copied."; }
+    }
+
+    public static string SupportLogFileName(DateTime utc) =>
+        $"brisa-log-{utc:yyyyMMdd}-{utc:HHmm}.txt";
+
+
 }

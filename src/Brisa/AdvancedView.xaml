@@ -8,15 +8,24 @@
        margens ficam iguais dos dois lados, com ou sem rolagem. -->
   <ScrollViewer Margin="0,0,-24,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="0,0,24,0">
-      <TextBlock Style="{StaticResource SecondaryText}" Text="Import a profile or view sanitized diagnostics."/>
+      <TextBlock Style="{StaticResource SecondaryText}" Text="Import a profile, or generate a log to send with a support report."/>
       <WrapPanel Margin="0,16,0,0">
         <Button x:Name="ImportButton" Click="Import_Click" ToolTip="Choose a WireGuard configuration file">
           <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8E5;" VerticalAlignment="Center"/><TextBlock Margin="8,0,0,0" Text="Import Configuration"/></StackPanel>
         </Button>
-        <Button x:Name="DiagnosticsButton" Margin="8,0,0,0" Click="Diagnostics_Click" Content="Refresh Diagnostics"/>
+        <Button x:Name="LogButton" Margin="8,0,0,0" Click="GenerateLog_Click" Content="Generate log"/>
       </WrapPanel>
-      <TextBox x:Name="DiagnosticsBox" Margin="0,16,0,0" Height="110" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-               FontFamily="Cascadia Mono, Consolas" FontSize="12" AutomationProperties.Name="Diagnostics" Text="Diagnostics have not been loaded."/>
+      <!-- O log é só isto: os bytes que o backend produziu, sem a interface remontar linha nenhuma.
+           Salvar e copiar ficam desabilitados até existir um log, para não gerar arquivo vazio. -->
+      <TextBox x:Name="LogBox" Margin="0,16,0,0" Height="110" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+               FontFamily="Cascadia Mono, Consolas" FontSize="12" AutomationProperties.Name="Support log preview" Text="No log generated yet."/>
+      <WrapPanel Margin="0,8,0,0">
+        <Button x:Name="SaveLogButton" Click="SaveLog_Click" Content="Save…" IsEnabled="False" MinWidth="90"/>
+        <Button x:Name="CopyLogButton" Margin="8,0,0,0" Click="CopyLog_Click" Content="Copy" IsEnabled="False" MinWidth="90"/>
+        <TextBlock x:Name="LogNotice" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"
+                   Style="{StaticResource SecondaryText}" AutomationProperties.LiveSetting="Polite" Text=""/>
+      </WrapPanel>
       <!-- Versão, atualização e créditos moram aqui: são informação sobre o app, não uma
            preferência, e Settings fica só com o que o usuário escolhe. -->
       <Border Style="{StaticResource SettingsSurface}" Margin="0,12,0,0" Padding="12">

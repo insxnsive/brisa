@@ -1,5 +1,6 @@
 import path from "node:path";
 import { WireSockSetupError, wireSockSetupFailure } from "./wiresock-setup.mjs";
+import { renderSupportLog } from "./support-log.mjs";
 import { WireSockStartError } from "./wiresock-start-result.mjs";
 import { DiscordCompatibilityError, discordCompatibilityFailure } from "./discord-compatibility.mjs";
 
@@ -481,18 +482,30 @@ export function createBackend(deps, paths) {
       }
 
       if (command === "diagnostics") {
-        const status = await inspect();
-        const lines = [
-          `WireSock inspection: ${status?.reliable ? "reliable" : "unreliable"}.`,
-          `Tunnel: ${status?.active ? (status.owned ? "native-owned" : "external") : "inactive"}.`,
-          `Discord session: ${sessionApps.length ? "restarted by Brisa" : "not confirmed"}.`,
-          `Route check: ${routeVerification.reason}.`,
-          `Connection stage: ${stage}.`,
-          `Mode: ${state.mode}.`,
-          `Packaged Proton helper: ${deps.helperAvailable() ? "available" : "missing"}.`,
-        ];
-        const events = deps.diag?.recent?.(20) ?? [];
-        return { text: lines.concat(events.length ? ["Recent events (this session):", ...events] : []).join("\n") };
+        // O texto é montado uma vez, no backend, e a interface só exibe e salva estes bytes: assim
+        // a redação não pode divergir entre o que aparece na tela e o que vai para o arquivo.
+        const facts = deps.supportFacts?.() ?? {};
+        return {
+          text: renderSupportLog({
+            generatedAt: new Date(now()),
+            facts: {
+              elevated: facts.elevated,
+              discordFlavour: facts.discordFlavour,
+              sdkMajor: facts.sdkMajor,
+              sdkMinor: facts.sdkMinor,
+              sdkBuild: facts.sdkBuild,
+              sdkRevision: facts.sdkRevision,
+              trustVerdict: facts.trustVerdict,
+              mode: state.mode,
+              protocol: "wireguard_udp",
+              phase: state.phase,
+              stage,
+              routeCountry: state.route?.country,
+              routeCheck: routeVerification.reason,
+            },
+            events: deps.diag?.recent?.(20) ?? [],
+          }),
+        };
       }
 
       if (mutationBusy) return { success: false, message: "Another native backend operation is still running." };

@@ -8,6 +8,7 @@ public sealed class UiTestBackendClient : IBackendClient
     public List<string> Commands { get; } = [];
     private readonly TimeSpan _commandDelay;
     private readonly RouteInfo? _route;
+    private string _inFlight = "";
     public UiTestBackendClient(NativeSnapshot? initial = null, TimeSpan? commandDelay = null, RouteInfo? route = null)
     {
         _route = route;
@@ -17,9 +18,14 @@ public sealed class UiTestBackendClient : IBackendClient
     public Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(_state);
     public async Task<CommandResult> CommandAsync(string command, object payload, CancellationToken cancellationToken = default)
     {
-        if (command == "progress") return new(true, Stage: "starting-tunnel");
+        // O estágio tem de pertencer ao comando em curso. Antes o fixture respondia sempre com
+        // "starting-tunnel", e a captura de uma desconexão mostrava "Starting and settling".
+        if (command == "progress")
+            return new(true, Stage: _inFlight == "disconnect" ? "stopping-tunnel" : "starting-tunnel");
         Commands.Add(command);
+        if (command is "connect" or "disconnect") _inFlight = command;
         if (command is "connect" or "disconnect" && _commandDelay > TimeSpan.Zero) await Task.Delay(_commandDelay, cancellationToken).ConfigureAwait(false);
+        _inFlight = "";
         if (command == "connect") _state = _state with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true, Route = _route ?? _state.Route };
         if (command == "disconnect") _state = _state with { Connected = false, TunnelActive = false, OwnedTunnelPresent = false };
         if (command == "logout") _state = _state with { SignedIn = false, Username = "" };

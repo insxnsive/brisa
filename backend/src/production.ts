@@ -125,6 +125,8 @@ export function createProductionBackend() {
 
   return createBackend({
     diag: diagnostics,
+    // Fatos que o log de suporte pode citar. O que não existe aqui é omitido, nunca inventado.
+    supportFacts: () => ({ elevated, ...(sessionLease?.trustVerdict ? { trustVerdict: sessionLease.trustVerdict } : {}) }),
     requiresElevation: !elevated,
     inspect: async (configPath: string) => elevated ? inspectWireSockAsync(configPath) : { active: false, owned: false, reliable: false, services: [], processIds: [], reason: "Run Brisa as administrator to manage WireSock safely.", origin: "unknown", managedServices: [], managedProcessIds: [] },
     getSavedSessionUsername,

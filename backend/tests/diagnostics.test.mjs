@@ -49,10 +49,17 @@ test("invalid stages, codes and data values are dropped instead of recorded", ()
     freeText: "the tunnel failed because of something",
     nested: { a: 1 },
     exitCode: 1,
+    // Forma não é procedência: um texto que só parece código, como um usuário em maiúsculas,
+    // é descartado; só valores que o app define entram.
     allowed: "START_REFUSED",
+    username: "NATE",
+    trust: "TRUSTED",
   });
   const [line] = diagnostics.recent();
   assert.match(line, /OK_CODE/);
+  assert.doesNotMatch(line, /START_REFUSED/, "a shape-only code that the app does not define is dropped");
+  assert.doesNotMatch(line, /NATE/, "an uppercase username is not mistaken for a code");
+  assert.match(line, /trust=TRUSTED/, "an app-owned code value is kept");
   assert.match(line, /exitCode=1/);
   assert.match(line, /allowed=START_REFUSED/);
   assert.doesNotMatch(line, /someone|AppData|tunnel failed|nested/);
