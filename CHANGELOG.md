@@ -1,5 +1,18 @@
 # Changes
 
+## 0.1.0-beta.9
+
+- Refuse to run a WireSock binary that is not signed by the vendor or that sits in a folder a normal user can write to. Discovery reads the machine-wide install only, checks the executable and its booster, compares the certificate subject exactly, and re-checks both immediately before every elevated use.
+- Keep a stop that already confirmed the tunnel is down from failing: an optional global action that cannot be verified is skipped instead of turning the result into "still running", and the network-lock reset, DNS reset and cache flush each stay inside their own budget.
+- Pause the three-minute connect deadline while the vendor installer is open, with a thirty-minute ceiling and an explicit timeout message instead of a silent cancellation.
+- Stop trapping the user in a window that cannot close. When the installer state is unknown the exit path asks "Exit Brisa anyway?" and says Discord was closed; the backend refuses cancellation while supervision is lost instead of reporting a normal cancel.
+- Bound every backend call. The stop reserves ten seconds for its final check, the residual read always carries a real timeout, and the exit path no longer runs the snapshot, the disconnect and the confirming snapshot on one shared token.
+- Report a snapshot that overlapped a connect or a disconnect as stale instead of publishing a pre-tunnel reading, and re-check freshness at every use rather than once after the inspection.
+- Probe WireSock once per selection, asynchronously, with the trust verdict included. Connection setup went from about 3 s to about 1.4 s on the development machine.
+- Close Discord before stopping the tunnel and put it back on the normal route afterwards. If Discord cannot be found, stop the tunnel anyway and record the failure rather than leaving the tunnel running.
+- Sweep stale cancellation markers left by earlier attempts, and share one inspection between concurrent snapshots so a slow query does not open a second one.
+- Remove the dead tunnel and route orchestration code left behind by the earlier installer work.
+
 ## 0.1.0-beta.8
 
 - Fix the packaged backend exiting before status and sign-in become available. Windows PowerShell now compiles the private-storage helper against its own .NET Framework assemblies, not Brisa's bundled .NET assemblies in the application working directory.
