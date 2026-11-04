@@ -407,7 +407,10 @@ export function createBackend(deps, paths) {
         const mine = generation;
         const status = await inspect();
         const tunnelActive = status?.reliable === true && status.active === true && status.owned === true;
-        const ownPresent = hasOwned(status);
+        // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só a geração
+        // atual e um estado sem mutação podem dizer que não há túnel próprio.
+        const fresh = mine === generation && !mutationBusy;
+        const ownPresent = fresh ? hasOwned(status) : (ownsTunnel(status) || sessionOwned);
         const tunnelKey = tunnelActive ? ownedTunnelKey(status) : null;
         // Publish inspection-derived state before any unrelated await, and only while this
         // snapshot is still current, so a late snapshot cannot overwrite a newer tunnel.
@@ -435,7 +438,7 @@ export function createBackend(deps, paths) {
         const verdictAge = lastRouteCheck ? now() - lastRouteCheck : null;
         const verified = routeVerification.verified && verdictAge !== null && verdictAge < ROUTE_VERDICT_MAX_AGE_MS;
         return {
-          connected: tunnelActive && discordRunning && verified && mine === generation && !mutationBusy,
+          connected: !installerUnknown && tunnelActive && discordRunning && verified && mine === generation && !mutationBusy,
           tunnelActive,
           hasOwnedTunnel: ownPresent,
           requiresElevation: deps.requiresElevation === true,

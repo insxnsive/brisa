@@ -163,7 +163,7 @@ public partial class MainWindow : Window
     {
         if (state.Snapshot?.HasOwnedTunnel == true) _nativeOperationMayBeActive = true;
         else if (_operation.CurrentCount != 0 && state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Blocked
-            && state.Snapshot is { Reliable: true, HasOwnedTunnel: false }) _nativeOperationMayBeActive = false;
+            && state.Snapshot is { Reliable: true, HasOwnedTunnel: false, Stage: "idle" }) _nativeOperationMayBeActive = false;
         _state = state; StatusText.Text = state.StatusText; DetailText.Text = state.Detail ?? "";
         PrimaryButton.Content = state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;

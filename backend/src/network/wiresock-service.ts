@@ -1,3 +1,5 @@
+import { quotePowerShell } from "./powershell.ts";
+
 /**
  * Runs a PowerShell file through UAC without copying the file contents into
  * an encoded command-line argument. Windows has a relatively small command
@@ -6,7 +8,7 @@
  */
 export function elevatedPowerShellFileArgs(scriptPath: string, resultPath?: string): string[] {
   if (!scriptPath || /["\r\n\0]/.test(scriptPath) || (resultPath !== undefined && (!resultPath || /["\r\n\0]/.test(resultPath)))) throw new Error("Caminho do script PowerShell inválido");
-  const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
+  const literal = quotePowerShell;
   // A worker redirecting a long-running child's output can stay alive with it.
   // For direct mode, wait for the explicit result, not for that worker to exit.
   if (resultPath) {

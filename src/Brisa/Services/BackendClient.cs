@@ -64,14 +64,23 @@ public sealed class BackendClient : IBackendClient
     public async Task CancelAsync()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        await CommandAsync("cancel", new { }, timeout.Token);
-        // Abort acknowledgement is not a cleanup acknowledgement. A refused waitForIdle (for
-        // example an installer whose supervision was lost) must not look like a clean cancel.
-        var idle = await CommandAsync("waitForIdle", new { }, timeout.Token);
-        if (!idle.Success)
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(idle.Message)
-                ? "The native backend did not confirm that it became idle. Brisa will stay open."
-                : idle.Message);
+        try
+        {
+            await CommandAsync("cancel", new { }, timeout.Token);
+            // Abort acknowledgement is not a cleanup acknowledgement. A refused waitForIdle (for
+            // example an installer whose supervision was lost) must not look like a clean cancel.
+            var idle = await CommandAsync("waitForIdle", new { }, timeout.Token);
+            if (!idle.Success)
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(idle.Message)
+                    ? "The native backend did not confirm that it became idle. Brisa will stay open."
+                    : idle.Message);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+        {
+            // A silent cancellation is indistinguishable from a clean one to the caller, so a
+            // deadline that expires without confirmation is reported as a failure instead.
+            throw new TimeoutException("The native backend did not confirm that it became idle. Brisa will stay open.");
+        }
     }
 
     public async Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default)
