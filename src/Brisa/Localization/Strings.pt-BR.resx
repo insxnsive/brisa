@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <data name="AppTitle" xml:space="preserve"><value>Brisa</value></data>
+  <data name="HomeTitle" xml:space="preserve"><value>Início</value></data>
+  <data name="SettingsTitle" xml:space="preserve"><value>Configurações</value></data>
+  <data name="AdvancedTitle" xml:space="preserve"><value>Avançado</value></data>
+  <data name="Back" xml:space="preserve"><value>Voltar</value></data>
+  <data name="General" xml:space="preserve"><value>Geral</value></data>
+  <data name="StartWithWindows" xml:space="preserve"><value>Iniciar com o Windows</value></data>
+  <data name="CloseToTrayNote" xml:space="preserve"><value>Fechar a janela mantém o Brisa na bandeja. Use Sair no menu da bandeja para encerrar.</value></data>
+  <data name="ThemeLabel" xml:space="preserve"><value>Tema</value></data>
+  <data name="ThemeSystem" xml:space="preserve"><value>Sistema</value></data>
+  <data name="ThemeLight" xml:space="preserve"><value>Claro</value></data>
+  <data name="ThemeDark" xml:space="preserve"><value>Escuro</value></data>
+  <data name="LanguageLabel" xml:space="preserve"><value>Idioma</value></data>
+  <data name="LanguageSystem" xml:space="preserve"><value>Sistema</value></data>
+  <data name="LanguageEnglish" xml:space="preserve"><value>English</value></data>
+  <data name="LanguagePortuguese" xml:space="preserve"><value>Português (Brasil)</value></data>
+  <data name="ShowDetails" xml:space="preserve"><value>Mostrar detalhes da conexão</value></data>
+  <data name="Save" xml:space="preserve"><value>Salvar</value></data>
+  <data name="Advanced" xml:space="preserve"><value>Avançado</value></data>
+  <data name="ImportConfiguration" xml:space="preserve"><value>Importar configuração</value></data>
+  <data name="GenerateLog" xml:space="preserve"><value>Gerar log</value></data>
+  <data name="SaveLog" xml:space="preserve"><value>Salvar…</value></data>
+  <data name="CopyLog" xml:space="preserve"><value>Copiar</value></data>
+  <data name="NoLogGenerated" xml:space="preserve"><value>Nenhum log gerado ainda.</value></data>
+  <data name="LogCopied" xml:space="preserve"><value>Log copiado.</value></data>
+  <data name="LogSaved" xml:space="preserve"><value>Log salvo.</value></data>
+  <data name="AdvancedSubtitle" xml:space="preserve"><value>Importe um perfil ou gere um log para enviar junto com um relato de suporte.</value></data>
+  <data name="CheckForUpdates" xml:space="preserve"><value>Verificar atualizações</value></data>
+  <data name="RestartToUpdate" xml:space="preserve"><value>Reiniciar para atualizar</value></data>
+  <data name="LicenseAndCredits" xml:space="preserve"><value>Licença e créditos</value></data>
+  <data name="TrayExit" xml:space="preserve"><value>Sair</value></data>
+  <data name="TrayShowWindow" xml:space="preserve"><value>Abrir o Brisa</value></data>
+  <data name="SaveLogDialogTitle" xml:space="preserve"><value>Salvar log</value></data>
+  <data name="ImportDialogTitle" xml:space="preserve"><value>Importar configuração do WireGuard</value></data>
+  <data name="ImportDialogFilter" xml:space="preserve"><value>Configuração do WireGuard (*.conf)|*.conf</value></data>
+</root>

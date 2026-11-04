@@ -5,7 +5,7 @@ using System.Windows;
 namespace Brisa.Services;
 
 public enum AppTheme { System, Light, Dark }
-public sealed record UserSettings(AppTheme Theme = AppTheme.System, bool StartWithWindows = false, bool ShowDetails = true);
+public sealed record UserSettings(AppTheme Theme = AppTheme.System, bool StartWithWindows = false, bool ShowDetails = true, string Language = "system");
 
 public sealed class SettingsStore
 {
