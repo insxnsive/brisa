@@ -57,15 +57,17 @@ public sealed class UiTestBackendClient : IBackendClient
             "Route check: verified",
             "",
             "Events (this session):",
+            // Só códigos que o backend emite de verdade, com as chaves de dados que ele usa. Um
+            // código inventado aqui ensinaria um valor que não existe em captura nem em suporte.
             $"{now.AddMinutes(-9):yyyy-MM-ddTHH:mm:ss.fffZ} startup NOT_ELEVATED",
-            $"{now.AddMinutes(-8):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_CANDIDATE_UNTRUSTED riskLevel=2",
-            $"{now.AddMinutes(-7):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_INSTALL_SUPERVISION_LOST exitCode=1",
-            $"{now.AddMinutes(-6):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_CLIENT_EXITED exitCode=1",
-            $"{now.AddMinutes(-5):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_RETRY_SCHEDULED attempt=2",
-            $"{now.AddMinutes(-4):yyyy-MM-ddTHH:mm:ss.fffZ} stopping-tunnel STOP_TIMEOUT_EXPIRED budgetMs=35000",
-            $"{now.AddMinutes(-3):yyyy-MM-ddTHH:mm:ss.fffZ} startup DISCORD_DISCOVERY_FAILED apps=0",
-            $"{now.AddMinutes(-2):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel MEMBER_JOIN_TIMEOUT memberId=5 idle=false",
-            $"{now.AddMinutes(-1):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_CLIENT_EXITED exitCode=1 timedOut=false"));
+            $"{now.AddMinutes(-8):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_CHECK_STARTED",
+            $"{now.AddMinutes(-7):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_PRESENT",
+            $"{now.AddMinutes(-6):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_CANDIDATE_UNTRUSTED exitCode=1",
+            $"{now.AddMinutes(-5):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_CLIENT_EXITED exitCode=1",
+            $"{now.AddMinutes(-4):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_NOT_CONFIRMED timedOut=true",
+            $"{now.AddMinutes(-3):yyyy-MM-ddTHH:mm:ss.fffZ} stopping-tunnel STOP_NOT_CONFIRMED rollback=false",
+            $"{now.AddMinutes(-2):yyyy-MM-ddTHH:mm:ss.fffZ} startup DISCORD_DISCOVERY_FAILED",
+            $"{now.AddMinutes(-1):yyyy-MM-ddTHH:mm:ss.fffZ} guard GUARD_EXTERNAL_TUNNEL ownPresent=false"));
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
