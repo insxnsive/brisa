@@ -15,6 +15,7 @@ import path from "path";
 import { WireSockSetupError } from "../wiresock-setup.mjs";
 import { wireSockSearchRoots, wireSockCandidatePairs } from "../wiresock-discovery.mjs";
 import { candidateIsTrusted } from "../wiresock-trust.mjs";
+import { probeWireSock, runProbe } from "../wiresock-probe.mjs";
 export { wireSockSearchRoots } from "../wiresock-discovery.mjs";
 
 import {
@@ -423,20 +424,26 @@ export function selectWireSockCandidate(candidates: WireSockCandidate[]): WireSo
         .sort((a, b) => compareVersions(b.executableVersion, a.executableVersion))[0] ?? null;
 }
 
-export function findWireSockCandidate(
-    env: NodeJS.ProcessEnv = process.env,
-    roots: string[] = wireSockSearchRoots(env),
-    trust: (candidate: WireSockCandidate) => boolean = candidate => candidateIsTrusted(candidate.executable, candidate.booster),
-): WireSockCandidate | null {
-    if (!isWindows()) return null;
-    const candidates = wireSockCandidatePairs(roots).flatMap(pair => {
-        const executableVersion = versionOf(pair.executable);
-        const boosterVersion = versionOf(pair.booster);
-        return executableVersion && boosterVersion
-            ? [{ ...pair, executableVersion, boosterVersion }]
-            : [];
-    }).filter(candidate => trust(candidate));
-    return selectWireSockCandidate(candidates);
+export interface WireSockProbeOptions {
+    run?: typeof runProbe;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+}
+
+/**
+ * Uma sondagem assíncrona devolve candidatos, versões e veredito de confiança de uma vez. Falha
+ * fechada: saída ilegível, timeout ou aborto resultam em nenhum candidato.
+ */
+export async function probeCandidates(env: NodeJS.ProcessEnv = process.env, options: WireSockProbeOptions = {}): Promise<{ candidate: WireSockCandidate | null; untrustedCount: number; parsed: boolean }> {
+    if (!isWindows()) return { candidate: null, untrustedCount: 0, parsed: true };
+    const probe = await probeWireSock(env, options.run ?? runProbe, options.timeoutMs ?? 15000, options.signal);
+    const trusted = probe.candidates.filter(candidate => candidate.trusted);
+    const candidate = selectWireSockCandidate(trusted.map(({ trusted: _trusted, ...rest }) => rest));
+    return { candidate, untrustedCount: probe.candidates.length - trusted.length, parsed: probe.parsed };
+}
+
+export async function findWireSockCandidate(env: NodeJS.ProcessEnv = process.env, options: WireSockProbeOptions = {}): Promise<WireSockCandidate | null> {
+    return (await probeCandidates(env, options)).candidate;
 }
 
 function abortError(): Error {
@@ -658,7 +665,9 @@ export interface WireSockSetupOptions {
     mkdtemp?: (prefix: string) => Promise<string>;
     download?: (target: string, signal?: AbortSignal) => Promise<void>;
     remove?: (directory: string) => Promise<void>;
-    findCandidate?: () => WireSockCandidate | null;
+    findCandidate?: () => Promise<WireSockCandidate | null>;
+    /** Seam de teste da sondagem: injeta o runner, não o resultado, para o parser continuar real. */
+    probeRun?: typeof runProbe;
     /** Confere o instalador baixado contra o pin oficial. */
     verify?: (file: string, signal?: AbortSignal) => Promise<boolean>;
     exec?: typeof execFile;
@@ -702,9 +711,15 @@ async function ensureWireSockCandidateOnce(log: WireSockLogger, options: WireSoc
     if (!isWindows()) throw new Error("A VPN do Brisa nesta versão exige Windows x64.");
     if (process.arch !== "x64") throw new Error("A VPN do Brisa nesta versão exige Windows x64.");
     let searchedRoots = wireSockSearchRoots();
-    const findCandidate = options.findCandidate ?? (() => findWireSockCandidate(process.env, searchedRoots));
+    // A sondagem devolve candidatos, versões e confiança de uma vez; sem seam, o diagnóstico de
+    // candidato não confiável sai da mesma leitura, sem um segundo processo.
+    const lookup = options.findCandidate
+        ? async () => ({ candidate: await options.findCandidate!(), untrustedCount: 0 })
+        : () => probeCandidates(process.env, { signal, run: options.probeRun });
     emit("SDK_CHECK_STARTED");
-    const existing = findCandidate();
+    const first = await lookup();
+    if (first.untrustedCount > 0) emit("SDK_CANDIDATE_UNTRUSTED", { count: first.untrustedCount });
+    const existing = first.candidate;
     if (existing) {
         emit("SDK_PRESENT");
         log("info", "WireSock SDK compatível encontrado", { version: existing.executableVersion });
@@ -745,7 +760,7 @@ async function ensureWireSockCandidateOnce(log: WireSockLogger, options: WireSoc
         });
         throwIfAborted(signal);
         searchedRoots = wireSockSearchRoots();
-        const installed = findCandidate();
+        const installed = (await lookup()).candidate;
         if (!installed) throw new Error("O instalador WireSock terminou, mas não deixou uma instalação SDK compatível.");
         return installed;
     } catch (error) {
@@ -823,7 +838,7 @@ async function fileIdentity(file: string): Promise<{ size: number; mtimeMs: numb
 }
 
 /** Aprende os digests do par dentro de uma janela estável: metadados e identidade iguais antes e depois. */
-export async function learnCandidateLease(candidate: WireSockCandidate, signal?: AbortSignal, revalidate?: () => WireSockCandidate | null): Promise<WireSockCandidateLease | null> {
+export async function learnCandidateLease(candidate: WireSockCandidate, signal?: AbortSignal, revalidate?: () => Promise<WireSockCandidate | null>): Promise<WireSockCandidateLease | null> {
     try {
         const beforeExecutable = await fileIdentity(candidate.executable);
         const beforeBooster = await fileIdentity(candidate.booster);
@@ -832,7 +847,7 @@ export async function learnCandidateLease(candidate: WireSockCandidate, signal?:
         const boosterDigest = await sha256(candidate.booster, signal);
         // Os rótulos de versão vêm da seleção: se a descoberta não confirma mais o mesmo par e as
         // mesmas versões, o lease herdaria compatibilidade que não foi verificada.
-        const current = (revalidate ?? (() => findWireSockCandidate()))();
+        const current = await (revalidate ?? (() => findWireSockCandidate(process.env, { signal })))();
         if (!current) return null;
         if (current.executable !== candidate.executable || current.booster !== candidate.booster) return null;
         if (current.executableVersion !== candidate.executableVersion || current.boosterVersion !== candidate.boosterVersion) return null;
@@ -879,7 +894,7 @@ export interface StopOwnedOptions {
     /** Sonda de frescor injetável: produção usa `leaseIsFresh`. */
     freshness?: (lease: WireSockCandidateLease, guard: () => void) => Promise<boolean>;
     /** Checagem de confiança injetável: produção usa `candidateIsTrusted`. */
-    isTrusted?: (executable: string, booster: string) => boolean;
+    isTrusted?: (executable: string, booster: string) => boolean | Promise<boolean>;
 }
 
 class StopCancelledError extends Error {
@@ -1123,7 +1138,16 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
                 scope.check();
                 // O reset também é elevado: revalidar a assinatura e o caminho do binário agora,
                 // não só quando o par foi escolhido.
-                if (!(options.isTrusted ?? candidateIsTrusted)(lease.executable, path.join(path.dirname(lease.executable), "wgbooster.dll"))) {
+                let trustedNow = false;
+                try {
+                    trustedNow = await (options.isTrusted ?? (async () => {
+                        const fresh = await findWireSockCandidate(process.env, { signal: scope.signal, timeoutMs: scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset) });
+                        return fresh?.executable === lease.executable;
+                    }))(lease.executable, path.join(path.dirname(lease.executable), "wgbooster.dll"));
+                } catch {
+                    trustedNow = false;
+                }
+                if (!trustedNow) {
                     networkLockReset = false;
                 } else {
                     const result = await runtime.run(lease.executable, ["reset-network-lock"], scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset), scope.signal);

@@ -14,17 +14,26 @@ const TRUSTED_SIDS = ["S-1-5-18", "S-1-5-32-544", "S-1-5-80-956008885-3418522649
 const quote = value => `'${value.replace(/'/g, "''")}'`;
 
 /**
- * Uma pasta que o próprio usuário pode escrever derrota qualquer checagem de versão: basta
- * colocar um wiresock-client.exe com versão alta. Os dois arquivos e todos os diretórios do
- * caminho precisam ter dono administrativo e nenhuma permissão de escrita para quem não é
- * administrador, sem pontos de reparse que redirecionem o caminho depois da checagem.
+ * As funções PowerShell da checagem, compartilhadas entre a verificação de um par e a sondagem
+ * única de descoberta. `Test-BrisaSignature` confere assinatura e emissor; `Test-BrisaAcl`
+ * confere dono, permissões e reparse de um objeto; `Test-BrisaAclChain` caminha os diretórios
+ * até a raiz do volume.
  */
-export function wireSockTrustScript(executable, booster) {
+export function wireSockTrustHelpers() {
   const allowed = TRUSTED_SIDS.map(sid => `'${sid}'`).join(",");
-  return `$ErrorActionPreference='Stop'
-$risky = ${RISKY_FILE_RIGHTS}
+  return `$risky = ${RISKY_FILE_RIGHTS}
 $allowed = @(${allowed})
 $inheritOnly = [Security.AccessControl.PropagationFlags]::InheritOnly
+function Test-BrisaSignature([string]$path) {
+  $sig = Get-AuthenticodeSignature -LiteralPath $path
+  if (($sig.Status -ne 'Valid') -or ($null -eq $sig.SignerCertificate)) { return $false }
+  # Comparação exata por RDN: um regex sem âncora aceitaria "The Anti-Cloud Corporation Ltd".
+  $parts = $sig.SignerCertificate.SubjectName.Format($true) -split [Environment]::NewLine
+  $cn = ($parts | Where-Object { $_ -like 'CN=*' } | Select-Object -First 1) -replace '^CN=', ''
+  $o = ($parts | Where-Object { $_ -like 'O=*' } | Select-Object -First 1) -replace '^O=', ''
+  if (($cn -cne ${quote(WIRESOCK_SIGNER_SUBJECT.cn)}) -or ($o -cne ${quote(WIRESOCK_SIGNER_SUBJECT.o)})) { return $false }
+  return $true
+}
 function Test-BrisaAcl([string]$path) {
   if (((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
   $acl = Get-Acl -LiteralPath $path
@@ -43,25 +52,34 @@ function Test-BrisaAcl([string]$path) {
   }
   return $true
 }
+function Test-BrisaAclChain([string]$path) {
+  $dir = [IO.Path]::GetDirectoryName($path)
+  while ($dir) {
+    # A raiz do volume aceita criação de pastas por Usuários autenticados; isso não permite
+    # trocar o binário, então a caminhada para antes dela.
+    if ([IO.Path]::GetPathRoot($dir) -eq $dir) { break }
+    if (-not (Test-BrisaAcl $dir)) { return $false }
+    $dir = [IO.Path]::GetDirectoryName($dir)
+  }
+  return $true
+}`;
+}
+
+/**
+ * Uma pasta que o próprio usuário pode escrever derrota qualquer checagem de versão: basta
+ * colocar um wiresock-client.exe com versão alta. Os dois arquivos e todos os diretórios do
+ * caminho precisam ter dono administrativo e nenhuma permissão de escrita para quem não é
+ * administrador, sem pontos de reparse que redirecionem o caminho depois da checagem.
+ */
+export function wireSockTrustScript(executable, booster) {
+  return `$ErrorActionPreference='Stop'
+${wireSockTrustHelpers()}
 foreach ($p in @(${quote(executable)}, ${quote(booster)})) {
-  $sig = Get-AuthenticodeSignature -LiteralPath $p
-  if (($sig.Status -ne 'Valid') -or ($null -eq $sig.SignerCertificate)) { 'UNTRUSTED'; exit }
-  # Comparação exata por RDN: um regex sem âncora aceitaria "The Anti-Cloud Corporation Ltd".
-  $parts = $sig.SignerCertificate.SubjectName.Format($true) -split [Environment]::NewLine
-  $cn = ($parts | Where-Object { $_ -like 'CN=*' } | Select-Object -First 1) -replace '^CN=', ''
-  $o = ($parts | Where-Object { $_ -like 'O=*' } | Select-Object -First 1) -replace '^O=', ''
-  if (($cn -cne ${quote(WIRESOCK_SIGNER_SUBJECT.cn)}) -or ($o -cne ${quote(WIRESOCK_SIGNER_SUBJECT.o)})) { 'UNTRUSTED'; exit }
+  if (-not (Test-BrisaSignature $p)) { 'UNTRUSTED'; exit }
   # O arquivo em si também: um ACE explícito no .exe permite trocá-lo depois da checagem.
   if (-not (Test-BrisaAcl $p)) { 'UNTRUSTED'; exit }
 }
-$dir = [IO.Path]::GetDirectoryName(${quote(executable)})
-while ($dir) {
-  # A raiz do volume aceita criação de pastas por Usuários autenticados; isso não permite
-  # trocar o binário, então a caminhada para antes dela.
-  if ([IO.Path]::GetPathRoot($dir) -eq $dir) { break }
-  if (-not (Test-BrisaAcl $dir)) { 'UNTRUSTED'; exit }
-  $dir = [IO.Path]::GetDirectoryName($dir)
-}
+if (-not (Test-BrisaAclChain ${quote(executable)})) { 'UNTRUSTED'; exit }
 'TRUSTED'`;
 }
 
