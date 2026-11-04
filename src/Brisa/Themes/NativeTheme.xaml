@@ -103,4 +103,12 @@
       <Setter Property="Foreground" Value="{DynamicResource NativeSecondary}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
+  <Style TargetType="{x:Type Hyperlink}">
+    <Setter Property="Foreground" Value="{DynamicResource NativeLinkForeground}"/>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Foreground" Value="{DynamicResource NativeLinkForegroundPointerOver}"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
 </ResourceDictionary>

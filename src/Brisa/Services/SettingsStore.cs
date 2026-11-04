@@ -97,11 +97,32 @@ public sealed class SettingsStore
             app.Resources["AccentButtonBackgroundPressed"] = Brush(accentPressed);
             app.Resources["AccentButtonForeground"] = Brush(accentLabel);
             app.Resources["AccentButtonForegroundPointerOver"] = Brush(accentLabel);
+            // Hyperlink herda a cor de destaque do sistema no Fluent: no tema claro saía vinho,
+            // não o coral fixado. 4.85:1 no claro e 5.45:1 no escuro sobre o cartão.
+            app.Resources["NativeLinkForeground"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(accentFill);
+            app.Resources["NativeLinkForegroundPointerOver"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(accentHover);
             app.Resources["AccentFillColorDefaultBrush"] = Brush(accentFill);
             app.Resources["AccentFillColorSecondaryBrush"] = Brush(accentFill);
             app.Resources["AccentFillColorTertiaryBrush"] = Brush(accentFill);
             app.Resources["AccentTextFillColorPrimaryBrush"] = Brush(accentFill);
             app.Resources["AccentTextFillColorSecondaryBrush"] = Brush(accentFill);
+            // O CheckBox e o RadioButton do Fluent não usam AccentFillColor*: a marca sai do
+            // SystemAccentColor, uma cor, não um brush. Sem fixar a cor, o tema claro desenhava
+            // #C21C14 (o destaque do Windows) em vez do coral fixado.
+            var accentColor = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accentFill);
+            app.Resources["SystemAccentColor"] = accentColor;
+            app.Resources["SystemAccentColorLight1"] = accentColor;
+            app.Resources["SystemAccentColorLight2"] = accentColor;
+            app.Resources["SystemAccentColorLight3"] = accentColor;
+            app.Resources["SystemAccentColorDark1"] = accentColor;
+            app.Resources["SystemAccentColorDark2"] = accentColor;
+            app.Resources["SystemAccentColorDark3"] = accentColor;
+            app.Resources["CheckBoxCheckBackgroundFillChecked"] = Brush(accentFill);
+            app.Resources["CheckBoxCheckBackgroundFillCheckedPointerOver"] = Brush(accentHover);
+            app.Resources["CheckBoxCheckBackgroundFillCheckedPressed"] = Brush(accentPressed);
+            app.Resources["RadioButtonOuterEllipseCheckedFill"] = Brush(accentFill);
+            app.Resources["RadioButtonOuterEllipseCheckedFillPointerOver"] = Brush(accentHover);
+            app.Resources["RadioButtonOuterEllipseCheckedFillPressed"] = Brush(accentPressed);
         }
     }
     private static void SetStartup(bool enabled)

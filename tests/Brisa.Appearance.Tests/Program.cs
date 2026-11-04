@@ -114,6 +114,25 @@ internal static class Program
                     {
                         ((CheckBox)view.FindName("StartupBox")).IsChecked = true;
                         Check(view.FindName("TrayBox") is null, "close-to-tray is unconditional, not an opt-in setting");
+                        var settingsText = Descendants(view).OfType<TextBlock>().Select(t => t.Text).ToList();
+                        Check(!settingsText.Contains("Appearance, startup, and updates."), "Settings carries no subtitle");
+                        Check(settingsText.Contains("General"), "the startup section is called General");
+                        Check(!settingsText.Contains("Behavior"), "the old Behavior heading is gone");
+                        Check(((CheckBox)view.FindName("StartupBox")).Content as string == "Start with Windows",
+                            "the startup checkbox says Start with Windows");
+                        Check(settingsText.Contains("Closing the window keeps Brisa running in the tray. Use Exit in the tray menu to quit."),
+                            "the tray note is the new copy");
+                        Check(Descendants(view).OfType<ScrollViewer>().First().ScrollableHeight == 0,
+                            "Settings does not scroll at the default size");
+                        // O anel de foco só aparece com foco de teclado: UIA SetFocus não pinta,
+                        // então a evidência do anel sai daqui e os estados checados saem do app real.
+                        var startup = (CheckBox)view.FindName("StartupBox");
+                        startup.Focus();
+                        System.Windows.Input.Keyboard.Focus(startup);
+                        window.UpdateLayout(); Spin(120);
+                        Check(startup.IsKeyboardFocused, "the startup checkbox takes keyboard focus");
+                        Capture(window, theme + "-SettingsFocus");
+                        startup.IsChecked = false;
                         window.UpdateLayout();
                         foreach (var buttonName in new[] { "AdvancedButton", "CancelButton", "SaveButton" })
                         {
@@ -136,6 +155,11 @@ internal static class Program
                             "the GPL notice is displayed inside the credits");
                         Check(Descendants(credits).OfType<TextBlock>().Any(t => t.Text.Contains("GoLiveBypass")),
                             "the upstream attribution is displayed inside the credits");
+                        // Hyperlink é TextElement, não Visual: não aparece no walk da árvore visual.
+                        var attribution = Descendants(credits).OfType<TextBlock>().First(t => t.Text.Contains("GoLiveBypass"));
+                        var link = attribution.Inlines.OfType<System.Windows.Documents.Hyperlink>().First();
+                        Check(((SolidColorBrush)link.Foreground).Color == ((SolidColorBrush)Application.Current.Resources["NativeLinkForeground"]).Color,
+                            "the licence link uses the pinned accent, not the system hyperlink colour");
                         var status = (TextBlock)view.FindName("UpdateStatusText");
                         status.Text = "A versioned Brisa update is ready. Review the release details before restarting. " +
                             "The current connection remains available while the update is prepared in this isolated fixture.";
