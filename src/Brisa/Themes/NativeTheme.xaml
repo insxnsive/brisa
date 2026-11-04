@@ -35,10 +35,10 @@
         <Setter.Value>
           <ControlTemplate TargetType="controls:ToolbarButton">
             <Grid x:Name="Root">
-              <Border x:Name="Hover" Background="{DynamicResource NativeIconSurface}" CornerRadius="4" Opacity="0"/>
-              <Border x:Name="Press" Background="{DynamicResource NativeStroke}" CornerRadius="4" Opacity="0"/>
+              <Border x:Name="Hover" Background="{DynamicResource NativeIconSurfaceHover}" CornerRadius="4" Opacity="0"/>
+              <Border x:Name="Press" Background="{DynamicResource NativeIconSurfacePressed}" CornerRadius="4" Opacity="0"/>
               <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="2" CornerRadius="4">
-                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <ContentPresenter x:Name="Glyph" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
             </Grid>
             <ControlTemplate.Triggers>
@@ -51,14 +51,22 @@
               <Trigger Property="State" Value="MouseOver">
                 <Setter TargetName="Hover" Property="Opacity" Value="1"/>
                 <Setter TargetName="Press" Property="Opacity" Value="0"/>
+                <Setter TargetName="Glyph" Property="Opacity" Value="1"/>
               </Trigger>
+              <!-- Pressionado precisa de um segundo sinal além do preenchimento: o glifo cai para
+                   0.8 e o fundo dá mais um passo, senão hover e pressionado ficam iguais. -->
               <Trigger Property="State" Value="Pressed">
                 <Setter TargetName="Hover" Property="Opacity" Value="0"/>
                 <Setter TargetName="Press" Property="Opacity" Value="1"/>
+                <Setter TargetName="Glyph" Property="Opacity" Value="0.8"/>
+              </Trigger>
+              <Trigger Property="State" Value="Normal">
+                <Setter TargetName="Glyph" Property="Opacity" Value="1"/>
               </Trigger>
               <Trigger Property="State" Value="Disabled">
                 <Setter TargetName="Hover" Property="Opacity" Value="0"/>
                 <Setter TargetName="Press" Property="Opacity" Value="0"/>
+                <Setter TargetName="Glyph" Property="Opacity" Value="1"/>
                 <Setter TargetName="Root" Property="Opacity" Value="0.4"/>
               </Trigger>
             </ControlTemplate.Triggers>

@@ -396,7 +396,7 @@ public partial class MainWindow : Window
     }
     private void OpenSettings()
     {
-        var view = new SettingsView(_settings, _updates, RequestUpdateRestart, ShowAdvanced);
+        var view = new SettingsView(_settings, ShowAdvanced);
         view.CloseRequested += async (_, _) => await ReturnHomeAsync();
         ShowPage(view, "Settings");
     }
@@ -417,7 +417,10 @@ public partial class MainWindow : Window
         HomeContent.Visibility = HomeActions.Visibility = Visibility.Collapsed;
         PageHost.Visibility = BackButton.Visibility = Visibility.Visible;
         PageTransition.Show(PageHost);
-        BackButton.Focus();
+        // O foco vai para a página, não para o Voltar: quem abre pelo mouse não deve ver um anel
+        // de foco no botão, e quem usa teclado continua com Shift+Tab chegando nele.
+        page.Focusable = true;
+        page.Focus();
     }
     private async void Back_Click(object sender, RoutedEventArgs e) => await GoBackAsync();
 
@@ -524,7 +527,7 @@ public partial class MainWindow : Window
         // que já não corresponde ao estado.
         if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not SettingsView) return;
         _advancedFromSettings = true;
-        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync), "Advanced");
+        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), "Advanced");
     }
 
     /// <summary>

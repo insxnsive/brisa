@@ -11,26 +11,82 @@ namespace Brisa;
 /// navegação na mesma janela, e um diálogo por cima de outro diálogo era o único lugar do app
 /// onde isso não valia. O botão Voltar do cabeçalho substitui o antigo Close.
 /// </summary>
-public partial class AdvancedView : UserControl
+public partial class AdvancedView : UserControl, IAsyncDisposable
 {
     private readonly IBackendClient _backend;
     // A importação em produção passa pelo mesmo portão de mutação da MainWindow; fixtures usam o padrão.
     private readonly Func<string, Task<CommandResult>>? _import;
     private readonly Action<string, string, bool> _notice;
     private readonly Func<string?> _pickFile;
+    private readonly IUpdateService? _updates;
+    private readonly Action? _restartForUpdate;
 
     public AdvancedView(IBackendClient backend, NativeSnapshot? snapshot,
         Func<string, Task<CommandResult>>? import = null,
         Action<string, string, bool>? notice = null,
-        Func<string?>? pickFile = null)
+        Func<string?>? pickFile = null,
+        IUpdateService? updates = null,
+        Action? restartForUpdate = null)
     {
         InitializeComponent(); _backend = backend; _import = import;
         _notice = notice ?? DefaultNotice;
         _pickFile = pickFile ?? PickFile;
+        _updates = updates; _restartForUpdate = restartForUpdate;
         // Importar e entrar não precisam de WireSock, então um túnel de terceiro ou a falta de
         // elevação não podem esconder o botão. Só um túnel próprio ou uma operação em curso.
         var nativeBusy = snapshot is { Stage: not (null or "idle") };
         ImportButton.IsEnabled = !nativeBusy && snapshot is not { HasOwnedTunnel: true };
+        VersionText.Text = $"Brisa {AppVersion.Current}";
+        if (_updates is null)
+        {
+            UpdateStatusText.Text = "Updates are unavailable in this isolated session.";
+            CheckUpdateButton.IsEnabled = false;
+        }
+        else
+        {
+            _updates.StatusChanged += Updates_StatusChanged;
+            ShowUpdateStatus(_updates.Status);
+        }
+    }
+
+    private void Source_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        e.Handled = true;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/insxnsive/brisa") { UseShellExecute = true }); }
+        catch { UpdateStatusText.Text = "Open github.com/insxnsive/brisa for source and license information."; }
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updates is null) return;
+        CheckUpdateButton.IsEnabled = false;
+        try { await _updates.CheckNowAsync(); }
+        catch { UpdateStatusText.Text = "Updates could not be checked. Try again later."; }
+        finally { if (IsEnabled) CheckUpdateButton.IsEnabled = _updates.Status.Phase is not (UpdatePhase.Checking or UpdatePhase.Downloading); }
+    }
+
+    private void RestartUpdate_Click(object sender, RoutedEventArgs e) => _restartForUpdate?.Invoke();
+
+    private void Updates_StatusChanged(object? sender, UpdateStatus status)
+    {
+        if (!Dispatcher.CheckAccess()) { _ = Dispatcher.BeginInvoke(() => ShowUpdateStatus(status)); return; }
+        ShowUpdateStatus(status);
+    }
+
+    private void ShowUpdateStatus(UpdateStatus status)
+    {
+        UpdateStatusText.Text = status.Message;
+        CheckUpdateButton.IsEnabled = status.Phase is not (UpdatePhase.Checking or UpdatePhase.Downloading);
+        RestartUpdateButton.Visibility = status.Phase == UpdatePhase.Ready ? Visibility.Visible : Visibility.Collapsed;
+        UpdateProgress.Visibility = status.Phase == UpdatePhase.Downloading ? Visibility.Visible : Visibility.Collapsed;
+        UpdateProgress.IsIndeterminate = status.Phase == UpdatePhase.Downloading && status.Progress is null;
+        UpdateProgress.Value = status.Progress ?? 0;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        if (_updates is not null) _updates.StatusChanged -= Updates_StatusChanged;
+        return ValueTask.CompletedTask;
     }
 
     private void DefaultNotice(string message, string title, bool success)

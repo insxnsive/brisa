@@ -161,11 +161,7 @@ internal static class Program
                 Check(host.RenderTransform is System.Windows.Media.TranslateTransform or System.Windows.Media.MatrixTransform,
                     "inline page entrance uses a render transform without layout motion");
                 if (name == "Settings")
-                {
                     ((RadioButton)page.FindName("LightTheme")).IsChecked = true;
-                    Check(((TextBlock)page.FindName("VersionText")).Text.Contains(AppVersion.Current), "Settings shows the packaged Brisa version");
-                    Check(!((Button)page.FindName("CheckUpdateButton")).IsEnabled, "isolated navigation never enables network update checks");
-                }
                 Click(back); Click(back); Pump(() => host.Content is null);
                 Check(home.IsVisible && !back.IsVisible, "Back restores Connection");
                 Check(host.Opacity == 1 && host.RenderTransform is System.Windows.Media.MatrixTransform,
@@ -182,8 +178,18 @@ internal static class Program
             var settingsPage = (UserControl)host.Content;
             Click((Button)settingsPage.FindName("AdvancedButton"));
             Pump(() => host.Content is AdvancedView);
+            Check(!((Button)main.FindName("BackButton")).IsKeyboardFocused, "opening a page does not focus Back");
             Check(host.Content is AdvancedView, "Advanced opens as a page from the Settings page");
             Check(Application.Current.Windows.Count == 1, "Advanced opens in the same window");
+            var advancedPage = (AdvancedView)host.Content;
+            Check(((TextBlock)advancedPage.FindName("VersionText")).Text.Contains(AppVersion.Current), "Advanced shows the packaged Brisa version");
+            Check(!((Button)advancedPage.FindName("CheckUpdateButton")).IsEnabled, "isolated navigation never enables network update checks");
+            var credits = (Expander)advancedPage.FindName("CreditsExpander");
+            Check(credits.Header as string == "License and credits", "the licence sits behind one link");
+            credits.IsExpanded = true; advancedPage.UpdateLayout();
+            var creditText = Flatten(credits).OfType<TextBlock>().Select(t => t.Text).ToList();
+            Check(creditText.Any(t => t.Contains("GPL-3.0")), "the GPL notice is still displayed");
+            Check(creditText.Any(t => t.Contains("GoLiveBypass")), "the upstream attribution is still displayed");
             Click((Button)main.FindName("BackButton"));
             Pump(() => host.Content is SettingsView);
             Check(host.Content is SettingsView, "going back from Advanced returns to Settings");
@@ -488,6 +494,17 @@ internal static class Program
         public void Dispose() { }
         public ValueTask DisposeAsync() { order.Add("update-stopped"); return ValueTask.CompletedTask; }
     }
+    private static IEnumerable<DependencyObject> Flatten(DependencyObject root)
+    {
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var nested in Flatten(child)) yield return nested;
+        }
+    }
+
     private static void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     private static void Spin(int milliseconds)
     {

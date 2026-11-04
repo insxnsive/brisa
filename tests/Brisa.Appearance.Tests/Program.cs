@@ -112,62 +112,64 @@ internal static class Program
                     }
                     if (view is SettingsView)
                     {
-                        Check(view.FindName("UpdatesExpander") is Expander { IsExpanded: false }, "Updates and legal detail start collapsed");
                         ((CheckBox)view.FindName("StartupBox")).IsChecked = true;
                         Check(view.FindName("TrayBox") is null, "close-to-tray is unconditional, not an opt-in setting");
                         window.UpdateLayout();
-                        var updates = (Expander)view.FindName("UpdatesExpander");
-                        Check(updates.HorizontalContentAlignment == HorizontalAlignment.Stretch,
-                            "expanded Updates content stretches to the measured column width");
-                        Check(updates.Content is Grid, "expanded Updates uses a width-constrained content grid");
-                        var scroll = Descendants(view).OfType<ScrollViewer>().First(s => s.Parent is Grid);
+                        foreach (var buttonName in new[] { "AdvancedButton", "CancelButton", "SaveButton" })
+                        {
+                            var button = (Button)view.FindName(buttonName);
+                            var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
+                            var hit = window.InputHitTest(center) as DependencyObject;
+                            while (hit is not null && hit != button) hit = VisualTreeHelper.GetParent(hit);
+                            Check(hit == button, buttonName + " stays reachable on Settings");
+                        }
+                    }
+                    if (view is AdvancedView)
+                    {
+                        var credits = (Expander)view.FindName("CreditsExpander");
+                        Check(!credits.IsExpanded, "credits start collapsed");
+                        Check(!Descendants(credits).OfType<TextBlock>().Any(t => t.IsVisible && t.Text.Contains("GPL-3.0")),
+                            "collapsed credits hide the licence text");
+                        credits.IsExpanded = true;
+                        view.UpdateLayout();
+                        Check(Descendants(credits).OfType<TextBlock>().Any(t => t.Text.Contains("GPL-3.0")),
+                            "the GPL notice is displayed inside the credits");
+                        Check(Descendants(credits).OfType<TextBlock>().Any(t => t.Text.Contains("GoLiveBypass")),
+                            "the upstream attribution is displayed inside the credits");
                         var status = (TextBlock)view.FindName("UpdateStatusText");
                         status.Text = "A versioned Brisa update is ready. Review the release details before restarting. " +
                             "The current connection remains available while the update is prepared in this isolated fixture.";
-                        updates.IsExpanded = true;
-                        foreach (var size in new[] { (460d, 540d), (440d, 520d) })
-                        {
-                            window.Width = size.Item1; window.Height = size.Item2; window.UpdateLayout();
-                            Check(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
-                                $"expanded Settings at {size.Item1}x{size.Item2} fits its horizontal viewport");
-                            foreach (var text in Descendants(updates).OfType<TextBlock>().Where(t => t.IsVisible && t.TextWrapping == TextWrapping.Wrap))
-                            {
-                                var right = text.TranslatePoint(new Point(text.ActualWidth, 0), scroll).X;
-                                Check(right <= scroll.ViewportWidth + 1,
-                                    $"expanded {text.Name} wraps within Settings at {size.Item1}x{size.Item2}");
-                            }
-                            Check(status.ActualHeight >= 48, "long update status wraps into full lines at " + size.Item1 + "x" + size.Item2);
-                            scroll.ScrollToBottom(); window.UpdateLayout();
-                            var updateButton = (Button)view.FindName("CheckUpdateButton");
-                            updateButton.IsEnabled = true; // Hit-test the disabled isolated-session action without invoking it.
-                            var updateCenter = updateButton.TranslatePoint(new Point(updateButton.ActualWidth / 2, updateButton.ActualHeight / 2), window);
-                            var updateHit = window.InputHitTest(updateCenter) as DependencyObject;
-                            while (updateHit is not null && updateHit != updateButton) updateHit = VisualTreeHelper.GetParent(updateHit);
-                            Check(updateHit == updateButton, "expanded Updates action stays visible at " + size.Item1 + "x" + size.Item2);
-                            updateButton.IsEnabled = false;
-                            foreach (var buttonName in new[] { "CancelButton", "SaveButton" })
-                            {
-                                var button = (Button)view.FindName(buttonName);
-                                var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
-                                var hit = window.InputHitTest(center) as DependencyObject;
-                                while (hit is not null && hit != button) hit = VisualTreeHelper.GetParent(hit);
-                                Check(hit == button, buttonName + " stays reachable below expanded Settings");
-                            }
-                        }
-                        // Font scaling approximates content pressure; this does not change OS DPI.
+                        window.Width = 440; window.Height = 520; window.UpdateLayout();
+                        Check(status.TranslatePoint(new Point(status.ActualWidth, 0), view).X <= view.ActualWidth + 1,
+                            "long update status wraps inside Advanced at minimum size");
+                        foreach (var text in Descendants(credits).OfType<TextBlock>().Where(t => t.IsVisible && t.TextWrapping == TextWrapping.Wrap))
+                            Check(text.TranslatePoint(new Point(text.ActualWidth, 0), view).X <= view.ActualWidth + 1,
+                                $"credit line {text.Name} wraps inside Advanced");
+                        // A escala de fonte aproxima pressão de conteúdo; não mexe no DPI do sistema.
                         foreach (var simulatedScale in new[] { 1d, 1.25d, 1.5d, 2d })
                         {
                             status.FontSize = 14 * simulatedScale;
-                            window.Width = 440; window.Height = 520; window.UpdateLayout();
-                            Check(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
-                                $"Settings fits at simulated {simulatedScale:P0} status-text scale");
-                            Check(status.TranslatePoint(new Point(status.ActualWidth, 0), scroll).X <= scroll.ViewportWidth + 1,
-                                $"update status wraps at simulated {simulatedScale:P0} status-text scale");
+                            window.UpdateLayout();
+                            Check(status.TranslatePoint(new Point(status.ActualWidth, 0), view).X <= view.ActualWidth + 1,
+                                $"update status wraps at simulated {simulatedScale:P0} scale on Advanced");
                         }
                         status.FontSize = 14;
-                        updates.IsExpanded = false; scroll.ScrollToTop(); window.UpdateLayout();
+                        var pageScroll = Descendants(view).OfType<ScrollViewer>().First();
+                        pageScroll.ScrollToBottom(); window.UpdateLayout();
+                        var checkButton = (Button)view.FindName("CheckUpdateButton");
+                        checkButton.IsEnabled = true; // Hit-test the disabled isolated-session action without invoking it.
+                        var center = checkButton.TranslatePoint(new Point(checkButton.ActualWidth / 2, checkButton.ActualHeight / 2), window);
+                        var hit = window.InputHitTest(center) as DependencyObject;
+                        while (hit is not null && hit != checkButton) hit = VisualTreeHelper.GetParent(hit);
+                        Check(hit == checkButton, "the update action stays reachable on Advanced");
+                        checkButton.IsEnabled = false;
+                        credits.IsExpanded = false;
+                        // Volta ao estado real antes da captura: o texto longo é só para medir.
+                        status.Text = "Updates are unavailable in this isolated session.";
+                        window.Width = 460; window.Height = 540;
+                        pageScroll.ScrollToTop(); window.UpdateLayout();
                     }
-                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string && (view is not SettingsView || b.Name != "CheckUpdateButton")))
+                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string && b.Name != "CheckUpdateButton"))
                     {
                         Check(button.ActualHeight >= 30, $"{window.GetType().Name}: {button.Content} keeps its height");
                         var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);

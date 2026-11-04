@@ -69,6 +69,10 @@ public sealed class SettingsStore
         app.Resources["NativeSecondary"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#C5C5C5" : "#5D5D5D");
         app.Resources["NativeStroke"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#353535" : "#E5E5E5");
         app.Resources["NativeIconSurface"] = SystemParameters.HighContrast ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#363636" : "#F3F3F3");
+        // Hover e pressionado precisam ser distinguíveis, e no tema claro o fundo da página já é
+        // #F3F3F3: um hover nessa cor seria invisível, então os dois passos descem.
+        app.Resources["NativeIconSurfaceHover"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HighlightBrush : Brush(dark ? "#363636" : "#E8E8E8");
+        app.Resources["NativeIconSurfacePressed"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HighlightBrush : Brush(dark ? "#4A4A4A" : "#DCDCDC");
 
         // Um acento só para "conectado/protegido": o teal da marca. Salmon continua sendo só ação.
         // O fundo é o mesmo teal em baixa opacidade, resolvido por tema porque #125B50 sobre #2B2B2B
