@@ -182,8 +182,19 @@ public partial class MainWindow : Window
         if (state.Snapshot?.Route is { } route)
         {
             RouteText.Text = CountryName(route.Country);
-            RouteServerText.Text = route.PingMs is int ping ? $"Server {route.Server}, {ping} ms" : $"Server {route.Server}";
-            RouteServerText.Visibility = Visibility.Visible;
+            // Sem rótulo de servidor não existe linha: "Server " vazio, ou o marcador interno
+            // "Selected server", seriam lixo na tela em vez de informação.
+            var server = route.Server?.Trim() ?? "";
+            if (server.Length == 0 || string.Equals(server, "Selected server", StringComparison.OrdinalIgnoreCase))
+            {
+                RouteServerText.Text = "";
+                RouteServerText.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                RouteServerText.Text = route.PingMs is int ping ? $"Server {server}, {ping} ms" : $"Server {server}";
+                RouteServerText.Visibility = Visibility.Visible;
+            }
         }
         else
         {

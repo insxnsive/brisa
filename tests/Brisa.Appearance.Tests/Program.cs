@@ -189,6 +189,8 @@ internal static class Program
                 Check(((TextBlock)connected.FindName("RouteChevron")).Text == "\uE72E", "connected route row shows the lock glyph");
                 Check(((TextBlock)connected.FindName("RouteHelper")).Visibility == Visibility.Visible,
                     "connected route row says how to unlock it");
+                Check(((TextBlock)connected.FindName("RouteServerText")).Visibility == Visibility.Collapsed,
+                    "a placeholder server label is never shown as a value");
                 Check(((Button)connected.FindName("RouteButton")).IsTabStop == false || !((Button)connected.FindName("RouteButton")).IsEnabled,
                     "locked route row is not a tab stop");
                 Check(((TextBlock)main.FindName("RouteChevron")).Text == "\uE76C"

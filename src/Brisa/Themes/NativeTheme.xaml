@@ -20,27 +20,46 @@
       <Setter Property="MinWidth" Value="90"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
     </Style>
-    <Style x:Key="ToolbarAction" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-      <Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/>
+    <Style x:Key="ToolbarAction" TargetType="Button">
+      <!-- Template próprio: o do Fluent desenha borda e preenchimento no estado desabilitado, e um
+           ícone indisponível ficava mais chamativo que um disponível. Aqui só existem o glifo, um
+           fundo de hover e o anel de foco. -->
+      <Setter Property="Width" Value="36"/>
+      <Setter Property="Height" Value="36"/>
       <Setter Property="Padding" Value="0"/>
+      <Setter Property="FontSize" Value="16"/>
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
-      <Setter Property="FontSize" Value="16"/>
-      <!-- Desabilitado fica mais discreto, não mais forte: o Fluent pinta um bloco de fundo no
-           botão desabilitado, o que faz um ícone indisponível parecer o elemento principal. -->
-      <Style.Triggers>
-        <Trigger Property="IsEnabled" Value="False">
-          <Setter Property="Background" Value="Transparent"/>
-          <Setter Property="BorderBrush" Value="Transparent"/>
-          <Setter Property="Opacity" Value="0.4"/>
-        </Trigger>
-        <!-- O tema Fluent não desenha foco visível neste botão: sem contorno, quem navega por
-             teclado não vê onde está. O anel usa a cor de texto, não o salmão de ação. -->
-        <Trigger Property="IsKeyboardFocused" Value="True">
-          <Setter Property="BorderBrush" Value="{DynamicResource NativeForeground}"/>
-          <Setter Property="BorderThickness" Value="2"/>
-        </Trigger>
-      </Style.Triggers>
+      <Setter Property="BorderThickness" Value="2"/>
+      <Setter Property="Foreground" Value="{DynamicResource NativeForeground}"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NativeIconSurface}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource NativeStroke}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background" Value="Transparent"/>
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="Opacity" Value="0.4"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource NativeForeground}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
     <Style TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
       <Setter Property="MinHeight" Value="34"/><Setter Property="Padding" Value="10,7"/>
