@@ -265,8 +265,10 @@ foreach (var failure in failures) Console.Error.WriteLine(failure);
         Assert(InstallerDeadline.Decide(start, TimeSpan.FromSeconds(30), start.AddMinutes(2), true) == InstallerDeadline.Expiry.None);
         Assert(InstallerDeadline.Decide(start, TimeSpan.FromMinutes(3), start.AddMinutes(4), false) == InstallerDeadline.Expiry.Connect);
         Assert(InstallerDeadline.Decide(start, TimeSpan.FromMinutes(29), start.AddMinutes(31), true) == InstallerDeadline.Expiry.Ceiling);
-        Assert(InstallerDeadline.IsInstallerActive(start, start.AddSeconds(2)));
-        Assert(!InstallerDeadline.IsInstallerActive(start, start.AddSeconds(4)));
+        // The poll cadence can be about 2.4 s per tick, so the grace must cover a slow poll.
+        Assert(InstallerDeadline.IsInstallerActive(start, start.AddSeconds(5)));
+        Assert(!InstallerDeadline.IsInstallerActive(start, start.AddSeconds(7)));
+        Assert(InstallerDeadline.InstallerGrace >= TimeSpan.FromSeconds(6));
         Assert(!InstallerDeadline.IsInstallerActive(null, start));
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed");

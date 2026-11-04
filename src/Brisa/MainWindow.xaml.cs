@@ -18,9 +18,10 @@ public partial class MainWindow : Window
     private readonly Action<string> _exitWarning;
     private readonly Action<string> _notice;
     private readonly Func<string, bool> _exitConfirm;
-    // Último instante em que o instalador visível do fornecedor estava na tela; o prazo do
-    // connect pausa enquanto isso, e o teto de 30 minutos continua valendo.
-    private DateTime? _installerStageSeenAt;
+    // Último instante em que o instalador visível do fornecedor estava na tela, em ticks (0 =
+    // nenhum). A UI escreve e a tarefa do prazo lê, então o valor é lido e escrito com Volatile:
+    // um DateTime? de 16 bytes poderia ser lido pela metade.
+    private long _installerStageSeenTicks;
     private readonly SemaphoreSlim _operation = new(1, 1);
     private HomeState _state = new(ConnectionPhase.Loading, null);
     private CancellationTokenSource _lifetime = new();
@@ -239,7 +240,7 @@ public partial class MainWindow : Window
                 };
                 // Advisory only, and only while the operation that started it still owns the UI:
                 // a late poll must not repaint a state the user has already left.
-                _installerStageSeenAt = progress.Stage == "installing-wiresock" ? DateTime.UtcNow : null;
+                Volatile.Write(ref _installerStageSeenTicks, progress.Stage == "installing-wiresock" ? DateTime.UtcNow.Ticks : 0L);
                 if (detail is not null && !pending.IsCompleted && !_closing
                     && _operationOwnsUi && _operationEpoch == ownerEpoch) SetState(_state with { Detail = detail });
             }
@@ -255,25 +256,33 @@ public partial class MainWindow : Window
         var deadlineExpired = false;
         using var deadline = timeout.Token.Register(() => deadlineExpired = true);
         var ceilingExpired = false;
-        _installerStageSeenAt = null;
+        var connectExpired = false;
+        Volatile.Write(ref _installerStageSeenTicks, 0L);
         // O prazo de três minutos mede o tempo em que o app está trabalhando. Enquanto o
         // instalador visível do fornecedor está aberto, esse tempo não corre; o teto de trinta
         // minutos continua correndo e é o que impede uma janela ocupada para sempre.
         var startedAt = DateTime.UtcNow;
         var waited = TimeSpan.Zero;
         var lastTick = startedAt;
+        // O laço tem o próprio CTS: ele pode terminar depois que este método retornar e descartar
+        // `timeout`, e cancelar um CTS descartado lançaria em uma tarefa não observada.
+        using var watchdog = new CancellationTokenSource();
         _ = Task.Run(async () =>
         {
-            while (!timeout.IsCancellationRequested)
+            while (!watchdog.IsCancellationRequested)
             {
-                try { await Task.Delay(TimeSpan.FromMilliseconds(500), timeout.Token); } catch { return; }
+                try { await Task.Delay(TimeSpan.FromMilliseconds(500), watchdog.Token); } catch { return; }
                 var now = DateTime.UtcNow;
-                var installerActive = InstallerDeadline.IsInstallerActive(_installerStageSeenAt, now);
+                var ticks = Volatile.Read(ref _installerStageSeenTicks);
+                var seenAt = ticks == 0 ? (DateTime?)null : new DateTime(ticks, DateTimeKind.Utc);
+                var installerActive = InstallerDeadline.IsInstallerActive(seenAt, now);
                 if (!installerActive) waited += now - lastTick;
                 lastTick = now;
                 var expiry = InstallerDeadline.Decide(startedAt, waited, now, installerActive);
                 if (expiry == InstallerDeadline.Expiry.None) continue;
+                if (watchdog.IsCancellationRequested) return;
                 ceilingExpired = expiry == InstallerDeadline.Expiry.Ceiling;
+                connectExpired = expiry == InstallerDeadline.Expiry.Connect;
                 timeout.Cancel();
                 return;
             }
@@ -311,8 +320,18 @@ public partial class MainWindow : Window
         {
             // The installer never closed. Do not let this look like an ordinary cancel: say what
             // is on screen and leave the vendor process alone, since the backend waits for it.
-            try { await _backend.CancelAsync(); } catch { /* the message matters more than the ack */ }
+            // Only an acknowledgement is asked for: the full cancel waits for idle, which cannot
+            // happen while the installer is open, so it would block the message for 45 seconds.
+            using var ack = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try { await _backend.CommandAsync("cancel", new { }, ack.Token); } catch { }
             return new(false, "SDK_INSTALLER_STILL_OPEN", "The WireSock installer is still open. Finish or cancel it in the Windows installer window, then try again.");
+        }
+        catch (OperationCanceledException) when (deadlineExpired && connectExpired)
+        {
+            // The app spent its working budget and gave up. The user did not cancel, so this must
+            // not read as a quiet refresh.
+            try { await _backend.CancelAsync(); } catch { }
+            return new(false, "CONNECT_TIMEOUT", "Connecting took too long and was stopped. Check the connection status, then try again.");
         }
         catch (OperationCanceledException) when (deadlineExpired && presented)
         {

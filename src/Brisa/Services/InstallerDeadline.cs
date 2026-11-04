@@ -11,8 +11,12 @@ public static class InstallerDeadline
     public static readonly TimeSpan Connect = TimeSpan.FromMinutes(3);
     public static readonly TimeSpan Ceiling = TimeSpan.FromMinutes(30);
 
-    /// <summary>How long after the last report the installer stage still counts as on screen.</summary>
-    public static readonly TimeSpan InstallerGrace = TimeSpan.FromSeconds(3);
+    /// <summary>
+    /// How long after the last report the installer stage still counts as on screen. The poll
+    /// cadence is a 400 ms delay plus a progress call that can take up to 2 s, and one failed poll
+    /// doubles that, so a tighter grace would leak installer time into the working budget.
+    /// </summary>
+    public static readonly TimeSpan InstallerGrace = TimeSpan.FromSeconds(6);
 
     public enum Expiry { None, Connect, Ceiling }
 
