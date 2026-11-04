@@ -15,19 +15,21 @@ public static class ExitGuard
 
     public static async Task<ExitDecision> DecideAsync(IBackendClient backend, bool nativeOperationMayBeActive)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        // Per-call budgets: a single token spanning the snapshots and the disconnect made a slow
+        // stop look like a failed exit, because the disconnect alone can outlast it.
+        using var snapshotBudget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         Brisa.Models.NativeSnapshot state;
         try
         {
             await GetCancellation(backend).WaitAsync(TimeSpan.FromSeconds(6));
-            state = await backend.SnapshotAsync(timeout.Token);
+            state = await backend.SnapshotAsync(snapshotBudget.Token);
         }
         catch (BackendRefusalException refusal) when (refusal.Code == "SDK_INSTALL_SUPERVISION_LOST")
         {
             // A refused cancel is expected in exactly the state this guard exists for. The raw
             // inspection below decides whether leaving is safe; rethrowing here would keep the
             // app open forever, which is the trap this path is meant to remove.
-            state = await backend.SnapshotAsync(timeout.Token);
+            state = await backend.SnapshotAsync(snapshotBudget.Token);
         }
         catch (BackendUnavailableException) when (!nativeOperationMayBeActive)
         {
@@ -46,9 +48,13 @@ public static class ExitGuard
             throw new InvalidOperationException("Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel and retry exiting. Brisa will stay open.");
         if (state.HasOwnedTunnel && state.Reliable && !state.ExternalTunnel)
         {
-            var result = await backend.CommandAsync("disconnect", new { }, timeout.Token);
+            // A stop plus the Discord relaunch can take well over the snapshot budget, so the
+            // disconnect gets its own, larger one.
+            using var disconnectBudget = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var result = await backend.CommandAsync("disconnect", new { }, disconnectBudget.Token);
             if (!result.Success) throw new InvalidOperationException("The native tunnel could not be stopped safely. The app will stay open.");
-            var after = await backend.SnapshotAsync(timeout.Token);
+            using var afterBudget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var after = await backend.SnapshotAsync(afterBudget.Token);
             if (after.HasOwnedTunnel || !after.Reliable)
                 throw new InvalidOperationException("Disconnection could not be confirmed. The app will stay open.");
         }

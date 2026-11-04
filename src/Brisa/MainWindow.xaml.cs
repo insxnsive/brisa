@@ -267,6 +267,8 @@ public partial class MainWindow : Window
         // O laço tem o próprio CTS: ele pode terminar depois que este método retornar e descartar
         // `timeout`, e cancelar um CTS descartado lançaria em uma tarefa não observada.
         using var watchdog = new CancellationTokenSource();
+        // Descartar não cancela: sem o Cancel no finally do try abaixo, o laço ainda pode passar
+        // pela checagem e cancelar um `timeout` já descartado em uma tarefa não observada.
         _ = Task.Run(async () =>
         {
             while (!watchdog.IsCancellationRequested)
@@ -339,6 +341,7 @@ public partial class MainWindow : Window
             return new(false, "VERIFICATION_TIMEOUT", "Verification timed out. Try again.");
         }
         catch (OperationCanceledException) { await _backend.CancelAsync(); throw; }
+        finally { watchdog.Cancel(); }
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)

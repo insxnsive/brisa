@@ -57,6 +57,7 @@ function sessionLease() {
 
 function fakeRuntime({ snapshots, results = {}, advanceMs = 0, deferAtSnapshot = 0 }) {
   const calls = [];
+  const snapshotTimeouts = [];
   const clock = { t: 0 };
   let index = 0;
   let snapshotCount = 0;
@@ -64,13 +65,15 @@ function fakeRuntime({ snapshots, results = {}, advanceMs = 0, deferAtSnapshot =
   deferred.promise = new Promise(resolve => { deferred.resolve = resolve; });
   return {
     calls,
+    snapshotTimeouts,
     clock,
     deferred,
     runtime: {
       now: () => clock.t,
       sleep: async (ms) => { clock.t += ms; },
-      snapshot: async () => {
+      snapshot: async (names, timeoutMs) => {
         calls.push("snapshot");
+        snapshotTimeouts.push(timeoutMs);
         snapshotCount += 1;
         clock.t += advanceMs;
         const snapshot = snapshots[Math.min(index, snapshots.length - 1)];
@@ -302,4 +305,24 @@ test("a tight budget skips the optional actions and still reports a down tunnel 
   assert.equal(result.dnsFlushed, false);
   assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no elevated reset on a tight budget");
   assert.ok(!calls.some(call => call.startsWith("ipconfig.exe")), "no flush on a tight budget");
+});
+
+test("every snapshot is asked for a real timeout", async () => {
+  // Finding 7 follow-up: timeout 0 in execFile means "wait forever", so no snapshot may be asked
+  // for one. The final read uses a fixed bound instead of the remaining budget.
+  const { runtime, calls, snapshotTimeouts } = fakeRuntime({
+    snapshots: [activeOwned, inactive, inactive, inactive],
+  });
+  const { lease } = sessionLease();
+  const result = await stopOwnedWireSock(config, quietLog, {
+    runtime,
+    candidateLease: lease, isTrusted: () => true,
+    timeoutMs: 20_000,
+    reserveMs: 0,
+    freshness: async () => true,
+  });
+  assert.equal(result.stopped, true, "a down tunnel is still reported stopped");
+  assert.ok(snapshotTimeouts.length > 0);
+  assert.ok(snapshotTimeouts.every(value => value > 0), "no snapshot may run without a timeout");
+  assert.ok(calls.some(call => call === "snapshot"));
 });

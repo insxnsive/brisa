@@ -782,9 +782,7 @@ const WIRESOCK_INSPECTION_RETRIES = 6;
 // orçamento de 35 s é do stop inteiro, não de cada passo.
 // ---------------------------------------------------------------------------
 
-// O reset opcional tem timeout de 30 s e precisa caber junto da reserva final, senão a
-// regra de canAfford o desligaria para sempre em produção.
-const STOP_BUDGET_MS = 45_000;
+const STOP_BUDGET_MS = 35_000;
 // Reserva para a verificação residual final: sem ela, ações opcionais podem consumir o
 // orçamento inteiro e um túnel já comprovadamente inativo é reportado como stopped:false.
 const STOP_RESERVE_MS = 10_000;
@@ -793,7 +791,8 @@ const STOP_STEP_TIMEOUT_MS = {
     snapshot: 8_000,
     serviceStop: 30_000,
     taskkill: 15_000,
-    networkLockReset: 30_000,
+    // O reset é rede de segurança (o túnel já sobe com -network-lock disabled) e o CLI é curto.
+    networkLockReset: 10_000,
     dnsReset: 10_000,
     flushDns: 10_000,
 } as const;
@@ -1009,8 +1008,11 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
 
     // A classificação continua sendo a mesma de inspectWireSock, mas sempre com um snapshot
     // não nulo: o caminho de snapshot ausente cai em serviceRunningFromSc, que é síncrono.
-    const inspectAsync = async (): Promise<WireSockInspection> => {
-        const snapshot = await runtime.snapshot(VPN_SERVICE_NAMES, scope.budget(STOP_STEP_TIMEOUT_MS.snapshot), scope.signal);
+    const inspectAsync = async (timeoutMs: number = scope.budget(STOP_STEP_TIMEOUT_MS.snapshot)): Promise<WireSockInspection> => {
+        // Timeout zero em execFile significa sem timeout: a verificação residual precisa de um
+        // prazo próprio mesmo com o orçamento esgotado, senão uma consulta CIM travada prende a
+        // parada para sempre.
+        const snapshot = await runtime.snapshot(VPN_SERVICE_NAMES, timeoutMs, scope.signal);
         lastSnapshot = snapshot;
         if (!snapshot) {
             return {
@@ -1028,12 +1030,12 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         return inspectWireSock(configPath, undefined, snapshot);
     };
 
-    const inspectUntilReliable = async (): Promise<WireSockInspection> => {
-        let inspection = await inspectAsync();
+    const inspectUntilReliable = async (timeoutMs?: number): Promise<WireSockInspection> => {
+        let inspection = await inspectAsync(timeoutMs);
         for (let attempt = 1; !inspection.reliable && attempt < WIRESOCK_INSPECTION_RETRIES && scope.live; attempt++) {
             await runtime.sleep(500, scope.signal);
             if (!scope.live) break;
-            inspection = await inspectAsync();
+            inspection = await inspectAsync(timeoutMs);
         }
         return inspection;
     };
@@ -1170,9 +1172,11 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         }
 
         // A reserva existe para isto: se o orçamento acabou apesar dela, ainda vale ler o estado
-        // final. Um erro de cancelamento continua valendo; um prazo estourado, não.
+        // final, com um prazo próprio. Uma leitura feita depois do prazo continua sendo evidência
+        // atual; só o cancelamento deve descartá-la.
         if (scope.aborted) throw new StopCancelledError();
-        const residual = await inspectUntilReliable();
+        const residual = await inspectUntilReliable(STOP_STEP_TIMEOUT_MS.snapshot);
+        if (scope.aborted) throw new StopCancelledError();
         last = residual;
         // O veredito só vale se o stop inteiro ainda estiver vivo: um abort ou um orçamento
         // esgotado durante a última leitura não pode virar stopped:true.
