@@ -14,17 +14,17 @@ test("the log opens with the plain-language header and a UTC stamp", () => {
 test("only app-owned codes pass, whatever their shape", () => {
   const text = renderSupportLog({
     generatedAt: at,
-    facts: { discordFlavour: "PTB", mode: "proton", protocol: "wireguard_udp", theme: "dark", phase: "connected" },
+    facts: { discordFlavour: "PTB", mode: "proton", protocol: "wireguard_udp", phase: "connected" },
   });
   assert.match(text, /^Discord flavour: PTB$/m);
   assert.match(text, /^Mode: PROTON$/m);
   assert.match(text, /^Protocol: WIREGUARD_UDP$/m);
-  assert.match(text, /^Theme: DARK$/m);
+  assert.doesNotMatch(text, /^Theme:/m, "the product does not emit a theme, so the log has no theme line");
   assert.match(text, /^Phase: CONNECTED$/m);
 
   const bad = renderSupportLog({
     generatedAt: at,
-    facts: { discordFlavour: "NATE", mode: "someone", theme: "C:\\Users\\nate", phase: "NATE" },
+    facts: { discordFlavour: "NATE", mode: "someone", phase: "NATE" },
   });
   assert.doesNotMatch(bad, /NATE/);
   assert.doesNotMatch(bad, /someone/);
@@ -51,6 +51,13 @@ test("elevation, trust verdict and route country are booleans and codes, nothing
   assert.match(text, /^Route check: probe_failed$/m);
   assert.match(text, /^Stage: idle$/m);
   assert.doesNotMatch(text, /Route country: Brasil/, "a full country name is not accepted");
+});
+
+test("the route verdict is an explicit allowlist, not any lowercase word", () => {
+  for (const verdict of ["not_checked", "probe_failed", "discord_failed", "same_as_direct", "verified"])
+    assert.match(renderSupportLog({ generatedAt: at, facts: { routeCheck: verdict } }), new RegExp(`^Route check: ${verdict}$`, "m"));
+  const invented = renderSupportLog({ generatedAt: at, facts: { routeCheck: "looks_like_a_code" } });
+  assert.doesNotMatch(invented, /Route check/);
 });
 
 test("events are kept only when they are already the redacted shape", () => {

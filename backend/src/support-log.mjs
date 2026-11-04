@@ -11,13 +11,13 @@ const CODES = Object.freeze({
     trustVerdict: new Set(["TRUSTED", "UNTRUSTED"]),
     mode: new Set(["PROTON", "CUSTOM", "NONE"]),
     protocol: new Set(["WIREGUARD_UDP"]),
-    theme: new Set(["SYSTEM", "LIGHT", "DARK"]),
     phase: new Set(["DISCONNECTED", "CONNECTING", "CONNECTED", "DISCONNECTING", "LIMITED", "BLOCKED", "ERROR"]),
 });
 
 const SLUG = /^[a-z][a-z-]{1,31}$/;
-// O veredito da rota é um código do app em minúsculas com sublinhado (probe_failed, not_checked).
-const ROUTE_CODE = /^[a-z][a-z0-9_]{1,31}$/;
+// O veredito da rota é um código do app em minúsculas com sublinhado, e está na lista explícita:
+// estes são os únicos valores que route-verification.mjs produz.
+const ROUTE_CHECKS = new Set(["not_checked", "probe_failed", "discord_failed", "same_as_direct", "verified"]);
 const ISO_COUNTRY = /^[A-Z]{2}$/;
 const EVENT_LINE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z [a-z][a-z-]{1,31} [A-Z][A-Z0-9_]{2,47}( [A-Za-z][A-Za-z0-9]{0,23}=[A-Za-z0-9_.-]{1,47}){0,6}$/;
 
@@ -44,12 +44,11 @@ export function renderSupportLog({ generatedAt, facts = {}, events = [] }) {
     add("WireSock trust", code("trustVerdict", facts.trustVerdict));
     add("Mode", code("mode", facts.mode?.toUpperCase?.()));
     add("Protocol", code("protocol", facts.protocol?.toUpperCase?.()));
-    add("Theme", code("theme", facts.theme?.toUpperCase?.()));
     add("Phase", code("phase", facts.phase?.toUpperCase?.()));
     if (typeof facts.stage === "string" && SLUG.test(facts.stage)) lines.push(`Stage: ${facts.stage}`);
     // O veredito da checagem de rota é um código do app (probe_failed, verified...), não prosa do
     // fornecedor: continua no log porque é o que a pessoa mais precisa no suporte.
-    if (typeof facts.routeCheck === "string" && ROUTE_CODE.test(facts.routeCheck)) lines.push(`Route check: ${facts.routeCheck}`);
+    if (ROUTE_CHECKS.has(facts.routeCheck)) lines.push(`Route check: ${facts.routeCheck}`);
     // O país é a rota escolhida pelo usuário, não a localização dele.
     if (typeof facts.routeCountry === "string" && ISO_COUNTRY.test(facts.routeCountry)) lines.push(`Route country: ${facts.routeCountry}`);
 

@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using Brisa.Models;
@@ -14,6 +15,7 @@ namespace Brisa;
 public partial class AdvancedView : UserControl, IAsyncDisposable
 {
     private bool _logReady;
+    private readonly System.Windows.Threading.DispatcherTimer _noticeTimer;
     private readonly IBackendClient _backend;
     // A importação em produção passa pelo mesmo portão de mutação da MainWindow; fixtures usam o padrão.
     private readonly Func<string, Task<CommandResult>>? _import;
@@ -29,6 +31,8 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         IUpdateService? updates = null,
         Action? restartForUpdate = null)
     {
+        _noticeTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        _noticeTimer.Tick += (_, _) => { _noticeTimer.Stop(); LogNotice.Text = ""; };
         InitializeComponent(); _backend = backend; _import = import;
         _notice = notice ?? DefaultNotice;
         _pickFile = pickFile ?? PickFile;
@@ -133,6 +137,10 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         {
             var text = await _backend.DiagnosticsAsync();
             LogBox.Text = text;
+            // O log abre no começo: a primeira linha é o aviso do que o arquivo não contém, e é
+            // justamente o que a pessoa precisa ler antes de enviar.
+            LogBox.CaretIndex = 0;
+            LogBox.ScrollToHome();
             _logReady = !string.IsNullOrWhiteSpace(text);
         }
         catch
@@ -164,16 +172,24 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         try
         {
             System.IO.File.WriteAllText(dialog.FileName, LogBox.Text, new System.Text.UTF8Encoding(false));
-            LogNotice.Text = "Log saved.";
+            Announce("Log saved.");
         }
-        catch { LogNotice.Text = "The log could not be saved."; }
+        catch { Announce("The log could not be saved."); }
     }
 
     private void CopyLog_Click(object sender, RoutedEventArgs e)
     {
         if (!_logReady) return;
-        try { System.Windows.Clipboard.SetText(LogBox.Text); LogNotice.Text = "Log copied."; }
-        catch { LogNotice.Text = "The log could not be copied."; }
+        try { System.Windows.Clipboard.SetText(LogBox.Text); Announce("Log copied."); }
+        catch { Announce("The log could not be copied."); }
+    }
+
+    /// Aviso passageiro: some sozinho, para não envelhecer na tela nem ser lido de novo por engano.
+    private void Announce(string text)
+    {
+        LogNotice.Text = text;
+        _noticeTimer.Stop();
+        _noticeTimer.Start();
     }
 
     public static string SupportLogFileName(DateTime utc) =>

@@ -51,14 +51,20 @@ public sealed class UiTestBackendClient : IBackendClient
             "WireSock trust: TRUSTED",
             "Mode: PROTON",
             "Protocol: WIREGUARD_UDP",
-            "Theme: DARK",
             "Phase: CONNECTED",
             "Stage: idle",
             "Route country: HT",
             "Route check: verified",
             "",
             "Events (this session):",
-            $"{now.AddMinutes(-2):yyyy-MM-ddTHH:mm:ss.fffZ} startup NOT_ELEVATED",
+            $"{now.AddMinutes(-9):yyyy-MM-ddTHH:mm:ss.fffZ} startup NOT_ELEVATED",
+            $"{now.AddMinutes(-8):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_CANDIDATE_UNTRUSTED riskLevel=2",
+            $"{now.AddMinutes(-7):yyyy-MM-ddTHH:mm:ss.fffZ} installing-wiresock SDK_INSTALL_SUPERVISION_LOST exitCode=1",
+            $"{now.AddMinutes(-6):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_CLIENT_EXITED exitCode=1",
+            $"{now.AddMinutes(-5):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_RETRY_SCHEDULED attempt=2",
+            $"{now.AddMinutes(-4):yyyy-MM-ddTHH:mm:ss.fffZ} stopping-tunnel STOP_TIMEOUT_EXPIRED budgetMs=35000",
+            $"{now.AddMinutes(-3):yyyy-MM-ddTHH:mm:ss.fffZ} startup DISCORD_DISCOVERY_FAILED apps=0",
+            $"{now.AddMinutes(-2):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel MEMBER_JOIN_TIMEOUT memberId=5 idle=false",
             $"{now.AddMinutes(-1):yyyy-MM-ddTHH:mm:ss.fffZ} starting-tunnel START_CLIENT_EXITED exitCode=1 timedOut=false"));
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

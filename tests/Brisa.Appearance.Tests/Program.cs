@@ -120,6 +120,13 @@ internal static class Program
                         Check(!save.IsEnabled && !copy.IsEnabled, "save and copy stay off until a log exists");
                         Check(box.IsReadOnly, "the preview is read-only");
                         Check(box.Text == "No log generated yet.", "the preview starts empty, not with sample text");
+                        // O cabeçalho tem de caber: sem rolagem horizontal e com quebra de linha.
+                        Check(box.TextWrapping == TextWrapping.Wrap, "the preview wraps instead of scrolling sideways");
+                        Check(box.HorizontalScrollBarVisibility == ScrollBarVisibility.Disabled, "no horizontal scrollbar sits over the log");
+                        Check(box.ActualHeight >= 150, "the preview is about ten lines tall");
+                        var notice = (TextBlock)advanced.FindName("LogNotice");
+                        Check(System.Windows.Automation.AutomationProperties.GetLiveSetting(notice) == System.Windows.Automation.AutomationLiveSetting.Polite,
+                            "the copy confirmation is announced politely");
                         Check(AdvancedView.SupportLogFileName(new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc)) == "brisa-log-20260304-0506.txt",
                             "the default file name is the UTC date and time");
                         Check(Descendants(view).OfType<Button>().Any(b => b.Name == "LogButton" && (b.Content as string) == "Generate log"),

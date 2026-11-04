@@ -17,8 +17,10 @@
       </WrapPanel>
       <!-- O log é só isto: os bytes que o backend produziu, sem a interface remontar linha nenhuma.
            Salvar e copiar ficam desabilitados até existir um log, para não gerar arquivo vazio. -->
-      <TextBox x:Name="LogBox" Margin="0,12,0,0" Height="90" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+      <!-- Sem barra horizontal: o texto quebra, então nada fica escondido à direita do usuário.
+           A altura é de umas dez linhas e a página rola, para o cabeçalho inteiro caber. -->
+      <TextBox x:Name="LogBox" Margin="0,12,0,0" Height="176" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                FontFamily="Cascadia Mono, Consolas" FontSize="12" AutomationProperties.Name="Support log preview" Text="No log generated yet."/>
       <WrapPanel Margin="0,6,0,0">
         <Button x:Name="SaveLogButton" Click="SaveLog_Click" Content="Save…" IsEnabled="False" MinWidth="90"/>
