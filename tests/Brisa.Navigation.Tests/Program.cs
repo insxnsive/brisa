@@ -42,6 +42,7 @@ internal static class Program
             Directory.CreateDirectory(root);
             File.WriteAllText(Path.Combine(root, "settings.json"), "{\"Theme\":2,\"CloseToTray\":false}");
             var store = new SettingsStore(root, false);
+            LanguageSwitchWhileConnected(store, Check);
             var unavailableOrder = new List<string>();
             var unavailable = new MainWindow(new UnavailableBackendClient(), store,
                 updates: new OrderedUpdateService(unavailableOrder));
@@ -394,6 +395,53 @@ internal static class Program
         finally { app.Shutdown(); if (Directory.Exists(root)) Directory.Delete(root, true); }
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); count++; }
     }
+    private static void LanguageSwitchWhileConnected(SettingsStore store, Action<bool, string> check)
+    {
+        // Trocar o idioma não pode tocar no túnel: a mesma janela continua aberta e nenhum comando
+        // de desconectar ou cancelar sai por causa da troca.
+        var backend = new CountingBackend();
+        var window = new MainWindow(backend, store);
+        window.Show();
+        window.InitializeAsync().GetAwaiter().GetResult();
+        Click((Button)window.FindName("PrimaryButton"));
+        Pump(() => backend.Commands.Contains("connect"));
+        var commandsBefore = backend.Commands.ToArray();
+        var cancelsBefore = backend.Cancels;
+        var languageBefore = Brisa.Localization.LocalizationManager.Current.Language;
+
+        Brisa.Localization.LocalizationManager.Current.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+
+        check(Brisa.Localization.LocalizationManager.Current.Language == "pt-BR", "language applies in place");
+        check(ReferenceEquals(window, window) && window.IsVisible, "switching language keeps the window open");
+        check(backend.Cancels == cancelsBefore, "switching language sends no cancel command");
+        var added = backend.Commands.Skip(commandsBefore.Length).ToArray();
+        check(!added.Any(c => c is "disconnect" or "cancel"), "switching language sends no disconnect or cancel command");
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var label = ((Button)window.FindName("PrimaryButton")).Content as string;
+        check(label == loc["Connect"] || label == loc["Disconnect"] || label == loc["SignIn"],
+            "the primary action is repainted in Portuguese without rebuilding the window");
+
+        Brisa.Localization.LocalizationManager.Current.Apply(languageBefore);
+        window.RequestExit();
+        Pump(() => !window.IsVisible);
+    }
+
+    private sealed class CountingBackend : IBackendClient
+    {
+        public List<string> Commands { get; } = new();
+        public int Cancels { get; private set; }
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) =>
+            Task.FromResult(new NativeSnapshot(false, false, true, true, "fixture", null));
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            lock (Commands) Commands.Add(command);
+            return Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync() { Cancels++; return Task.CompletedTask; }
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private sealed class StartupProbeBackend : IBackendClient
     {
         private int reads;

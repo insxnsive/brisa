@@ -140,6 +140,14 @@ public partial class MainWindow : Window
         _exitConfirm = exitConfirm ?? (message => MessageBox.Show(this, message, "Exit Brisa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes);
         _notice = notice ?? (message => { MessageBox.Show(this, message, "Route", MessageBoxButton.OK, MessageBoxImage.Warning); });
         SetState(_state);
+        // Troca de idioma repinta esta janela, que continua a mesma: nada é fechado, então o túnel
+        // não passa por OnClosing nem pelo ExitGuard.
+        Localization.LocalizationManager.Current.PropertyChanged += (_, _) =>
+        {
+            if (_closing) return;
+            SetState(_state);
+            RenderDetails();
+        };
         _statusTimer.Tick += RefreshStatus;
         _detailsTimer.Tick += (_, _) => RenderDetails();
         ChartHost.SizeChanged += (_, _) => DrawChart();

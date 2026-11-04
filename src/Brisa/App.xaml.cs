@@ -29,8 +29,9 @@ public partial class App : System.Windows.Application
     {
        // A interface é em inglês até o seletor de idioma existir. Fixar a cultura mantém datas e
         // números consistentes com esse idioma; os nomes de país usam EnglishName pelo mesmo motivo.
-        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
-        System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+        // A cultura de formatação neutra evita herdar a do Windows; o idioma real é aplicado
+        // abaixo, quando o SettingsStore com o diretório certo já existe.
+        System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
         var testMode = e.Args.Contains("--ui-test", StringComparer.OrdinalIgnoreCase);
         var smokeIndex = Array.FindIndex(e.Args, a => a.Equals("--smoke-test", StringComparison.OrdinalIgnoreCase));
         var smokeOutput = smokeIndex >= 0 && smokeIndex + 1 < e.Args.Length ? Path.GetFullPath(e.Args[smokeIndex + 1]) : null;
@@ -55,6 +56,9 @@ public partial class App : System.Windows.Application
         if (isolated && e.Args.Contains("--no-details", StringComparer.OrdinalIgnoreCase))
             settings.Save(settings.Current with { ShowDetails = false });
         settings.ApplyTheme();
+        // Idioma salvo, aplicado depois que o SettingsStore (e o diretório de teste, quando houver)
+        // estão definidos. Nenhuma janela existe ainda, então nada é reconstruído.
+        Brisa.Localization.LocalizationManager.Current.Apply(settings.Current.Language);
         // Visual fixtures only: --route=HT gives the isolated backend a route so the Home card can be
         // photographed in a real state instead of "Automatic".
         var routeArg = isolated ? e.Args.FirstOrDefault(a => a.StartsWith("--route=", StringComparison.Ordinal)) : null;

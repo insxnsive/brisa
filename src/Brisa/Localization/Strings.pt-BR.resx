@@ -40,4 +40,21 @@
   <data name="SaveLogDialogTitle" xml:space="preserve"><value>Salvar log</value></data>
   <data name="ImportDialogTitle" xml:space="preserve"><value>Importar configuração do WireGuard</value></data>
   <data name="ImportDialogFilter" xml:space="preserve"><value>Configuração do WireGuard (*.conf)|*.conf</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="AdvancedTooltip" xml:space="preserve"><value>Importe uma configuração ou veja o diagnóstico</value></data>
+  <data name="SettingsSaveFailed" xml:space="preserve"><value>Não foi possível salvar as configurações. Tente de novo.</value></data>
+  <data name="Connect" xml:space="preserve"><value>Conectar</value></data>
+  <data name="Disconnect" xml:space="preserve"><value>Desconectar</value></data>
+  <data name="StatusChecking" xml:space="preserve"><value>Verificando o status…</value></data>
+  <data name="StatusConnecting" xml:space="preserve"><value>Conectando…</value></data>
+  <data name="StatusDisconnecting" xml:space="preserve"><value>Desconectando…</value></data>
+  <data name="StatusOptimizing" xml:space="preserve"><value>Otimizando a rota…</value></data>
+  <data name="StatusConnected" xml:space="preserve"><value>Conectado</value></data>
+  <data name="StatusUnverified" xml:space="preserve"><value>Não verificado</value></data>
+  <data name="StatusUnavailable" xml:space="preserve"><value>Indisponível</value></data>
+  <data name="StatusAdministratorRequired" xml:space="preserve"><value>Administrador necessário</value></data>
+  <data name="StatusError" xml:space="preserve"><value>Não foi possível carregar o status</value></data>
+  <data name="StatusDisconnected" xml:space="preserve"><value>Desconectado</value></data>
+  <data name="ExitBrisa" xml:space="preserve"><value>Sair do Brisa</value></data>
+  <data name="SignIn" xml:space="preserve"><value>Entrar</value></data>
 </root>

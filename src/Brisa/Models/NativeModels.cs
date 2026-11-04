@@ -36,22 +36,24 @@ public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, 
 {
     public string StatusText => Phase switch
     {
-        ConnectionPhase.Loading => "Checking status…",
-        ConnectionPhase.Connecting => "Connecting…",
-        ConnectionPhase.Disconnecting => "Disconnecting…",
-        ConnectionPhase.Optimizing => "Optimizing route…",
-        ConnectionPhase.Connected => "Connected",
-        ConnectionPhase.Unverified => "Not verified",
-        ConnectionPhase.Blocked => "Unavailable",
-        ConnectionPhase.Limited => "Administrator required",
-        ConnectionPhase.Error => "Couldn’t load status",
-        _ => "Disconnected"
+        ConnectionPhase.Loading => Loc("StatusChecking"),
+        ConnectionPhase.Connecting => Loc("StatusConnecting"),
+        ConnectionPhase.Disconnecting => Loc("StatusDisconnecting"),
+        ConnectionPhase.Optimizing => Loc("StatusOptimizing"),
+        ConnectionPhase.Connected => Loc("StatusConnected"),
+        ConnectionPhase.Unverified => Loc("StatusUnverified"),
+        ConnectionPhase.Blocked => Loc("StatusUnavailable"),
+        ConnectionPhase.Limited => Loc("StatusAdministratorRequired"),
+        ConnectionPhase.Error => Loc("StatusError"),
+        _ => Loc("StatusDisconnected")
     };
+
+    private static string Loc(string key) => Localization.LocalizationManager.Current[key];
 
     public bool RequiresSignIn => Snapshot is { SignedIn: false, Mode: "proton", HasOwnedTunnel: false, ExternalTunnel: false, Reliable: true };
     public bool StartupFailed => Phase == ConnectionPhase.Error && Snapshot is null;
-    public string PrimaryLabel => StartupFailed ? "Exit Brisa" : Phase == ConnectionPhase.Limited ? "Connect"
-        : Snapshot?.HasOwnedTunnel == true ? "Disconnect" : RequiresSignIn ? "Sign In" : "Connect";
+    public string PrimaryLabel => StartupFailed ? Loc("ExitBrisa") : Phase == ConnectionPhase.Limited ? Loc("Connect")
+        : Snapshot?.HasOwnedTunnel == true ? Loc("Disconnect") : RequiresSignIn ? Loc("SignIn") : Loc("Connect");
     public bool PrimaryEnabled => StartupFailed || (Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
         && Snapshot is { ExternalTunnel: false, Reliable: true });
 
