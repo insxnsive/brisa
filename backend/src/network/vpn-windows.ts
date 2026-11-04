@@ -1030,11 +1030,14 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         return inspectWireSock(configPath, undefined, snapshot);
     };
 
-    const inspectUntilReliable = async (timeoutMs?: number): Promise<WireSockInspection> => {
+    const inspectUntilReliable = async (timeoutMs?: number, floorMs = 0): Promise<WireSockInspection> => {
         let inspection = await inspectAsync(timeoutMs);
-        for (let attempt = 1; !inspection.reliable && attempt < WIRESOCK_INSPECTION_RETRIES && scope.live; attempt++) {
+        // O piso existe para a reserva final: uma consulta opcional não pode gastar o tempo que a
+        // leitura residual precisa.
+        const canRetry = () => !scope.aborted && scope.remaining > floorMs;
+        for (let attempt = 1; !inspection.reliable && attempt < WIRESOCK_INSPECTION_RETRIES && canRetry(); attempt++) {
             await runtime.sleep(500, scope.signal);
-            if (!scope.live) break;
+            if (!canRetry()) break;
             inspection = await inspectAsync(timeoutMs);
         }
         return inspection;
@@ -1115,7 +1118,7 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         const canRunGlobalAction = async (): Promise<boolean> => {
             if (scope.aborted) throw new StopCancelledError();
             if (scope.remaining <= scope.reserveMs) return false;
-            const observation = await inspectUntilReliable();
+            const observation = await inspectUntilReliable(undefined, scope.reserveMs);
             last = observation;
             if (scope.aborted) throw new StopCancelledError();
             if (!observation.reliable) return false;
@@ -1135,8 +1138,19 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
                 // A prova de frescor consome orçamento e tempo: ela precisa caber no que resta e
                 // ser seguida de um novo check.
                 const probe = options.freshness ?? ((value, guard) => leaseIsFresh(value, scope.signal, guard));
-                const fresh = await withinDeadline(probe(lease, () => scope.check()), Math.max(0, scope.remaining - scope.reserveMs));
-                scope.check();
+                // A prova de frescor é opcional: prazo estourado nela pula as ações globais, não
+                // reprova a parada. Só o cancelamento interrompe o stop.
+                const guard = () => {
+                    if (scope.aborted) throw new StopCancelledError();
+                    if (scope.remaining <= scope.reserveMs) throw new StopDeadlineError();
+                };
+                let fresh = false;
+                try {
+                    fresh = await withinDeadline(probe(lease, guard), Math.max(0, scope.remaining - scope.reserveMs));
+                } catch {
+                    if (scope.aborted) throw new StopCancelledError();
+                    fresh = false;
+                }
                 if (fresh) {
                     // Inatividade comprovada imediatamente antes do reset, não antes do hash.
                     if (!(await canRunGlobalAction())) { skipGlobals = true; }

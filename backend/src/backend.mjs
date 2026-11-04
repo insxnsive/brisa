@@ -161,6 +161,8 @@ export function createBackend(deps, paths) {
   // O instalador do WireSock pode ter ficado sem supervisão: enquanto isso não for provado,
   // nenhuma operação nativa e nenhuma saída podem ser consideradas seguras.
   let installerUnknown = false;
+  // Compartilhado apenas entre snapshots concorrentes; nunca com caminhos de mutação.
+  let snapshotInspection = null;
   let lastRouteCheck = 0;
   // A route verdict is bound to the operation that asked for it and to the tunnel it
   // observed. `generation` covers new operations; `routeEpoch` covers an explicit reset
@@ -405,7 +407,9 @@ export function createBackend(deps, paths) {
 
       if (command === "snapshot") {
         const mine = generation;
-        const status = await inspect();
+        // Só entre snapshots concorrentes: uma consulta CIM lenta não deve ganhar uma segunda
+        // sessão do próximo poll. Mutação continua chamando inspect() do zero.
+        const status = await (snapshotInspection ??= inspect().finally(() => { snapshotInspection = null; }));
         const tunnelActive = status?.reliable === true && status.active === true && status.owned === true;
         // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só a geração
         // atual e um estado sem mutação podem dizer que não há túnel próprio.
@@ -628,8 +632,14 @@ export function createBackend(deps, paths) {
           if (error?.name === "InstallerSupervisionLost") {
             installerUnknown = true;
             note("installing-wiresock", "SDK_INSTALL_SUPERVISION_LOST");
+            // O Discord já foi fechado no estágio closing-discord e nenhum túnel chegou a subir: a
+            // volta dele pela rota normal não depende do instalador. Melhor esforço, sem WireSock.
+            let restored = false;
+            if (apps.length) {
+              try { await deps.launchDiscord(apps); restored = true; } catch { restored = false; }
+            }
             return { success: false, code: "SDK_INSTALL_SUPERVISION_LOST",
-              message: "WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again." };
+              message: `WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again.${restored || !apps.length ? "" : " Discord was closed; open it again manually."}` };
           }
           if (!operation.isCurrent()) return await cancelledStart(apps);
           const failedStage = stage;
@@ -656,7 +666,18 @@ export function createBackend(deps, paths) {
         generation += 1;
         if (!guarded.status.active && !hasOwned(guarded.status)) return { success: true };
         if (!guarded.status.active) return { success: false, message: "Brisa's tunnel may still be running, but ownership could not be confirmed. Run Brisa as administrator and retry. Brisa will stay open." };
-        const apps = sessionApps.length ? sessionApps : await deps.discoverDiscord();
+        // A descoberta do Discord não pode impedir a parada do túnel: sem a lista, a parada segue
+        // e o Discord reconecta pela rota normal. Deixar o túnel de pé seria pior.
+        let apps = sessionApps;
+        if (!apps.length) {
+          try {
+            const found = await deps.discoverDiscord();
+            apps = Array.isArray(found) ? found.filter(value => typeof value === "string") : [];
+          } catch {
+            apps = [];
+            note("stop", "DISCORD_DISCOVERY_FAILED");
+          }
+        }
         sessionApps = [];
         resetRoute();
         let discordClosed = false;

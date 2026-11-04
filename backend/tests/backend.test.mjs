@@ -1116,6 +1116,9 @@ test("a lost installer supervision is never reported as a cancellation", async (
   const snapshot = await backend.execute("snapshot", {});
   assert.equal(snapshot.reliable, false, "the state must stay unreliable so ExitGuard keeps the app open");
   assert.equal(snapshot.installerUnknown, true);
+  // Finding 8: Discord was closed before the installer ran, and no tunnel exists, so it is put
+  // back on the normal route even though supervision is gone.
+  assert.equal(h.calls.filter(call => call[0] === "launch").length, 1);
   assert.notEqual((await backend.execute("progress", {})).stage, "idle");
   const idle = await backend.execute("waitForIdle", {});
   assert.equal(idle.success, false);

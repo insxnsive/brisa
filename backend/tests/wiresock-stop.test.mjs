@@ -191,7 +191,9 @@ test("a budget that expires during the freshness proof never runs the reset", as
     freshness: async () => { probes += 1; clock.t += 10_000; return true; },
   });
   assert.equal(probes, 1, "the freshness proof must actually run");
-  assert.equal(result.stopped, false);
+  // The proof is optional: an expired budget during it skips the global actions, and the tunnel
+  // that was already confirmed down stays stopped.
+  assert.equal(result.stopped, true);
   assert.equal(result.networkLockReset, false);
   assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "a reset must not run without budget");
 });
@@ -209,7 +211,7 @@ test("a freshness proof that never settles still times out inside the budget", a
     reserveMs: 0,
     freshness: () => new Promise(() => {}),
   });
-  assert.equal(result.stopped, false);
+  assert.equal(result.stopped, true, "a stuck proof must not fail a down tunnel");
   assert.ok(Date.now() - started < 5_000, "the stop must not hang on a stuck freshness proof");
   assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "a reset must not run without budget");
 });

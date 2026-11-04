@@ -106,6 +106,21 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
     try { fs.writeFileSync(cancelPath, "cancelled", { encoding: "utf8", mode: 0o600, flag: "wx" }); } catch {}
   };
   fs.mkdirSync(path.dirname(target), { recursive: true });
+  // Marcadores de cancelamento de tentativas anteriores ficam para sempre. A idade mínima é maior
+  // que o prazo do wrapper (100 s) somado ao do runPowerShell (120 s), então um worker elevado
+  // atrasado ainda encontra o próprio marcador.
+  const staleMarker = new RegExp(`^${path.basename(target).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\d+\\.\\d+\\.cancel$`);
+  try {
+    for (const entry of fs.readdirSync(path.dirname(target), { withFileTypes: true })) {
+      if (!entry.isFile() || !staleMarker.test(entry.name)) continue;
+      const file = path.join(path.dirname(target), entry.name);
+      try {
+        const stat = fs.lstatSync(file);
+        if (stat.isSymbolicLink()) continue;
+        if (Date.now() - stat.mtimeMs > 10 * 60_000) fs.rmSync(file, { force: true });
+      } catch { /* um marcador que já sumiu não é problema */ }
+    }
+  } catch { /* diretório ilegível: a tentativa atual não depende da limpeza */ }
   signal?.addEventListener("abort", markCancelled, { once: true });
   try {
     fs.writeFileSync(staging, sanitizeWireGuardConfig(rawConfig, formatAllowedApps(allowedAppPaths)), { encoding: "utf8", mode: 0o600, flag: "wx" });
