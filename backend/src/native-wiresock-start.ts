@@ -6,7 +6,6 @@ import { elevatedPowerShellFileArgs } from "./network/wiresock-service.ts";
 import { quotePowerShell } from "./network/powershell.ts";
 import { WireSockSetupError } from "./wiresock-setup.mjs";
 import { classifyStartResult, WireSockStartError } from "./wiresock-start-result.mjs";
-import { wireSockSearchRoots } from "./wiresock-discovery.mjs";
 import { ensureWireSockCandidate, findWireSockCandidate, inspectWireSockAsync, learnCandidateLease, type WireSockCandidateLease } from "./network/vpn-windows.ts";
 import { formatAllowedApps, sanitizeWireGuardConfig, validateWireGuardConfig } from "./network/vpn-types.ts";
 
@@ -91,7 +90,7 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   // por uma janela em que o par poderia ser trocado, e o lease sozinho não prova identidade.
   // Uma sondagem assíncrona, não uma checagem por arquivo.
   const fresh = await findWireSockCandidate(process.env, { signal });
-  if (!fresh || fresh.executable !== candidate.executable || fresh.executableVersion !== candidate.executableVersion) throw new WireSockStartError("START_NOT_APPROVED");
+  if (!fresh || fresh.executable !== candidate.executable || fresh.booster !== candidate.booster || fresh.executableVersion !== candidate.executableVersion || fresh.boosterVersion !== candidate.boosterVersion) throw new WireSockStartError("START_NOT_APPROVED");
   options?.onStage?.("starting-tunnel");
 
   const target = path.resolve(configPath);

@@ -313,6 +313,32 @@ test("a refused elevation is a normal setup decline, not a lost installer", asyn
     error => error.name === "AbortError"
   );
 });
+test("candidates that exist but are untrusted are reported, and setup fails", async () => {
+  const events = [];
+  const probeRun = async () => JSON.stringify({
+    candidates: [{
+      executable: "C:\\Users\\nate\\fake\\wiresock-client.exe",
+      booster: "C:\\Users\\nate\\fake\\wgbooster.dll",
+      executableVersion: "9.9.9.9",
+      boosterVersion: "9.9.9.9",
+      trusted: false,
+    }],
+  });
+  await assert.rejects(
+    ensureWireSockCandidate(quietLog, {
+      probeRun,
+      // The untrusted candidate is rejected, so setup must fall through to the install path,
+      // which fails here before touching the network or elevation.
+      mkdtemp: async () => { throw new Error("no temporary directory in this test"); },
+      onEvent: (code, data) => events.push([code, data]),
+    }),
+    error => error?.cancelled === false && /WireSock Secure Connect SDK/.test(String(error.message)),
+  );
+  assert.deepEqual(events.map(([code]) => code).slice(0, 2), ["SDK_CHECK_STARTED", "SDK_CANDIDATE_UNTRUSTED"]);
+  assert.equal(events[1][1].count, 1);
+  assert.ok(events.some(([code]) => code === "SDK_SETUP_FAILED"));
+});
+
 test("a supervision failure after launch keeps the slot and reports no exit", async () => {
   // Spawn, then a pending cancel, then the wrapper dies without a vendor result: nothing here
   // proves the installer finished, so no EXITED, no cancellation and no cleanup may happen.

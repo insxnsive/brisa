@@ -61,7 +61,8 @@ foreach ($pair in $pairs) {
   $boosterVersion = ''
   try { $executableVersion = [string](Get-Item -LiteralPath $pair.executable).VersionInfo.FileVersion } catch { $executableVersion = '' }
   try { $boosterVersion = [string](Get-Item -LiteralPath $pair.booster).VersionInfo.FileVersion } catch { $boosterVersion = '' }
-  $trusted = (Test-BrisaSignature $pair.executable) -and (Test-BrisaSignature $pair.booster) -and (Test-BrisaAcl $pair.executable) -and (Test-BrisaAcl $pair.booster) -and (Test-BrisaAclChain $pair.executable)
+  # Uma pasta inacessível não pode derrubar a sondagem inteira e esconder a instalação boa.
+  try { $trusted = (Test-BrisaSignature $pair.executable) -and (Test-BrisaSignature $pair.booster) -and (Test-BrisaAcl $pair.executable) -and (Test-BrisaAcl $pair.booster) -and (Test-BrisaAclChain $pair.executable) } catch { $trusted = $false }
   $out += [pscustomobject]@{ executable = $pair.executable; booster = $pair.booster; executableVersion = $executableVersion; boosterVersion = $boosterVersion; trusted = [bool]$trusted }
 }
 ConvertTo-Json -InputObject @{ candidates = @($out) } -Compress -Depth 4`;

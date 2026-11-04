@@ -1,5 +1,3 @@
-import { execFileSync } from "node:child_process";
-
 /**
  * Identidade do fornecedor (The Anti-Cloud Corporation), fixada pelo sujeito do certificado e
  * não pela impressão digital: a renovação troca a impressão digital, não o emissor.
@@ -65,32 +63,3 @@ function Test-BrisaAclChain([string]$path) {
 }`;
 }
 
-/**
- * Uma pasta que o próprio usuário pode escrever derrota qualquer checagem de versão: basta
- * colocar um wiresock-client.exe com versão alta. Os dois arquivos e todos os diretórios do
- * caminho precisam ter dono administrativo e nenhuma permissão de escrita para quem não é
- * administrador, sem pontos de reparse que redirecionem o caminho depois da checagem.
- */
-export function wireSockTrustScript(executable, booster) {
-  return `$ErrorActionPreference='Stop'
-${wireSockTrustHelpers()}
-foreach ($p in @(${quote(executable)}, ${quote(booster)})) {
-  if (-not (Test-BrisaSignature $p)) { 'UNTRUSTED'; exit }
-  # O arquivo em si também: um ACE explícito no .exe permite trocá-lo depois da checagem.
-  if (-not (Test-BrisaAcl $p)) { 'UNTRUSTED'; exit }
-}
-if (-not (Test-BrisaAclChain ${quote(executable)})) { 'UNTRUSTED'; exit }
-'TRUSTED'`;
-}
-
-export function candidateIsTrusted(executable, booster, run = execFileSync) {
-  if (process.platform !== "win32") return false;
-  try {
-    const output = run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", wireSockTrustScript(executable, booster)], {
-      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 8000,
-    }).trim();
-    return output === "TRUSTED";
-  } catch {
-    return false;
-  }
-}

@@ -13,10 +13,7 @@ import os from "os";
 import path from "path";
 
 import { WireSockSetupError } from "../wiresock-setup.mjs";
-import { wireSockSearchRoots, wireSockCandidatePairs } from "../wiresock-discovery.mjs";
-import { candidateIsTrusted } from "../wiresock-trust.mjs";
 import { probeWireSock, runProbe } from "../wiresock-probe.mjs";
-export { wireSockSearchRoots } from "../wiresock-discovery.mjs";
 
 import {
     formatAllowedApps,
@@ -395,17 +392,6 @@ export async function inspectWireSockAsync(configPath?: string, guiConfigPath?: 
     }
     return inspectWireSock(configPath, guiConfigPath, await readWireSockSnapshotInProcessAsync(wireSockSnapshotScript(names), names));
 }
-function versionOf(file: string): string | null {
-    try {
-        const script = `(Get-Item -LiteralPath ${quotePowerShell(file)}).VersionInfo.FileVersion`;
-        const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-            encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 5000,
-        }).trim();
-        return /^\d+\.\d+\.\d+\.\d+$/.test(output) ? output : null;
-    } catch {
-        return null;
-    }
-}
 
 function compareVersions(left: string, right: string): number {
     const a = left.split(".").map(Number);
@@ -694,7 +680,7 @@ export function ensureWireSockCandidate(log: WireSockLogger, options: WireSockSe
             // "o usuário cancelou" de "o WireSock precisa ser instalado".
             if (error instanceof InstallerSupervisionLostError) throw error;
             if (isAbortError(error) || options.signal?.aborted) throw abortError();
-            throw error instanceof WireSockSetupError ? error : new WireSockSetupError(false, wireSockSearchRoots());
+            throw error instanceof WireSockSetupError ? error : new WireSockSetupError(false);
         })
         .finally(() => { if (!installSlotHeld) installInFlight = null; });
     return installInFlight;
@@ -710,7 +696,6 @@ async function ensureWireSockCandidateOnce(log: WireSockLogger, options: WireSoc
     throwIfAborted(signal);
     if (!isWindows()) throw new Error("A VPN do Brisa nesta versão exige Windows x64.");
     if (process.arch !== "x64") throw new Error("A VPN do Brisa nesta versão exige Windows x64.");
-    let searchedRoots = wireSockSearchRoots();
     // A sondagem devolve candidatos, versões e confiança de uma vez; sem seam, o diagnóstico de
     // candidato não confiável sai da mesma leitura, sem um segundo processo.
     const lookup = options.findCandidate
@@ -759,7 +744,6 @@ async function ensureWireSockCandidateOnce(log: WireSockLogger, options: WireSoc
             onExited: info => emit("SDK_INSTALL_EXITED", { elapsedMs: Date.now() - installStarted, cancelled: info.cancelled }),
         });
         throwIfAborted(signal);
-        searchedRoots = wireSockSearchRoots();
         const installed = (await lookup()).candidate;
         if (!installed) throw new Error("O instalador WireSock terminou, mas não deixou uma instalação SDK compatível.");
         return installed;
@@ -777,7 +761,7 @@ async function ensureWireSockCandidateOnce(log: WireSockLogger, options: WireSoc
         }
         const code = Number((error as { code?: unknown })?.code);
         emit("SDK_SETUP_FAILED", { exitCode: Number.isFinite(code) ? code : 0 });
-        throw new WireSockSetupError(code === 1223, searchedRoots);
+        throw new WireSockSetupError(code === 1223);
     } finally {
         if (temporary && !installSlotHeld) await remove(temporary).catch(() => {});
         // Um cancelamento durante a limpeza ainda não pode devolver sucesso.
@@ -893,7 +877,7 @@ export interface StopOwnedOptions {
     candidateLease?: WireSockCandidateLease | null;
     /** Sonda de frescor injetável: produção usa `leaseIsFresh`. */
     freshness?: (lease: WireSockCandidateLease, guard: () => void) => Promise<boolean>;
-    /** Checagem de confiança injetável: produção usa `candidateIsTrusted`. */
+    /** Checagem de confiança injetável: produção usa a sondagem única. */
     isTrusted?: (executable: string, booster: string) => boolean | Promise<boolean>;
 }
 
