@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 
 namespace Brisa.Services;
 
+public sealed record ExitDecision(bool SafeToApplyUpdate, string? Warning = null);
+
 public static class ExitGuard
 {
     private static readonly ConditionalWeakTable<IBackendClient, CancellationAttempt> CancellationAttempts = new();
@@ -9,6 +11,9 @@ public static class ExitGuard
     // False allows an idle failed-service window to close, but never authorizes
     // applying an update without a reliable final ownership check.
     public static async Task<bool> StopOwnedAsync(IBackendClient backend, bool nativeOperationMayBeActive)
+        => (await DecideAsync(backend, nativeOperationMayBeActive)).SafeToApplyUpdate;
+
+    public static async Task<ExitDecision> DecideAsync(IBackendClient backend, bool nativeOperationMayBeActive)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         Brisa.Models.NativeSnapshot state;
@@ -19,8 +24,13 @@ public static class ExitGuard
         }
         catch (BackendUnavailableException) when (!nativeOperationMayBeActive)
         {
-            return false;
+            return new ExitDecision(false);
         }
+        // Supervision of the vendor installer was lost, which forces every snapshot to be
+        // unreliable. That must not become a one-way door: the raw inspection is still valid,
+        // so an app with no owned tunnel may leave, without authorizing an update.
+        if (!state.Reliable && state.InspectionReliable && !state.HasOwnedTunnel)
+            return new ExitDecision(false, "WireSock installation status is unknown. Brisa will close; check the tunnel before reconnecting.");
         if (!state.Reliable && (nativeOperationMayBeActive || state.HasOwnedTunnel))
             throw new InvalidOperationException("Tunnel ownership could not be verified. The app will stay open.");
         // Mixed ownership: Brisa's tunnel cannot be stopped while another one exists, and
@@ -35,7 +45,7 @@ public static class ExitGuard
             if (after.HasOwnedTunnel || !after.Reliable)
                 throw new InvalidOperationException("Disconnection could not be confirmed. The app will stay open.");
         }
-        return state.Reliable;
+        return new ExitDecision(state.Reliable);
     }
 
     private static Task GetCancellation(IBackendClient backend)

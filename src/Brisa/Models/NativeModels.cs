@@ -9,7 +9,10 @@ public sealed record NativeSnapshot(
     string Mode = "proton", bool TunnelActive = false, string Readiness = "inactive", bool DiscordRunning = false,
     string Stage = "idle",
     [property: JsonPropertyName("hasOwnedTunnel")] bool OwnedTunnelPresent = false,
-    [property: JsonPropertyName("requiresElevation")] bool RequiresElevation = false)
+    [property: JsonPropertyName("requiresElevation")] bool RequiresElevation = false,
+    // The raw inspection result, before an unknown installer state forces Reliable false.
+    [property: JsonPropertyName("inspectionReliable")] bool InspectionReliable = false,
+    [property: JsonPropertyName("installerUnknown")] bool InstallerUnknown = false)
 {
     // Positive evidence that this process's own tunnel may still be running, even when the
     // aggregate state is mixed or unreadable. Never authorizes stopping anything by itself.
@@ -60,6 +63,11 @@ public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, 
             "Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely."),
         { HasOwnedTunnel: true, Reliable: false } => new(ConnectionPhase.Blocked, snapshot,
             "Brisa's tunnel may still be running, but ownership could not be checked reliably. Run Brisa as administrator and retry. Brisa will stay open."),
+        // Supervision of the vendor installer was lost: the tunnel state is still readable, but
+        // the install result is not, so say what is actually unknown instead of asking for
+        // elevation the user already has.
+        { InstallerUnknown: true } => new(ConnectionPhase.Blocked, snapshot,
+            "WireSock installation status is unknown. Restart Brisa before connecting."),
         { ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot, "Another app owns the active tunnel. Close it before continuing."),
         // Limited access is not a broken state: sign-in and import work without elevation.
         { RequiresElevation: true } => new(ConnectionPhase.Limited, snapshot,

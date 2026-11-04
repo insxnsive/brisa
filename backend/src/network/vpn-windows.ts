@@ -14,6 +14,7 @@ import path from "path";
 
 import { WireSockSetupError } from "../wiresock-setup.mjs";
 import { wireSockSearchRoots, wireSockCandidatePairs } from "../wiresock-discovery.mjs";
+import { candidateIsTrusted } from "../wiresock-trust.mjs";
 export { wireSockSearchRoots } from "../wiresock-discovery.mjs";
 
 import {
@@ -422,7 +423,11 @@ export function selectWireSockCandidate(candidates: WireSockCandidate[]): WireSo
         .sort((a, b) => compareVersions(b.executableVersion, a.executableVersion))[0] ?? null;
 }
 
-export function findWireSockCandidate(env: NodeJS.ProcessEnv = process.env, roots: string[] = wireSockSearchRoots(env)): WireSockCandidate | null {
+export function findWireSockCandidate(
+    env: NodeJS.ProcessEnv = process.env,
+    roots: string[] = wireSockSearchRoots(env),
+    trust: (candidate: WireSockCandidate) => boolean = candidate => candidateIsTrusted(candidate.executable, candidate.booster),
+): WireSockCandidate | null {
     if (!isWindows()) return null;
     const candidates = wireSockCandidatePairs(roots).flatMap(pair => {
         const executableVersion = versionOf(pair.executable);
@@ -430,7 +435,7 @@ export function findWireSockCandidate(env: NodeJS.ProcessEnv = process.env, root
         return executableVersion && boosterVersion
             ? [{ ...pair, executableVersion, boosterVersion }]
             : [];
-    });
+    }).filter(candidate => trust(candidate));
     return selectWireSockCandidate(candidates);
 }
 
@@ -568,7 +573,11 @@ export function runElevatedInstaller(installer: string, signal?: AbortSignal, op
     // Nunca elevar uma operação já cancelada: o pedido de UAC não pode nascer depois do aborto.
     if (signal?.aborted) return Promise.reject(abortError());
     const completionPath = options.completionPath ?? path.join(os.tmpdir(), `brisa-wiresock-complete-${process.pid}-${Date.now()}.txt`);
-    const command = `try { $p=Start-Process -FilePath ${quotePowerShell(installer)} -Verb RunAs -WindowStyle Normal -Wait -PassThru -ErrorAction Stop; if($null -eq $p){ exit 1223 }; Set-Content -LiteralPath ${quotePowerShell(completionPath)} -Value ("COMPLETED:" + [int]$p.ExitCode) -ErrorAction SilentlyContinue; exit [int]$p.ExitCode } catch { if($_.Exception.NativeErrorCode -eq 1223){ Set-Content -LiteralPath ${quotePowerShell(completionPath)} -Value "REFUSED" -ErrorAction SilentlyContinue; exit 1223 }; Write-Error $_; exit 1 }`;
+    // Start-Process reports a declined elevation as an InvalidOperationException without a
+    // NativeErrorCode, so the old 1223 test never matched and a refusal looked like a dead
+    // wrapper. Process.Start raises the Win32Exception itself, sometimes wrapped, so the catch
+    // walks the InnerException chain. Both launch paths write the record before exiting.
+    const command = `$psi = New-Object Diagnostics.ProcessStartInfo; $psi.FileName = ${quotePowerShell(installer)}; $psi.Verb = 'runas'; $psi.UseShellExecute = $true; $psi.WindowStyle = [Diagnostics.ProcessWindowStyle]::Normal; try { $p = [Diagnostics.Process]::Start($psi); if ($null -eq $p) { Set-Content -LiteralPath ${quotePowerShell(completionPath)} -Value "REFUSED" -ErrorAction SilentlyContinue; exit 1223 }; $p.WaitForExit(); Set-Content -LiteralPath ${quotePowerShell(completionPath)} -Value ("COMPLETED:" + [int]$p.ExitCode) -ErrorAction SilentlyContinue; exit [int]$p.ExitCode } catch { $refused = $false; $e = $_.Exception; while ($null -ne $e) { if (($e -is [ComponentModel.Win32Exception]) -and ($e.NativeErrorCode -eq 1223)) { $refused = $true; break }; $e = $e.InnerException }; if ($refused) { Set-Content -LiteralPath ${quotePowerShell(completionPath)} -Value "REFUSED" -ErrorAction SilentlyContinue; exit 1223 }; Write-Error $_; exit 1 }`;
     const exec = options.exec ?? execFile;
     const startedAt = Date.now();
     // O registro do wrapper distingue três casos que o código de saída confunde: instalador

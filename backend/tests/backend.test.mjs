@@ -560,6 +560,7 @@ test("snapshot exposes the exact contract and obtains username from the owned-se
     externalTunnel: false,
     reliable: true,
     installerUnknown: false,
+    inspectionReliable: true,
     signedIn: true,
     username: "own-user",
     route: null,

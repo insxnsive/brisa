@@ -45,5 +45,13 @@ function Get-CimInstance {
 }
 `;
   const locations = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", stubs + WIRESOCK_LOCATION_SCRIPT], { encoding: "utf8", windowsHide: true }));
-  assert.deepEqual(locations, [String.raw`D:\Programas\Wiresock`, String.raw`E:\SDK custom`, String.raw`F:\WireSock\sdk`]);
+  assert.deepEqual(locations, [String.raw`D:\Programas\Wiresock`, String.raw`E:\SDK custom`]);
+});
+
+test("discovery reads only machine-scope locations", () => {
+  // HKCU and the running process path are writable without elevation, and whatever discovery
+  // returns is launched as administrator.
+  assert.doesNotMatch(WIRESOCK_LOCATION_SCRIPT, /HKCU:/);
+  assert.doesNotMatch(WIRESOCK_LOCATION_SCRIPT, /Win32_Process/);
+  assert.match(WIRESOCK_LOCATION_SCRIPT, /HKLM:/);
 });

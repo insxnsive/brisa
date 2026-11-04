@@ -44,6 +44,19 @@ var tests = new (string Name, Action Run)[]
         Throws<InvalidOperationException>(() => ExitGuard.StopOwnedAsync(backend, false).GetAwaiter().GetResult());
         Assert(!backend.Commands.Contains("disconnect"));
     }),
+    ("an unknown installer lets the app exit instead of trapping the user", () =>
+    {
+        // installerUnknown forces every snapshot to be unreliable. Refusing exit then leaves
+        // Task Manager as the only way out, after telling the user to restart Brisa.
+        var snapshot = new NativeSnapshot(false, false, false, true, "u", null, InspectionReliable: true, InstallerUnknown: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.Phase == ConnectionPhase.Blocked && state.Detail!.Contains("installation status is unknown"));
+        Assert(!state.Detail.Contains("administrator"));
+        var backend = new UiTestBackendClient(snapshot);
+        var decision = ExitGuard.DecideAsync(backend, true).GetAwaiter().GetResult();
+        Assert(decision.Warning is not null && !decision.SafeToApplyUpdate);
+        Assert(!backend.Commands.Contains("disconnect"));
+    }),
     ("limited access keeps Connect disabled and is not an error", () =>
     {
         var snapshot = new NativeSnapshot(false, false, false, false, "", null, RequiresElevation: true);

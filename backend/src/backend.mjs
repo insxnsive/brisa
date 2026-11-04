@@ -447,6 +447,9 @@ export function createBackend(deps, paths) {
           stage,
           externalTunnel: status?.reliable === true && status.active === true && status.owned !== true,
           reliable: installerUnknown ? false : status?.reliable === true,
+          // A forced-unreliable snapshot hides the raw inspection, and the client needs it to
+          // tell "no tunnel, install status unknown" from "could not inspect at all".
+          inspectionReliable: status?.reliable === true,
           installerUnknown,
           signedIn: Boolean(currentUsername),
           username: currentUsername,

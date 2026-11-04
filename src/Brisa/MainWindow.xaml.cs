@@ -482,7 +482,9 @@ public partial class MainWindow : Window
             // ExitGuard performs the final native cancel only after active work has joined.
             acquired = await _operation.WaitAsync(TimeSpan.FromSeconds(15));
             if (!acquired) throw new InvalidOperationException("The current operation is still stopping. Please try exiting again.");
-            var safeToApplyUpdate = await ExitGuard.StopOwnedAsync(_backend, mayBeActive);
+            var decision = await ExitGuard.DecideAsync(_backend, mayBeActive);
+            var safeToApplyUpdate = decision.SafeToApplyUpdate;
+            if (decision.Warning is { } warning) _exitWarning(warning);
             await _backend.DisposeAsync();
             if (_updates is not null) await _updates.DisposeAsync();
             if (safeToApplyUpdate && _updates?.HasPendingUpdate == true)

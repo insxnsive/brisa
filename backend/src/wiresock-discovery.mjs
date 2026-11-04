@@ -3,13 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 // Read only installation metadata. Do not return service arguments or profiles.
+// Only machine-scope sources are read: HKCU and the running process path can both be written by
+// a non-elevated user, and whatever this finds gets launched elevated.
 export const WIRESOCK_LOCATION_SCRIPT = String.raw`
 $ErrorActionPreference='Stop'
 $locations=@()
 $keys=@('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
- 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
- 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
- 'HKCU:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
+ 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
 foreach($key in $keys){
  Get-ItemProperty -Path $key -ErrorAction SilentlyContinue | ForEach-Object {
   if(($_.DisplayName -match 'WireSock|NTKERNEL[.]WireSock') -and $_.InstallLocation){
@@ -22,9 +22,6 @@ Get-CimInstance Win32_Service -Filter "Name LIKE '%wiresock%'" -ErrorAction Sile
   $exe=if($Matches[1]){$Matches[1]}else{$Matches[2]}
   $locations += [IO.Path]::GetDirectoryName($exe)
  }
-}
-Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" -ErrorAction SilentlyContinue | ForEach-Object {
- if($_.ExecutablePath){ $locations += [IO.Path]::GetDirectoryName($_.ExecutablePath) }
 }
 ConvertTo-Json -InputObject @($locations | Select-Object -Unique) -Compress
 `;

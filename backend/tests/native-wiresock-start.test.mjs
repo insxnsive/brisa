@@ -38,7 +38,11 @@ test("native start prepares WireSock on demand before launching the owned tunnel
 test("WireSock setup launches the verified vendor installer visibly, never silently", () => {
   const vpnWindows = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/network/vpn-windows.ts"), "utf8");
   assert.match(vpnWindows, /WIRESOCK_INSTALLER_SHA256/);
-  assert.match(vpnWindows, /Start-Process -FilePath .* -Verb RunAs -WindowStyle Normal/);
+  // Elevation goes through ProcessStartInfo so a declined prompt raises a Win32Exception the
+  // wrapper can recognise, instead of an InvalidOperationException with no error code.
+  assert.match(vpnWindows, /Diagnostics.ProcessStartInfo/);
+  assert.match(vpnWindows, /\$psi\.Verb = 'runas'/);
+  assert.doesNotMatch(vpnWindows, /Start-Process -FilePath/);
   assert.doesNotMatch(vpnWindows, /ArgumentList @\('\/quiet','\/norestart'\)/);
 });
 
