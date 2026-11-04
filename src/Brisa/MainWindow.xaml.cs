@@ -179,15 +179,35 @@ public partial class MainWindow : Window
         ConnectionProgress.Visibility = busy ? Visibility.Visible : Visibility.Hidden;
         UpdateActionAvailability();
 
-        RouteText.Text = state.Snapshot?.Route is { } route ? $"{route.Country} · {route.Server}" : "Automatic";
+        if (state.Snapshot?.Route is { } route)
+        {
+            RouteText.Text = CountryName(route.Country);
+            RouteServerText.Text = route.PingMs is int ping ? $"Server {route.Server}, {ping} ms" : $"Server {route.Server}";
+            RouteServerText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            RouteText.Text = "Automatic";
+            RouteServerText.Text = "";
+            RouteServerText.Visibility = Visibility.Collapsed;
+        }
         // Conectado é o único estado com acento: o resto fica neutro, e o Limited usa o escudo de
         // administrador porque um cadeado aberto lê como "livre", o oposto do que ele significa.
         var connected = state.Phase == ConnectionPhase.Connected;
         StatusIcon.Text = connected ? "\uE73E"
             : state.Phase == ConnectionPhase.Limited ? "\uEA18"
-            : state.Phase == ConnectionPhase.Blocked ? "\uE783" : "\uE785";
+            : state.Phase is ConnectionPhase.Blocked or ConnectionPhase.Error ? "\uE7BA" : "\uE785";
         StatusBadge.SetResourceReference(Border.BackgroundProperty, connected ? "NativeStatusConnectedSurface" : "NativeIconSurface");
         StatusIcon.SetResourceReference(TextBlock.ForegroundProperty, connected ? "NativeStatusConnected" : "NativeForeground");
+    }
+
+    // O nome do pais vem do .NET, sem pacote e sem tabela. EnglishName e nao DisplayName: o ICU
+    // desta maquina devolve o nome nativo (Brasil, Deutschland, Haiti), o que misturaria idiomas
+    // numa tela em ingles. Quando o seletor de idioma existir, ele troca esta chamada.
+    private static string CountryName(string code)
+    {
+        try { return new System.Globalization.RegionInfo(code).EnglishName is { Length: > 0 } name ? name : code; }
+        catch (ArgumentException) { return code; }
     }
 
     private async void Primary_Click(object sender, RoutedEventArgs e)

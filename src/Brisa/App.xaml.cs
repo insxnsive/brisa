@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Windows;
+using Brisa.Models;
 using Brisa.Services;
 using Velopack;
 
@@ -25,6 +26,10 @@ public partial class App : System.Windows.Application
 
     private async void OnStartup(object sender, StartupEventArgs e)
     {
+        // A interface é em inglês até o seletor de idioma existir. Fixar a cultura mantém datas e
+        // números consistentes com esse idioma; os nomes de país usam EnglishName pelo mesmo motivo.
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+        System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
         var testMode = e.Args.Contains("--ui-test", StringComparer.OrdinalIgnoreCase);
         var smokeIndex = Array.FindIndex(e.Args, a => a.Equals("--smoke-test", StringComparison.OrdinalIgnoreCase));
         var smokeOutput = smokeIndex >= 0 && smokeIndex + 1 < e.Args.Length ? Path.GetFullPath(e.Args[smokeIndex + 1]) : null;
@@ -46,6 +51,11 @@ public partial class App : System.Windows.Application
         if (isolated && e.Args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.Ordinal)) is { } themeArg && Enum.TryParse<AppTheme>(themeArg[8..], true, out var theme))
             settings.Save(settings.Current with { Theme = theme });
         settings.ApplyTheme();
+        // Visual fixtures only: --route=HT gives the isolated backend a route so the Home card can be
+        // photographed in a real state instead of "Automatic".
+        var routeArg = isolated ? e.Args.FirstOrDefault(a => a.StartsWith("--route=", StringComparison.Ordinal)) : null;
+        var fixtureRoute = routeArg is { Length: > 8 }
+            ? new RouteInfo($"{routeArg[8..].ToUpperInvariant()}#28", routeArg[8..].ToUpperInvariant()) : null;
         IBackendClient backend;
         if (isolated && e.Args.Contains("--backend-unavailable", StringComparer.OrdinalIgnoreCase)) backend = new UnavailableBackendClient();
         else if (testMode || smokeOutput is not null) backend = new UiTestBackendClient(
@@ -54,7 +64,7 @@ public partial class App : System.Windows.Application
                 ? new(false, false, false, true, "UI test account", null, RequiresElevation: true)
                 : smokeOutput is not null || e.Args.Contains("--signed-in", StringComparer.OrdinalIgnoreCase)
                     ? new(false, false, true, true, "UI test account", null) : null,
-            commandDelay: testMode ? TimeSpan.FromSeconds(6) : TimeSpan.Zero);
+            commandDelay: testMode ? TimeSpan.FromSeconds(6) : TimeSpan.Zero, route: fixtureRoute);
         else
         {
             try { backend = new BackendClient(AppContext.BaseDirectory, settings.DataDirectory); }
