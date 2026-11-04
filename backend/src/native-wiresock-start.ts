@@ -3,13 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { elevatedPowerShellFileArgs } from "./network/wiresock-service.ts";
+import { quotePowerShell } from "./network/powershell.ts";
 import { WireSockSetupError } from "./wiresock-setup.mjs";
 import { classifyStartResult, WireSockStartError } from "./wiresock-start-result.mjs";
 import { wireSockSearchRoots } from "./wiresock-discovery.mjs";
 import { ensureWireSockCandidate, inspectWireSockAsync, learnCandidateLease, type WireSockCandidateLease } from "./network/vpn-windows.ts";
 import { formatAllowedApps, sanitizeWireGuardConfig, validateWireGuardConfig } from "./network/vpn-types.ts";
-
-const quotePowerShell = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
 export function nativeDirectScript(executable: string, configPath: string, resultPath: string, cancelPath: string): string {
   const literal = quotePowerShell;

@@ -24,13 +24,13 @@ import {
     VPN_SERVICE_NAMES,
     type WireGuardConfigValidation,
 } from "./vpn-types";
-import { parseWireSockSnapshot, type WireSockSnapshot } from "./vpn-snapshot";
+import { quotePowerShell } from "./powershell.ts";
+import { parseWireSockSnapshot } from "./vpn-snapshot";
 import { runWireSockSnapshotOutsideMainThread } from "./vpn-snapshot-worker";
 
 export const WIRESOCK_VERSION = "3.4.8.1";
 const WIRESOCK_DOWNLOAD = "https://wiresock.net/_api/download-release.php?product=wiresock-secure-connect-sdk&platform=x64&version=3.4.8.1&channel=winget";
 const WIRESOCK_INSTALLER_SHA256 = "abfeebdc645de36b95fabbed00c7fdb0bf4d0c68c5518608450619c61876d33e";
-const WIRESOCK_DRIVER_NAMES = ["ndiswg", "NDISRD"] as const;
 const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024;
 
 export type WireSockLogger = (level: "info" | "warn" | "error", message: string, data?: Record<string, unknown>) => void;
@@ -107,10 +107,6 @@ function isWindows(): boolean {
     return process.platform === "win32";
 }
 
-function quotePowerShell(value: string): string {
-    return `'${value.replace(/'/g, "''")}'`;
-}
-
 function normalizedPath(value: string): string {
     return value.trim().replace(/^"|"$/g, "").replace(/[\\/]+/g, "\\").toLowerCase();
 }
@@ -162,43 +158,6 @@ function configArgument(commandLine: string | null): string | null {
     return null;
 }
 
-/**
- * Compara o argumento de config normalizado por igualdade, não por substring de
- * diretório: `wiresock-discord.conf.bak` ou um perfil do usuário colocado dentro da
- * pasta GoLiveBypass não podem ser confundidos com a config aplicada.
- */
-function configArgumentEquals(commandLine: string | null, configPath: string): boolean {
-    const argument = configArgument(commandLine);
-    return argument !== null && argument === normalizedPath(configPath);
-}
-
-function serviceExists(name: string): boolean {
-    if (!isWindows()) return false;
-    try {
-        execFileSync("sc.exe", ["query", name], { stdio: "ignore", windowsHide: true, timeout: 5000 });
-        return true;
-    } catch (error) {
-        const code = Number((error as { status?: unknown })?.status);
-        return code !== 1060;
-    }
-}
-
-function serviceRunningFromCim(name: string): boolean | null {
-    try {
-        const script = `$s=Get-CimInstance Win32_Service -Filter "Name='${name.replace(/'/g, "''")}'"; if($s){$s.State}`;
-        const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-            encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 5000,
-        });
-        const value = output.trim();
-        if (!value) return null;
-        if (/^Running$/i.test(value)) return true;
-        if (/^Stopped$/i.test(value)) return false;
-        return null;
-    } catch {
-        return null;
-    }
-}
-
 function serviceRunningFromSc(name: string): boolean | null {
     try {
         const output = execFileSync("sc.exe", ["query", name], {
@@ -210,25 +169,6 @@ function serviceRunningFromSc(name: string): boolean | null {
         return null;
     } catch (error) {
         return Number((error as { status?: unknown })?.status) === 1060 ? false : null;
-    }
-}
-
-function serviceRunning(name: string): boolean | null {
-    if (!isWindows()) return false;
-    const cimState = serviceRunningFromCim(name);
-    if (cimState !== null) return cimState;
-    return serviceRunningFromSc(name);
-}
-
-function serviceCommand(name: string): string | null {
-    if (!isWindows() || !serviceExists(name)) return null;
-    try {
-        const script = `$s=Get-CimInstance Win32_Service -Filter "Name='${name.replace(/'/g, "''")}'"; if($s){$s.PathName}`;
-        return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-            encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 5000,
-        }).trim() || null;
-    } catch {
-        return null;
     }
 }
 
@@ -287,20 +227,6 @@ function readWireSockSnapshotInProcessAsync(script: string, names: readonly stri
     }
     return promise;
 }
-function assertPluginServiceSlot(configPath: string): void {
-    const name = VPN_SERVICE_NAMES[0];
-    if (!serviceExists(name)) return;
-    // Um registro parado não controla tráfego e pode ser retargeteado pelo
-    // script de inicialização abaixo; o bloqueio continua valendo para um
-    // serviço realmente ativo fora do perfil do plugin.
-    const running = serviceRunning(name);
-    if (running === null) throw new Error("Não foi possível confirmar o estado do serviço WireSock; operação interrompida por segurança.");
-    if (!running) return;
-    const command = serviceCommand(name);
-    if (!command || !configArgumentEquals(command, configPath))
-        throw new Error("O serviço WireSock já está registrado com outro perfil. Desative-o antes de usar a VPN do Brisa.");
-}
-
 export function inspectWireSock(configPath?: string, guiConfigPath?: string, snapshotOverride?: WireSockSnapshot | null): WireSockInspection {
     if (!isWindows())
         return { active: false, owned: false, reliable: true, services: [], processIds: [], reason: null, origin: "unknown", managedServices: [], managedProcessIds: [] };
@@ -835,150 +761,8 @@ async function ensureWireSockCandidateOnce(log: WireSockLogger, options: WireSoc
     }
 }
 
-export function validateWireGuardProfile(raw: string): WireGuardConfigValidation {
-    return validateWireGuardConfig(raw);
-}
-
-function serviceScript(executable: string, configPath: string): string {
-    const expected = `"${executable}" service -config "${configPath}" -log-level info -network-lock disabled`;
-    return `$ErrorActionPreference='Stop'
-try {
-  $name='wiresock-client-service'
-  $expected=${quotePowerShell(expected)}
-  $service=Get-Service -Name $name -ErrorAction SilentlyContinue
-  if($service -and $service.Status -ne 'Stopped') { Stop-Service -Name $name -Force; $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(20)) }
-  if(-not $service) {
-    & ${quotePowerShell(executable)} install -start-type 3 -config ${quotePowerShell(configPath)} -log-level info -network-lock disabled
-    if($LASTEXITCODE -ne 0){ throw 'Falha ao instalar o serviço WireSock' }
-  }
-  $info=Get-CimInstance Win32_Service -Filter "Name='$name'"
-  if(-not $info){ throw 'Serviço WireSock não encontrado após instalação' }
-  $change=Invoke-CimMethod -InputObject $info -MethodName Change -Arguments @{PathName=$expected;StartMode='Manual'}
-  if($change.ReturnValue -ne 0){ throw "Falha ao atualizar o perfil do serviço: $($change.ReturnValue)" }
-  $actual=Get-CimInstance Win32_Service -Filter "Name='$name'"
-  if($actual.PathName -cne $expected){ throw 'O serviço WireSock permaneceu com outra configuração' }
-  Start-Service -Name $name
-  (Get-Service -Name $name).WaitForStatus('Running',[TimeSpan]::FromSeconds(20))
-} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
-}
-
-function elevatedPowerShellArgs(script: string): string[] {
-    const encoded = Buffer.from(script, "utf16le").toString("base64");
-    const wrapper = `$ErrorActionPreference='Stop'
-$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
-$principal=New-Object Security.Principal.WindowsPrincipal($identity)
-if($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){ & powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encoded}; exit $LASTEXITCODE }
-$child=Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList '-NoProfile -NonInteractive -EncodedCommand ${encoded}'
-exit $child.ExitCode`;
-    return ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(wrapper, "utf16le").toString("base64")];
-}
-
-export async function startWireSockService(
-    configPath: string,
-    rawConfig: string,
-    allowedAppPaths: string[],
-    log: WireSockLogger,
-): Promise<WireSockStartResult> {
-    if (!isWindows() || process.arch !== "x64") throw new Error("A VPN do Brisa nesta versão exige Windows x64.");
-    const allowedApps = formatAllowedApps(allowedAppPaths);
-    const validation = validateWireGuardProfile(rawConfig);
-    if (!validation.valid) throw new Error(validation.error);
-
-    const current = inspectWireSock(configPath);
-    if (!current.reliable) throw new Error(current.reason || UNKNOWN_WIRESOCK_STATE);
-    if (current.active && !current.owned) throw new Error(current.reason || "WireSock externo já está ativo.");
-    assertPluginServiceSlot(configPath);
-    const executable = await ensureWireSockInstalled(log);
-    const target = path.resolve(configPath);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const sanitized = sanitizeWireGuardConfig(rawConfig, allowedApps);
-    const staging = `${target}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(staging, sanitized, "utf8");
-    fs.renameSync(staging, target);
-
-    try {
-        execFileSync("powershell.exe", elevatedPowerShellArgs(serviceScript(executable, target)), {
-            windowsHide: true, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000,
-        });
-    } catch (error) {
-        try { fs.rmSync(staging, { force: true }); } catch {}
-        log("error", "falha ao iniciar o serviço WireSock", { erro: logError(error) });
-        throw new Error("Não foi possível configurar/iniciar o serviço WireSock. Confira a permissão de administrador e os logs.");
-    }
-
-    const inspection = inspectWireSock(target);
-    if (!inspection.reliable) {
-        log("error", "WireSock não confirmou o perfil próprio após a ativação", { motivo: inspection.reason || UNKNOWN_WIRESOCK_STATE });
-        throw new Error("O serviço WireSock não confirmou o perfil do Brisa após a ativação.");
-    }
-    if (!inspection.active || !inspection.owned) {
-        log("error", "WireSock não confirmou o perfil próprio após a ativação", { motivo: inspection.reason || "serviço ausente" });
-        throw new Error("O serviço WireSock não confirmou o perfil do Brisa após a ativação.");
-    }
-    clearWireSockDns(log);
-    log("info", "serviço WireSock ativo com filtro por aplicativo", { config: target, allowedApps });
-    return { executable, configPath: target, allowedApps };
-}
-
-function runAsAdministrator(file: string, args: string[], log: WireSockLogger): boolean {
-    try {
-        execFileSync(file, args, { stdio: "ignore", windowsHide: true, timeout: 30_000 });
-        return true;
-    } catch {
-        try {
-            const argumentList = args.map(arg => quotePowerShell(arg)).join(",");
-            const script = `$p=Start-Process -FilePath ${quotePowerShell(file)} -ArgumentList @(${argumentList}) -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode`;
-            execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-                stdio: "ignore", windowsHide: false, timeout: 30_000,
-            });
-            return true;
-        } catch (error) {
-            log("warn", "operação elevada do WireSock falhou", { erro: logError(error) });
-            return false;
-        }
-    }
-}
-
-function resetNetworkLock(executable: string, log: WireSockLogger): boolean {
-    if (runAsAdministrator(executable, ["reset-network-lock"], log)) return true;
-    return false;
-}
-
-export function clearWireSockDns(log: WireSockLogger): boolean {
-    if (!isWindows()) return true;
-    try {
-        const script = "Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -match 'ProTUN|WireSock' -or $_.InterfaceDescription -match 'ProTUN|WireSock' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }";
-        execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { stdio: "ignore", windowsHide: true, timeout: 10_000 });
-        return true;
-    } catch (error) {
-        log("warn", "não consegui limpar DNS do adaptador WireSock", { erro: logError(error) });
-        return false;
-    }
-}
-
-function killProcesses(processIds: number[], label: string, log: WireSockLogger): void {
-    for (const pid of processIds) {
-        if (!runAsAdministrator("taskkill.exe", ["/F", "/T", "/PID", String(pid)], log))
-            log("warn", `não consegui encerrar processo WireSock ${label}`, { pid });
-    }
-}
-
-function killOwnProcesses(processIds: number[], log: WireSockLogger): void {
-    killProcesses(processIds, "próprio", log);
-}
-
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 const WIRESOCK_INSPECTION_RETRIES = 6;
-
-async function inspectWireSockUntilReliable(configPath: string, guiConfigPath?: string): Promise<WireSockInspection> {
-    let inspection = inspectWireSock(configPath, guiConfigPath);
-    for (let attempt = 1; !inspection.reliable && attempt < WIRESOCK_INSPECTION_RETRIES; attempt++) {
-        await wait(500);
-        inspection = inspectWireSock(configPath, guiConfigPath);
-    }
-    return inspection;
-}
-
 
 // ---------------------------------------------------------------------------
 // Caminho de parada assíncrono (T2).
@@ -1382,107 +1166,6 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
     }
 }
 
-/**
- * Retomada gerenciada: encerra somente serviços e processos cuja config foi comprovada
- * como instância do GoLiveBypass (GUI ou pool de rotas dela) e libera o slot para o plugin.
- * Nunca toca em WireSock externo, em leitura desconhecida ou em mistura dos dois. Chamada
- * apenas pela ativação explícita do usuário, depois de o controller reservar o owner.lock.
- */
-export async function stopManagedWireSock(configPath: string, guiConfigPath: string, log: WireSockLogger): Promise<WireSockCleanupResult> {
-    if (!isWindows()) return { stopped: true, servicesResidual: [], processResidual: [], networkLockReset: false, dnsCleared: false, dnsFlushed: false };
-    const initial = await inspectWireSockUntilReliable(configPath, guiConfigPath);
-    if (!initial.reliable) {
-        const error = initial.reason || UNKNOWN_WIRESOCK_STATE;
-        log("warn", "retomada adiada porque o estado do WireSock é desconhecido", { motivo: error });
-        return { stopped: false, servicesResidual: initial.services, processResidual: initial.processIds, networkLockReset: false, dnsCleared: false, dnsFlushed: false, error };
-    }
-    if (!initial.active) return { stopped: true, servicesResidual: [], processResidual: [], networkLockReset: false, dnsCleared: false, dnsFlushed: false };
-    if (initial.origin !== "gui" && initial.origin !== "managed") {
-        const error = initial.reason || "WireSock externo detectado";
-        log("warn", "retomada recusada para preservar WireSock não gerenciado", { motivo: error, origem: initial.origin });
-        return { stopped: false, servicesResidual: initial.services, processResidual: initial.processIds, networkLockReset: false, dnsCleared: false, dnsFlushed: false, error };
-    }
-
-    // Somente serviços comprovadamente gerenciados: no veredito "gui"/"managed" não existe
-    // recurso externo, então a lista ativa é exatamente o conjunto encerrável.
-    for (const name of initial.services) {
-        if (!runAsAdministrator("sc.exe", ["stop", name], log)) {
-            log("warn", "o Windows não autorizou parar o serviço WireSock gerenciado", { servico: name });
-            return { stopped: false, servicesResidual: initial.services, processResidual: initial.processIds, networkLockReset: false, dnsCleared: false, dnsFlushed: false, error: "O Windows não autorizou encerrar a instância anterior do Brisa." };
-        }
-    }
-    let stopped = false;
-    for (let attempt = 0; attempt < 2 && !stopped; attempt++) {
-        await wait(500);
-        const current = await inspectWireSockUntilReliable(configPath, guiConfigPath);
-        if (!current.reliable) {
-            const error = current.reason || UNKNOWN_WIRESOCK_STATE;
-            log("error", "retomada interrompida porque o estado do WireSock ficou desconhecido", { motivo: error });
-            return { stopped: false, servicesResidual: current.services, processResidual: current.processIds, networkLockReset: false, dnsCleared: false, dnsFlushed: false, error };
-        }
-        if (!current.active) { stopped = true; break; }
-        if (current.origin !== "gui" && current.origin !== "managed") {
-            const error = current.reason || "WireSock externo apareceu durante a retomada";
-            log("error", "retomada interrompida ao detectar WireSock não gerenciado", { motivo: error, origem: current.origin });
-            return { stopped: false, servicesResidual: current.services, processResidual: current.processIds, networkLockReset: false, dnsCleared: false, dnsFlushed: false, error };
-        }
-        killProcesses(current.processIds, "gerenciado", log);
-    }
-    if (!stopped) {
-        const residual = await inspectWireSockUntilReliable(configPath, guiConfigPath);
-        const error = residual.reliable && residual.active
-            ? "A instância anterior do Brisa não encerrou; tente novamente."
-            : residual.reason || UNKNOWN_WIRESOCK_STATE;
-        log("error", "retomada não confirmou o encerramento da instância gerenciada", { services: residual.services, pids: residual.processIds });
-        return { stopped: false, servicesResidual: residual.services, processResidual: residual.processIds, networkLockReset: false, dnsCleared: false, dnsFlushed: false, error };
-    }
-
-    // Tudo que foi encerrado era GoLiveBypass comprovado: o lock e o DNS do adaptador
-    // pertenciam à sessão morta, não a uma VPN externa viva.
-    const executable = findWireSockCandidate()?.executable;
-    const networkLockReset = executable ? resetNetworkLock(executable, log) : false;
-    const dnsCleared = clearWireSockDns(log);
-    let dnsFlushed = false;
-    try {
-        execFileSync("ipconfig.exe", ["/flushdns"], { stdio: "ignore", windowsHide: true, timeout: 10_000 });
-        dnsFlushed = true;
-    } catch (error) {
-        log("warn", "flushdns falhou", { erro: logError(error) });
-    }
-    log("info", "WireSock da instância anterior do Brisa encerrado; o backend assumiu o serviço", { networkLockReset });
-    return { stopped: true, servicesResidual: [], processResidual: [], networkLockReset, dnsCleared, dnsFlushed };
-}
-
-function httpsCheck(url: string): Promise<boolean> {
-    return new Promise(resolve => {
-        const request = https.get(url, { timeout: 7000 }, response => {
-            response.resume();
-            response.once("end", () => resolve(true));
-        });
-        request.once("timeout", () => { request.destroy(); resolve(false); });
-        request.once("error", () => resolve(false));
-    });
-}
-
-export async function diagnoseWindowsNetwork(log: WireSockLogger): Promise<WindowsNetworkDiagnostic> {
-    if (!isWindows()) return { ok: true, dnsOk: true, httpsOk: true, detail: "plataforma fora do escopo Windows" };
-    const dnsOk = await Promise.all(["www.microsoft.com", "gateway.discord.gg", "updates.discord.com"].map(host => dns.lookup(host).then(() => true).catch(() => false))).then(results => results.every(Boolean));
-    const httpsResults = await Promise.all([
-        httpsCheck("https://www.microsoft.com/generate_204"),
-        httpsCheck("https://discord.com/api/v9/gateway"),
-        httpsCheck("https://updates.discord.com/"),
-    ]);
-    const httpsOk = httpsResults.some(Boolean);
-    const result = { ok: dnsOk && httpsOk, dnsOk, httpsOk, detail: dnsOk && httpsOk ? "diagnóstico concluído" : "DNS/HTTPS apresentou falha" };
-    log(result.ok ? "info" : "warn", "diagnóstico assíncrono da rede", { ...result, mode: "log-only" });
-    return result;
-}
-
-const ROUTE_PROBE_BASENAME = /^\.golive-route-probe-\d+-\d+\.exe$/i;
-const ROUTE_PROBE_REMOVE_RETRIES = 3;
-const ROUTE_PROBE_REMOVE_RETRY_DELAY_MS = 200;
-const ROUTE_PROBE_GRACE_MS = 60_000;
-
 export type RouteProbeRemoval = "removed" | "missing" | "invalid" | "busy";
 
 export interface RouteProbeCleanupResult {
@@ -1494,140 +1177,3 @@ export interface RouteProbeCleanupResult {
     busy: number;
 }
 
-function probePathKey(value: string): string {
-    const resolved = path.resolve(value);
-    return isWindows() ? resolved.toLowerCase() : resolved;
-}
-
-function probeErrorCode(error: unknown): string | undefined {
-    if (!error || typeof error !== "object") return undefined;
-    const { code } = (error as { code?: unknown });
-    return typeof code === "string" ? code : undefined;
-}
-
-export function isManagedRouteProbePath(directory: string, candidate: string): boolean {
-    const root = path.resolve(directory);
-    const target = path.resolve(candidate);
-    const relative = path.relative(root, target);
-    if (!relative || path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) return false;
-    if (path.dirname(relative) !== ".") return false;
-    return ROUTE_PROBE_BASENAME.test(path.basename(target));
-}
-
-export async function removeRouteProbe(directory: string, target: string): Promise<RouteProbeRemoval> {
-    if (!isManagedRouteProbePath(directory, target)) return "invalid";
-    try {
-        const stat = fs.lstatSync(target);
-        if (!stat.isFile() || stat.isSymbolicLink()) return "invalid";
-    } catch (error) {
-        return probeErrorCode(error) === "ENOENT" ? "missing" : "busy";
-    }
-
-    for (let attempt = 0; attempt < ROUTE_PROBE_REMOVE_RETRIES; attempt++) {
-        try {
-            // maxRetries/retryDelay only apply to recursive removal in Node.
-            // Use explicit bounded attempts so an in-use Windows executable is
-            // retried without ever enabling recursive deletion.
-            fs.rmSync(target, { force: true });
-            if (!fs.existsSync(target)) return "removed";
-        } catch (error) {
-            if (probeErrorCode(error) === "ENOENT") return "missing";
-        }
-        if (attempt + 1 < ROUTE_PROBE_REMOVE_RETRIES)
-            await new Promise<void>(resolve => setTimeout(resolve, ROUTE_PROBE_REMOVE_RETRY_DELAY_MS));
-    }
-    return "busy";
-}
-
-export async function cleanupRouteProbes(
-    directory: string,
-    protectedPaths: readonly string[] = [],
-    now = Date.now(),
-    graceMs = ROUTE_PROBE_GRACE_MS,
-): Promise<RouteProbeCleanupResult> {
-    const result: RouteProbeCleanupResult = { scanned: 0, removed: 0, protected: 0, recent: 0, invalid: 0, busy: 0 };
-    const protectedSet = new Set(
-        protectedPaths.filter(candidate => isManagedRouteProbePath(directory, candidate)).map(probePathKey),
-    );
-    let entries: string[];
-    try {
-        entries = fs.readdirSync(directory);
-    } catch {
-        return result;
-    }
-
-    for (const name of entries) {
-        if (!ROUTE_PROBE_BASENAME.test(name)) continue;
-        result.scanned++;
-        const target = path.join(directory, name);
-        if (protectedSet.has(probePathKey(target))) {
-            result.protected++;
-            continue;
-        }
-
-        let stat: fs.Stats;
-        try {
-            stat = fs.lstatSync(target);
-        } catch {
-            result.busy++;
-            continue;
-        }
-        if (!stat.isFile() || stat.isSymbolicLink()) {
-            result.invalid++;
-            continue;
-        }
-        if (now - stat.mtimeMs < graceMs) {
-            result.recent++;
-            continue;
-        }
-
-        switch (await removeRouteProbe(directory, target)) {
-            case "removed": result.removed++; break;
-            case "missing": break;
-            case "invalid": result.invalid++; break;
-            case "busy": result.busy++; break;
-        }
-    }
-    return result;
-}
-
-export function routeProbeExecutablePath(directory: string): string {
-    return path.join(directory, `.golive-route-probe-${process.pid}-${Date.now()}.exe`);
-}
-
-export function copyRouteProbe(source: string, target: string): void {
-    if (!fs.existsSync(source) || !fs.statSync(source).isFile()) throw new Error("Helper de diagnóstico Proton não encontrado.");
-    fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
-}
-
-export function runRouteProbe(executable: string): Promise<Record<string, unknown> | null> {
-    try {
-        const stat = fs.lstatSync(executable);
-        if (!stat.isFile() || stat.isSymbolicLink() || !isManagedRouteProbePath(path.dirname(executable), executable))
-            return Promise.resolve(null);
-    } catch {
-        return Promise.resolve(null);
-    }
-    return new Promise(resolve => {
-        execFile(executable, ["-route-probe"], { windowsHide: true, timeout: 12_000, encoding: "utf8" }, (_error, stdout) => {
-            try {
-                const parsed = JSON.parse(String(stdout).trim()) as unknown;
-                return resolve(parsed !== null && typeof parsed === "object" ? parsed as Record<string, unknown> : null);
-            } catch {
-                return resolve(null);
-            }
-        });
-    });
-}
-
-export function isWireSockPacketFilterDriverInstalled(): boolean {
-    if (!isWindows()) return false;
-    return WIRESOCK_DRIVER_NAMES.some(name => {
-        try {
-            const output = execFileSync("sc.exe", ["query", name], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 5000 });
-            return !/\b1060\b/.test(output);
-        } catch {
-            return false;
-        }
-    });
-}

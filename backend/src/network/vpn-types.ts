@@ -1,19 +1,3 @@
-/*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
-/*
- * Contratos e regras sem efeitos colaterais do transporte VPN do plugin.
- *
- * Este arquivo deliberadamente não importa Electron, Vencord ou Node. Além de
- * deixar a parte mais sensível testável, isso evita que o estado do plugin seja
- * confundido com o estado da GUI ou do standalone.
- */
-
-export const VPN_SCHEMA_VERSION = 1;
-export const VPN_OWNER_KIND = "golivebypass-plugin-vpn";
 export const VPN_SERVICE_NAMES = ["wiresock-client-service", "wiresock-pro-client-service"] as const;
 
 export type VpnMode = "proton" | "custom";
@@ -35,14 +19,6 @@ export type VpnState =
     | "blocked_external"
     | "dependency_missing"
     | "recovery_required";
-
-export function normalizeProtonUsername(value: string): string {
-    return value.trim().replace(/@(protonmail\.com|proton\.me|pm\.me)$/i, "");
-}
-
-export function protonUsernamesMatch(expected: string, actual: string): boolean {
-    return normalizeProtonUsername(expected).toLowerCase() === normalizeProtonUsername(actual).toLowerCase();
-}
 
 export interface VpnSettings {
     mode: VpnMode;
@@ -138,38 +114,6 @@ export interface WireGuardConfigValidation {
     code?: string;
     /** Nome canônico de uma chave recusada, de uma tabela fixa. */
     key?: string;
-}
-
-export const DEFAULT_VPN_SETTINGS: Readonly<VpnSettings> = Object.freeze({
-    mode: "proton",
-    customConfigPath: "",
-    protonUsername: "",
-    protonCountry: "",
-    protonFreeOnly: true,
-    protonAutoPing: true,
-});
-
-export function normalizeVpnSettings(raw: unknown): VpnSettings {
-    const value = raw !== null && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const mode = value.mode === "custom" ? "custom" : "proton";
-    const text = (key: string, max: number) => {
-        const candidate = typeof value[key] === "string" ? value[key].trim() : "";
-        return candidate.slice(0, max);
-    };
-    const country = text("protonCountry", 128)
-        .split(",")
-        .map(part => part.trim().toUpperCase())
-        .filter(part => /^[A-Z]{2}$/.test(part))
-        .join(",");
-
-    return {
-        mode,
-        customConfigPath: text("customConfigPath", 2048),
-        protonUsername: text("protonUsername", 320),
-        protonCountry: country,
-        protonFreeOnly: value.protonFreeOnly !== false,
-        protonAutoPing: value.protonAutoPing !== false,
-    };
 }
 
 export function formatAllowedApps(paths: string[]): string {
@@ -361,43 +305,4 @@ export function readWireGuardEndpoint(raw: string): string | null {
     if (!endpoint) return null;
     const cleaned = endpoint.replace(/[^\x20-\x7E]/g, "").trim().slice(0, 120);
     return cleaned || null;
-}
-
-/**
- * Texto curto da rota para a UI. Não promete localização geográfica: mostra o servidor
- * quando ele foi registrado e sempre o endpoint que está no perfil ativo.
- */
-export function formatVpnRouteSummary(route: VpnRouteInfo | null | undefined): string | null {
-    if (!route) return null;
-    const parts: string[] = [];
-    if (route.server) parts.push(route.server);
-    else parts.push(route.mode === "custom" ? "arquivo .conf personalizado" : "perfil Proton");
-    if (route.endpoint) parts.push(route.endpoint);
-    return parts.join(" · ");
-}
-
-/**
- * Rótulo de "Estado da rota" a partir do estado real do túnel — antes ele vinha só do
- * fluxo de otimização e dizia "pronta para otimizar" com o túnel já ativo.
- */
-export function vpnRouteStateLabel(input: {
-    status: { state?: VpnState | string | null; active?: boolean } | null | undefined;
-    optimizing: boolean;
-    optimizationNotice: string;
-}): string {
-    if (input.optimizing) return "otimizando a rota automaticamente";
-    const status = input.status;
-    if (!status) return input.optimizationNotice;
-    if (status.active || status.state === "active") return "ativa";
-    switch (status.state) {
-        case "authorizing": return "aguardando autorização";
-        case "preparing": return "preparando o túnel";
-        case "starting": return "iniciando o túnel";
-        case "restart_pending": return "reinicie o Discord para concluir";
-        case "stopping": return "desativando";
-        case "blocked_external": return "bloqueada por outro WireSock ativo";
-        case "dependency_missing": return "dependências do sistema ausentes";
-        case "recovery_required": return "recuperação necessária";
-        default: return input.optimizationNotice;
-    }
 }
