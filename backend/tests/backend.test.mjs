@@ -1198,3 +1198,61 @@ test("session ownership survives a completely unreadable inspection", async () =
   assert.equal(cleared.hasOwnedTunnel, false);
   assert.equal((await backend.execute("optimize", {})).success, true);
 });
+
+test("a snapshot that starts after a mutation does not join the old inspection", async () => {
+  // Finding 14: coalescing is keyed to the state the inspection started in, so a snapshot that
+  // arrives after a generation bump cannot publish a pre-tunnel reading as current.
+  let inspections = 0;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { backend } = harness({
+    inspect: async () => {
+      inspections += 1;
+      if (inspections === 1) await gate;
+      return { active: false, owned: false, reliable: true };
+    },
+  });
+  const first = backend.execute("snapshot", {});
+  await new Promise(resolve => setTimeout(resolve, 10));
+  await backend.execute("cancel", {});
+  const second = backend.execute("snapshot", {});
+  release();
+  await Promise.all([first, second]);
+  assert.equal(inspections, 2, "a snapshot after a mutation must inspect again");
+});
+
+test("concurrent snapshots share one inspection", async () => {
+  let inspections = 0;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const { backend } = harness({
+    inspect: async () => {
+      inspections += 1;
+      if (inspections === 1) await gate;
+      return { active: false, owned: false, reliable: true };
+    },
+  });
+  const first = backend.execute("snapshot", {});
+  const second = backend.execute("snapshot", {});
+  release();
+  await Promise.all([first, second]);
+  assert.equal(inspections, 1, "two concurrent snapshots must share the inspection");
+});
+
+test("a Discord discovery failure still lets a fresh session stop its tunnel", async () => {
+  // Finding 9: after a restart sessionApps is empty, and discovery is the only way to close
+  // Discord first. Its failure must not keep the tunnel up.
+  const diag = createDiagnostics();
+  const { backend, calls } = harness({
+    diag,
+    inspect: async () => ({ active: true, owned: true, reliable: true }),
+    discoverDiscord: async () => { throw new Error("C:\\private\\synthetic-user\\token"); },
+    stop: async configPath => { calls.push(["stop", configPath]); return { stopped: true, servicesResidual: [], processResidual: [] }; },
+  });
+  const result = await backend.execute("disconnect", {});
+  assert.equal(result.success, true);
+  assert.ok(calls.some(call => call[0] === "stop"), "the tunnel must still be stopped");
+  const text = (await backend.execute("diagnostics", {})).text;
+  assert.match(text, /DISCORD_DISCOVERY_FAILED/);
+  assert.doesNotMatch(JSON.stringify(result), /private|synthetic-user|token/);
+});

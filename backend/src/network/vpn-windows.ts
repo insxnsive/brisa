@@ -1118,7 +1118,7 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         const canRunGlobalAction = async (): Promise<boolean> => {
             if (scope.aborted) throw new StopCancelledError();
             if (scope.remaining <= scope.reserveMs) return false;
-            const observation = await inspectUntilReliable(undefined, scope.reserveMs);
+            const observation = await inspectUntilReliable(Math.min(STOP_STEP_TIMEOUT_MS.snapshot, Math.max(0, scope.remaining - scope.reserveMs)), scope.reserveMs);
             last = observation;
             if (scope.aborted) throw new StopCancelledError();
             if (!observation.reliable) return false;

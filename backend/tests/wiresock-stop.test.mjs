@@ -368,3 +368,24 @@ test("a foreign tunnel during the pre-action read is reported as external, not a
   assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no elevated reset on a foreign tunnel");
   assert.ok(!calls.some(call => call.startsWith("powershell.exe")), "no DNS reset on a foreign tunnel");
 });
+
+test("pre-action retries stop at the reserve so the residual read still happens", async () => {
+  // F1: the retry loop is floored at the reserve. Without the floor it would spend the ten
+  // seconds the final read needs and the stop would fail on a tunnel already confirmed down.
+  const { runtime, calls } = fakeRuntime({
+    snapshots: [activeOwned, inactive, null, null, null, null, null, inactive],
+    advanceMs: 4_000,
+  });
+  const { lease } = sessionLease();
+  const result = await stopOwnedWireSock(config, quietLog, {
+    runtime,
+    candidateLease: lease, isTrusted: () => true,
+    timeoutMs: 35_000,
+    freshness: async () => true,
+  });
+  assert.equal(result.stopped, true);
+  assert.equal(result.networkLockReset, false);
+  assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no reset without a clean read");
+  // The residual read is the last snapshot and must have run.
+  assert.equal(calls.at(-1), "snapshot");
+});

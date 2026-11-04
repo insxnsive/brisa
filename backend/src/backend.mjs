@@ -153,6 +153,8 @@ export function createBackend(deps, paths) {
   let generation = 0;
   let activeOperation = null;
   let mutationBusy = false;
+  // Cresce a cada mutação: uma inspeção compartilhada não pode atravessar uma delas.
+  let mutationSeq = 0;
   let mutationDone = Promise.resolve();
   let releaseMutation = () => {};
   let sessionApps = [];
@@ -406,10 +408,22 @@ export function createBackend(deps, paths) {
       if (["login", "optimize", "connect"].includes(command) && generation !== enteredGeneration) return cancelled();
 
       if (command === "snapshot") {
-        const mine = generation;
-        // Só entre snapshots concorrentes: uma consulta CIM lenta não deve ganhar uma segunda
-        // sessão do próximo poll. Mutação continua chamando inspect() do zero.
-        const status = await (snapshotInspection ??= inspect().finally(() => { snapshotInspection = null; }));
+        // A inspeção compartilhada é identificada pelo estado em que começou. Sem isso, um
+        // snapshot novo entra na leitura de antes de uma mutação, captura a geração atual,
+        // passa pelo guarda de frescor e publica "sem túnel" com dados velhos.
+        const snapshotKey = `${generation}:${mutationSeq}`;
+        let entry = snapshotInspection;
+        if (mutationBusy || !entry || entry.key !== snapshotKey) entry = null;
+        if (!entry) {
+          const created = { key: snapshotKey, generation, promise: null };
+          created.promise = inspect().finally(() => {
+            if (snapshotInspection === created) snapshotInspection = null;
+          });
+          snapshotInspection = created;
+          entry = created;
+        }
+        const mine = entry.generation;
+        const status = await entry.promise;
         const tunnelActive = status?.reliable === true && status.active === true && status.owned === true;
         // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só a geração
         // atual e um estado sem mutação podem dizer que não há túnel próprio.
@@ -481,6 +495,7 @@ export function createBackend(deps, paths) {
 
       if (mutationBusy) return { success: false, message: "Another native backend operation is still running." };
       mutationBusy = true;
+      mutationSeq += 1;
       mutationDone = new Promise(resolve => { releaseMutation = resolve; });
       const connectOperation = command === "connect" ? begin() : null;
       try {
