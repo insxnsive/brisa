@@ -9,13 +9,16 @@ const observations = result => (Array.isArray(result?.observations) ? result.obs
 
 // A successful request from Brisa itself is outside AllowedApps and proves nothing.
 // Require a different egress from the explicitly included, separately named probe.
+// Compare per source AND per address family: an IPv6 baseline says nothing about an IPv4
+// egress, so a family mismatch is not comparable evidence.
+const familyKey = item => `${item.source}|${isIP(item.ip)}`;
 export function verifyRouteEvidence(direct, tunneled) {
   if (!direct?.success || !tunneled?.success) return inconclusive();
   if (!tunneled.discordOk) return { verified: false, reason: "discord_failed" };
-  const baseline = new Map(observations(direct).map(item => [item.source, item.ip]));
-  const comparable = observations(tunneled).filter(item => baseline.has(item.source));
+  const baseline = new Map(observations(direct).map(item => [familyKey(item), item.ip]));
+  const comparable = observations(tunneled).filter(item => baseline.has(familyKey(item)));
   if (!comparable.length) return inconclusive();
-  if (comparable.some(item => baseline.get(item.source) === item.ip)) return { verified: false, reason: "same_as_direct" };
+  if (comparable.some(item => baseline.get(familyKey(item)) === item.ip)) return { verified: false, reason: "same_as_direct" };
   return { verified: true, reason: "verified" };
 }
 

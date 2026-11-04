@@ -18,8 +18,8 @@ public sealed class UiTestBackendClient : IBackendClient
         if (command == "progress") return new(true, Stage: "starting-tunnel");
         Commands.Add(command);
         if (command is "connect" or "disconnect" && _commandDelay > TimeSpan.Zero) await Task.Delay(_commandDelay, cancellationToken).ConfigureAwait(false);
-        if (command == "connect") _state = _state with { Connected = true };
-        if (command == "disconnect") _state = _state with { Connected = false, TunnelActive = false };
+        if (command == "connect") _state = _state with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true };
+        if (command == "disconnect") _state = _state with { Connected = false, TunnelActive = false, OwnedTunnelPresent = false };
         if (command == "logout") _state = _state with { SignedIn = false, Username = "" };
         return new CommandResult(true, Route: _state.Route);
     }

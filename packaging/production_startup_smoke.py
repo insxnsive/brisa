@@ -41,6 +41,13 @@ def verify_responses(stdout):
         raise AssertionError('Account request did not reach the production schema validator')
 
 
+def stderr_tail(path, limit=2000):
+    try:
+        return Path(path).read_text(encoding='utf-8', errors='replace')[-limit:]
+    except OSError:
+        return ''
+
+
 def check(app_directory):
     app = Path(app_directory).resolve()
     required = ('Brisa.exe', 'System.dll', 'runtime/node.exe', 'backend/backend.cjs',
@@ -57,10 +64,13 @@ def check(app_directory):
         env['BRISA_RESOURCE_DIR'] = str(app / 'resources')
         request_text = ''.join(json.dumps(request) + '\n' for request in REQUESTS)
         for phase in ('fresh', 'restart'):
+            # A file, not a pipe: a pipe could fill and stall the child. Shown only when the phase fails.
+            stderr_path = Path(temporary) / (phase + '-stderr.log')
+            stderr_file = stderr_path.open('wb')
             process = subprocess.Popen(
                 [str(app / 'runtime/node.exe'), str(app / 'backend/backend.cjs')],
                 cwd=app, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, text=True, encoding='utf-8',
+                stderr=stderr_file, text=True, encoding='utf-8',
             )
             # The real host owns the backend lifetime. Elevated inspection can
             # leave an idle worker alive after replies; EOF is not a stop API.
@@ -74,6 +84,9 @@ def check(app_directory):
                     verify_responses(response.result(timeout=75))
                     if process.poll() not in (None, 0):
                         raise AssertionError(f'Production backend {phase} exited {process.returncode}')
+                except BaseException:
+                    print(f'Production backend {phase} stderr tail:\n{stderr_tail(stderr_path)}', flush=True)
+                    raise
                 finally:
                     # Only the exact Node child this probe created is stopped.
                     # No tunnel or service control command is ever sent.
@@ -82,6 +95,7 @@ def check(app_directory):
                     process.wait(timeout=10)
                     process.stdin.close()
                     process.stdout.close()
+                    stderr_file.close()
             if not (base / 'native-data').is_dir():
                 raise AssertionError('Production private storage was not initialized')
             if any((base / 'native-data' / name).exists() for name in (

@@ -25,4 +25,11 @@
     <ApplicationDefinition Remove="App.xaml" />
     <Page Include="App.xaml" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Test seams only: the request deadline must be short in transport tests. -->
+    <InternalsVisibleTo Include="Brisa.Integration.Tests" />
+    <InternalsVisibleTo Include="Brisa.Core.Tests" />
+    <InternalsVisibleTo Include="Brisa.Navigation.Tests" />
+    <InternalsVisibleTo Include="Brisa.Appearance.Tests" />
+  </ItemGroup>
 </Project>

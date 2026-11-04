@@ -28,13 +28,13 @@ Brisa roteia apenas o tráfego do Discord pelo WireGuard, sem colocar os outros 
 
 ### Instalar
 
-No Windows, abra o PowerShell e cole esta linha:
+Open **Windows PowerShell** (not Command Prompt/cmd.exe), and paste this command:
 
 ```powershell
 irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
 ```
 
-A linha baixa e executa o [script atual do projeto](https://github.com/insxnsive/brisa/blob/brisa/scripts/install.ps1). Prefere conferir o script antes de executá-lo? Use a [opção com revisão fixa e verificação de hash](docs/install.md).
+For a pinned, hash-checked alternative, see [installation checks and troubleshooting](docs/install.md).
 
 O instalador verifica se o WebView2 Runtime está presente e, se faltar, baixa o instalador oficial da Microsoft e confere a assinatura digital. Depois baixa o instalador mais recente publicado do Brisa pelo GitHub e confere o SHA-256 antes de executá-lo. As janelas dos instaladores ficam visíveis; não há instalação silenciosa. A conferência de hash não é uma assinatura de editor: o Brisa continua sem assinatura Authenticode.
 
@@ -99,13 +99,13 @@ Brisa routes Discord traffic through WireGuard without putting the rest of your 
 
 ### Quick Install
 
-On Windows, open PowerShell and paste this line:
+Open **Windows PowerShell** (not Command Prompt/cmd.exe), and paste this command:
 
 ```powershell
 irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
 ```
 
-The command downloads and runs the [current project script](https://github.com/insxnsive/brisa/blob/brisa/scripts/install.ps1). To verify the script before running it, use the [pinned, hash-checked alternative](docs/install.md).
+For a pinned, hash-checked alternative, see [installation checks and troubleshooting](docs/install.md).
 
 The installer checks for the WebView2 Runtime. If it is missing, it downloads Microsoft's official installer and verifies its digital signature. It then downloads the latest published Brisa setup from GitHub and checks the SHA-256 digest before running it. Installer windows stay visible; nothing is installed silently. Hash verification is not publisher signing: Brisa is still not Authenticode-signed.
 
@@ -127,6 +127,8 @@ See [Mac status, build instructions and limitations](https://github.com/insxnsiv
 1. Open Brisa from the Start menu using **Run as administrator**.
 2. Sign in to Proton, or import your own WireGuard profile under Settings → Advanced.
 3. On the first connection, if WireSock is missing, Brisa downloads the official installer, verifies its hash, and opens WireSock Setup. Review and accept WireSock's terms and approve the Windows prompt. Brisa continues connecting after installation.
+
+Brisa needs **[WireSock Secure Connect SDK for Windows x64](https://wiresock.net/wiresock-sdk)** (3.4.8.1 or a compatible newer SDK). The standalone Secure Connect GUI does not supply the SDK Brisa needs.
 
 WireSock is a third-party component. Its SDK Free tier is described as non-commercial evaluation or internal proof-of-concept use, not production. Brisa being non-commercial and downloading directly from the vendor do not establish permission for a public production release; written clarification is still pending. Brisa does not bundle the SDK or hide the vendor installer and Windows prompts.
 

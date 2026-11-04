@@ -57,6 +57,21 @@ class UiContracts(unittest.TestCase):
         self.assertNotIn('x:Name="AdvancedButton"', xaml)
         self.assertIn('x:Name="PrimaryButton"', xaml)
 
+    def test_native_manifest_stays_unelevated(self):
+        # Autostart runs this binary at logon. Requiring elevation there would either show a
+        # UAC prompt nobody asked for or silently fail, so the manifest must stay asInvoker.
+        manifest = (ROOT / 'app.manifest').read_text(encoding='utf-8')
+        self.assertIn('level="asInvoker"', manifest)
+        self.assertNotIn('requireAdministrator', manifest)
+
+    def test_startup_flag_is_written_quoted_and_read_case_insensitively(self):
+        settings = (ROOT / 'Services/SettingsStore.cs').read_text(encoding='utf-8')
+        self.assertRegex(settings, r'\\"{Environment\.ProcessPath}\\" --startup')
+        app = (ROOT / 'App.xaml.cs').read_text(encoding='utf-8')
+        self.assertIn('e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase)', app)
+        # A logon launch must not jump into Account, or the limited-access Home is never seen.
+        self.assertIn('InitializeAsync(openAccount: !startupLaunch)', app)
+
 
 if __name__ == '__main__':
     unittest.main()

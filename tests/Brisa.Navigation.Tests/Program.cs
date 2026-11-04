@@ -6,6 +6,7 @@ using System.Windows.Input;
 using Brisa.Models;
 using System.Windows.Threading;
 using Brisa;
+using Brisa.Security;
 using Brisa.Services;
 
 internal static class Program
@@ -273,6 +274,97 @@ internal static class Program
             Check(trayOrder.Contains("update-apply"), "ordinary explicit exit applies a staged update after safe shutdown");
             Check(!trayOrder.Contains("update-restart"), "ordinary Exit never relaunches the app");
             Check(waitedForPendingNavigation, "Close-to-Tray joins an already-running Back before hiding");
+            // Item 3: an unelevated launch is a usable limited-access screen, not a dead end.
+            var limited = new NativeSnapshot(false, false, false, true, "fixture", null, RequiresElevation: true);
+            var limitedBackend = new SnapshotBackend(limited);
+            var limitedMain = new MainWindow(limitedBackend, store);
+            limitedMain.Show(); limitedMain.InitializeAsync().GetAwaiter().GetResult();
+            var limitedPrimary = (Button)limitedMain.FindName("PrimaryButton");
+            Check(!limitedPrimary.IsEnabled && (string)limitedPrimary.Content == "Connect", "limited access keeps Connect disabled");
+            Check(((TextBlock)limitedMain.FindName("DetailText")).Text.Contains("administrator"), "limited access explains the administrator requirement");
+            var limitedAccount = new AccountView(limitedBackend, limitedMain, limited);
+            Check(((Button)limitedAccount.FindName("ActionButton")).IsEnabled, "signing out stays available while unelevated");
+            var limitedAdvanced = new AdvancedWindow(limitedBackend, limited);
+            Check(((Button)limitedAdvanced.FindName("ImportButton")).IsEnabled, "importing a profile stays available while unelevated");
+            limitedMain.Close(); Pump(() => !limitedMain.IsVisible);
+
+            // A logon launch stays on Home even when the account is signed out.
+            var signedOut = new NativeSnapshot(false, false, true, false, "", null);
+            var startupHome = new MainWindow(new SnapshotBackend(signedOut), store);
+            startupHome.Show(); startupHome.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Check(((ContentControl)startupHome.FindName("PageHost")).Content is null, "--startup does not jump into Account");
+            var startupAccount = new MainWindow(new SnapshotBackend(signedOut), store);
+            startupAccount.Show(); startupAccount.InitializeAsync().GetAwaiter().GetResult();
+            Check(((ContentControl)startupAccount.FindName("PageHost")).Content is AccountView, "an interactive launch still opens Account when signed out");
+            startupHome.Close(); startupAccount.Close();
+            Pump(() => !startupHome.IsVisible && !startupAccount.IsVisible);
+
+            // A1: one snapshot commit path. A response issued before an operation must not
+            // repaint it, and handlers raised directly must refuse while it runs.
+            var deferred = new DeferredMutationBackend();
+            var a1Main = new MainWindow(deferred, store);
+            a1Main.Show(); a1Main.InitializeAsync().GetAwaiter().GetResult();
+            Check(((Button)a1Main.FindName("PrimaryButton")).IsEnabled, "an idle Home can start a connection");
+            var refreshStatus = typeof(MainWindow).GetMethod("RefreshStatus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            deferred.HoldNextSnapshot();
+            refreshStatus.Invoke(a1Main, [null, EventArgs.Empty]);
+            Pump(() => deferred.HeldSnapshot is not null);
+            Click((Button)a1Main.FindName("PrimaryButton"));
+            Pump(() => ((TextBlock)a1Main.FindName("StatusText")).Text == "Connecting…");
+            Check(!((Button)a1Main.FindName("PrimaryButton")).IsEnabled, "primary is disabled while connecting");
+            Check(!((Button)a1Main.FindName("SettingsButton")).IsEnabled, "Settings is disabled while connecting");
+            // A snapshot requested before the connect must not overwrite the connecting state.
+            deferred.CompleteHeld(new NativeSnapshot(false, false, true, true, "fixture", null));
+            Spin(300);
+            Check(((TextBlock)a1Main.FindName("StatusText")).Text == "Connecting…", "a stale snapshot cannot overwrite Connecting");
+            // Handlers raised directly, not through a disabled control, must also refuse.
+            Click((Button)a1Main.FindName("SettingsButton"));
+            Click((Button)a1Main.FindName("AccountButton"));
+            Click((Button)a1Main.FindName("RouteButton"));
+            Spin(200);
+            Check(((ContentControl)a1Main.FindName("PageHost")).Content is null, "no page opens while an operation runs");
+            Check(deferred.Commands.Count(command => command is "login" or "optimize" or "importConfig") == 0, "no extra command is issued while an operation runs");
+            // Import through the shared gate: refused while busy, allowed when idle.
+            var busyImport = a1Main.ImportConfigAsync(@"C:\picked\route.conf").GetAwaiter().GetResult();
+            Check(!busyImport.Success && busyImport.Code == "UI_BUSY" && busyImport.Message!.Contains("Another operation is still running"), "import is refused while another operation runs");
+            deferred.Current = new(true, false, true, true, "fixture", null);
+            deferred.ConnectGate.TrySetResult(new CommandResult(true));
+            Pump(() => ((TextBlock)a1Main.FindName("StatusText")).Text == "Connected");
+            Check(((Button)a1Main.FindName("PrimaryButton")).IsEnabled && ((Button)a1Main.FindName("SettingsButton")).IsEnabled, "controls come back after the operation releases the gate");
+            var idleImport = a1Main.ImportConfigAsync(@"C:\picked\route.conf").GetAwaiter().GetResult();
+            Check(idleImport.Success && deferred.Commands.Contains("importConfig"), "import runs through the gate when the app is idle");
+            a1Main.Close(); Pump(() => !a1Main.IsVisible);
+
+            // A3: the already-fixed null selection. Clearing the list and confirming must not
+            // throw, and Automatic must stay null rather than becoming an invalid country.
+            var routeWindow = new RouteWindow(a1Main) { Owner = a1Main };
+            routeWindow.Loaded += (_, _) =>
+            {
+                ((ListBox)routeWindow.FindName("CountryList")).SelectedIndex = -1;
+                ((Button)routeWindow.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            };
+            var confirmed = routeWindow.ShowDialog();
+            Check(confirmed == true && routeWindow.SelectedCountry is null, "clearing the country list selects Automatic without throwing");
+
+            // A4: a verification window that cannot start is reported, not silently cancelled.
+            var verification = new MainWindow(new CaptchaBackend(), store)
+            { VerificationDialogFactory = (_, _) => Task.FromException<VerificationAnswer?>(new VerificationUnavailableException()) };
+            verification.Show();
+            var unavailableResult = verification.ExecuteWithVerificationAsync("login", (_, _) => new { }).GetAwaiter().GetResult();
+            Check(!unavailableResult.Success && unavailableResult.Code == "VERIFICATION_UNAVAILABLE" && unavailableResult.Message!.Contains("WebView2"),
+                "a verification window that cannot start is reported to the user");
+            verification.Close(); Pump(() => !verification.IsVisible);
+
+            // A user cancel stays a silent cancellation, never a runtime-install message.
+            var cancelledMain = new MainWindow(new CaptchaBackend(), store)
+            { VerificationDialogFactory = (_, _) => Task.FromResult<VerificationAnswer?>(null) };
+            cancelledMain.Show();
+            var cancelledSilently = false;
+            try { cancelledMain.ExecuteWithVerificationAsync("login", (_, _) => new { }).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { cancelledSilently = true; }
+            Check(cancelledSilently, "a cancelled verification stays a cancellation");
+            cancelledMain.Close(); Pump(() => !cancelledMain.IsVisible);
+
             Console.WriteLine($"{count} inline-navigation assertions passed");
             return 0;
         }
@@ -387,6 +479,59 @@ internal static class Program
         public ValueTask DisposeAsync() { order.Add("update-stopped"); return ValueTask.CompletedTask; }
     }
     private static void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    private static void Spin(int milliseconds)
+    {
+        var end = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < end)
+        {
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(20) };
+            timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+            timer.Start(); Dispatcher.PushFrame(frame);
+        }
+        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+    }
+    private sealed class DeferredMutationBackend : IBackendClient
+    {
+        private readonly object _sync = new();
+        private TaskCompletionSource<NativeSnapshot>? _held;
+        public NativeSnapshot Current { get; set; } = new(false, false, true, true, "fixture", null);
+        public List<string> Commands { get; } = [];
+        public TaskCompletionSource<CommandResult> ConnectGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<NativeSnapshot>? HeldSnapshot { get { lock (_sync) return _held; } }
+        public void HoldNextSnapshot() { lock (_sync) _held = new(TaskCreationOptions.RunContinuationsAsynchronously); }
+        public void CompleteHeld(NativeSnapshot snapshot) { lock (_sync) { _held?.TrySetResult(snapshot); _held = null; } }
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default)
+        {
+            lock (_sync) { if (_held is not null) return _held.Task; return Task.FromResult(Current); }
+        }
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            lock (_sync) Commands.Add(command);
+            return command == "connect" ? ConnectGate.Task : Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class CaptchaBackend : IBackendClient
+    {
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) => Task.FromResult(new NativeSnapshot(false, false, true, false, "", null));
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) =>
+            Task.FromResult(new CommandResult(false, "HUMAN_VERIFICATION_REQUIRED", "Verification required")
+            { CaptchaUrl = "https://vpn-api.proton.me/core/v4/captcha?Token=fixture-token" });
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class SnapshotBackend(NativeSnapshot snapshot) : IBackendClient
+    {
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) => Task.FromResult(snapshot);
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) => Task.FromResult(new CommandResult(true));
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("Navigation fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
     private static void Pump(Func<bool> completed)
     {
         var end = DateTime.UtcNow.AddSeconds(8);

@@ -118,3 +118,55 @@ func TestConfigGenerationWithIPv6(t *testing.T) {
 		t.Errorf("Expected both IPv4 and IPv6 in AllowedIPs, got:\n%s", result)
 	}
 }
+
+// TestGeneratedKeysStayWithinBrisaAllowlist pins the template's key set to the allowlist
+// the Brisa backend enforces (backend/src/network/vpn-types.ts). A new key here would make
+// every Brisa connect fail closed, so this test is the tripwire that says why.
+func TestGeneratedKeysStayWithinBrisaAllowlist(t *testing.T) {
+	allowlist := map[string]bool{
+		"PrivateKey": true, "Address": true, "DNS": true, "MTU": true, "ListenPort": true,
+		"PublicKey": true, "PresharedKey": true, "AllowedIPs": true, "Endpoint": true,
+		"PersistentKeepalive": true,
+	}
+	required := []string{"PrivateKey", "Address", "DNS", "PublicKey", "AllowedIPs", "Endpoint", "PersistentKeepalive"}
+
+	for _, ipv6 := range []bool{false, true} {
+		cfg := &config.Config{
+			DNSServers: []string{"10.2.0.1"},
+			AllowedIPs: []string{"0.0.0.0/0"},
+			OutputFile: "test.conf",
+			EnableIPv6: ipv6,
+		}
+		generator := NewConfigGenerator(cfg)
+		result, err := generator.buildConfig(&api.LogicalServer{Name: "Test-Server"},
+			&api.PhysicalServer{EntryIP: "192.168.1.1", X25519PublicKey: "testPublicKey123="},
+			"testPrivateKey456=", nil)
+		if err != nil {
+			t.Fatalf("buildConfig failed: %v", err)
+		}
+
+		seen := map[string]bool{}
+		for _, raw := range strings.Split(result, "\n") {
+			line := strings.TrimSpace(raw)
+			if line == "" || strings.HasPrefix(line, "[") {
+				continue
+			}
+			if strings.HasPrefix(line, "#") {
+				if strings.HasPrefix(line, "#@") {
+					t.Errorf("IPv6=%v: generated config contains a WireSock directive line: %q", ipv6, line)
+				}
+				continue
+			}
+			key := strings.TrimSpace(strings.SplitN(line, "=", 2)[0])
+			if !allowlist[key] {
+				t.Errorf("IPv6=%v: generated key %q is outside the Brisa allowlist; extend backend/src/network/vpn-types.ts or change the template", ipv6, key)
+			}
+			seen[key] = true
+		}
+		for _, key := range required {
+			if !seen[key] {
+				t.Errorf("IPv6=%v: generated config is missing %q", ipv6, key)
+			}
+		}
+	}
+}

@@ -17,12 +17,14 @@ import {
   inspectWireSock,
   inspectWireSockAsync,
   stopOwnedWireSock,
+  type WireSockCandidateLease,
 } from "./network/vpn-windows.ts";
 import {
   sanitizeWireGuardConfig,
   validateWireGuardConfig,
 } from "./network/vpn-types.ts";
 import { createBackend } from "./backend.mjs";
+import { createDiagnostics } from "./diagnostics.mjs";
 import { startNativeWireSock } from "./native-wiresock-start.ts";
 import { prepareNativeDataStoreSync } from "./native-data-store.mjs";
 
@@ -96,6 +98,9 @@ export function createProductionBackend() {
     return resolved;
   };
   const noLog = () => {};
+  // Codes and numbers only, capped at 128 KiB, inside the private data directory. It is the
+  // only record that survives the app being closed after a failed connect.
+  const diagnostics = createDiagnostics({ file: path.join(dataDir, "diagnostics.log") });
   const discord = createDiscordLifecycle();
   const verifier = createRouteVerifier({ helperPath, probePath: path.join(dataDir, "brisa-route-probe.exe") });
   let probePrepared = false;
@@ -111,8 +116,16 @@ export function createProductionBackend() {
       encoding: "utf8", windowsHide: true, timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
     }).trim().toLowerCase() === "true";
   } catch { /* Unknown privilege fails closed, just like unknown ownership. */ }
+  // Every mutation refuses while unelevated; record why so the refusal is diagnosable.
+  if (!elevated) diagnostics.record("startup", "NOT_ELEVATED");
+
+  // Lease da sessão: o par que este start comprovou, com os digests aprendidos agora. O stop
+  // usa esse lease para o reset opcional em vez de descobrir o SDK no meio de uma parada.
+  let sessionLease: WireSockCandidateLease | null = null;
 
   return createBackend({
+    diag: diagnostics,
+    requiresElevation: !elevated,
     inspect: async (configPath: string) => elevated ? inspectWireSockAsync(configPath) : { active: false, owned: false, reliable: false, services: [], processIds: [], reason: "Run Brisa as administrator to manage WireSock safely.", origin: "unknown", managedServices: [], managedProcessIds: [] },
     getSavedSessionUsername,
     getPlan: getProtonPlan,
@@ -137,7 +150,7 @@ export function createProductionBackend() {
     launchDiscord: async (apps: string[], signal?: AbortSignal) => { trustedApps(apps); await discord.launch(apps, signal); },
     discordRunning: (apps: string[]) => discord.isRunning(apps),
     verifyRoute: (signal?: AbortSignal) => probePrepared ? verifier.verify(signal) : Promise.resolve({ verified: false, reason: "probe_unavailable" }),
-    start: async (configPath: string, raw: string, apps: string[], signal?: AbortSignal) => {
+    start: async (configPath: string, raw: string, apps: string[], signal?: AbortSignal, options?: { onStage?: (stage: string) => void }) => {
       trustedApps(apps);
       const scoped = discordAllowedApps(apps);
       const allowed = [...scoped.executables, ...scoped.appDirs, ...scoped.executableNames, ...scoped.updaterPaths];
@@ -147,11 +160,21 @@ export function createProductionBackend() {
         allowed.push(probe, path.basename(probe));
         probePrepared = true;
       } catch { signal?.throwIfAborted(); }
-      await startNativeWireSock(configPath, raw, allowed, signal);
+      // O SDK é a única parte do start que pode abrir uma janela do fornecedor: seus eventos
+      // entram no diagnóstico persistente com o estágio installing-wiresock e só com códigos.
+      const onEvent = (code: string, data?: Record<string, number | boolean>) => diagnostics.record("installing-wiresock", code, data);
+      // A lease é publicada antes do lançamento: o rollback e o stop de uma sessão que falhou
+      // também precisam da linha de base, e aprender depois carimbaria bytes não validados.
+      const onLease = (lease: WireSockCandidateLease) => { sessionLease = lease; };
+      const started = await startNativeWireSock(configPath, raw, allowed, signal, { ...options, onEvent, onLease });
       // Keep the proven Windows settling interval before opening fresh sockets.
       await delay(2_000, undefined, { signal });
     },
-    stop: (configPath: string) => stopOwnedWireSock(configPath, noLog),
+    stop: async (configPath: string, options?: { signal?: AbortSignal; timeoutMs?: number; candidateLease?: WireSockCandidateLease | null }) => {
+      const result = await stopOwnedWireSock(configPath, noLog, { ...options, candidateLease: options?.candidateLease ?? sessionLease });
+      if (result?.stopped === true) sessionLease = null;
+      return result;
+    },
     files: {
       readExplicit: async (selected: string) => {
         if (!(path.isAbsolute(selected) || path.win32.isAbsolute(selected)) || path.extname(selected).toLowerCase() !== ".conf") throw new Error("Invalid path.");

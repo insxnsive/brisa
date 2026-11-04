@@ -23,6 +23,10 @@ public static class ExitGuard
         }
         if (!state.Reliable && (nativeOperationMayBeActive || state.HasOwnedTunnel))
             throw new InvalidOperationException("Tunnel ownership could not be verified. The app will stay open.");
+        // Mixed ownership: Brisa's tunnel cannot be stopped while another one exists, and
+        // exiting anyway would leave it running behind the user's back.
+        if (state.HasOwnedTunnel && state.ExternalTunnel)
+            throw new InvalidOperationException("Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel and retry exiting. Brisa will stay open.");
         if (state.HasOwnedTunnel && state.Reliable && !state.ExternalTunnel)
         {
             var result = await backend.CommandAsync("disconnect", new { }, timeout.Token);

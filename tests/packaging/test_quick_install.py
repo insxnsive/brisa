@@ -43,15 +43,28 @@ class QuickInstallTests(unittest.TestCase):
         for anchor in toc_links:
             self.assertIn(anchor, slugs, f'broken README section link: #{anchor}')
 
-    def test_readme_quick_install_is_one_short_line(self):
+    def test_readme_bootstraps_use_the_short_one_liner_and_link_the_pinned_guide(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        guide = (ROOT / 'docs/install.md').read_text(encoding='utf-8')
+        snippet = 'irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex'
         blocks = re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL)
-        self.assertEqual(len(blocks), 2)
-        self.assertEqual(blocks[0], blocks[1])
-        self.assertEqual(len(blocks[0].splitlines()), 1)
-        self.assertLessEqual(len(blocks[0]), 120)
-        self.assertEqual(blocks[0], 'irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex')
+        self.assertEqual(blocks, [snippet, snippet])
+        sections = re.findall(r'^### (?:Instalar|Quick Install)\n(.*?)(?=^### |\Z)', readme, re.MULTILINE | re.DOTALL)
+        self.assertEqual(len(sections), 2)
+        for section in sections:
+            self.assertEqual(re.findall(r'```powershell\n(.*?)\n```', section, re.DOTALL), [snippet])
+            self.assertEqual(section.count('](docs/install.md)'), 1)
+            self.assertIn('Windows PowerShell', section)
+            self.assertRegex(section, r'not (?:Command Prompt|cmd[.]exe)')
         self.assertEqual(readme.count('](docs/install.md)'), 2)
+        pinned_blocks = re.findall(r'```powershell\n(.*?)\n```', guide, re.DOTALL)
+        self.assertEqual(len(pinned_blocks), 1)
+        pinned = pinned_blocks[0]
+        pinned_url = r'https://raw[.]githubusercontent[.]com/insxnsive/brisa/[0-9a-f]{40}/scripts/install[.]ps1'
+        self.assertRegex(pinned, pinned_url)
+        self.assertNotRegex(readme, pinned_url)
+        self.assertNotIn(pinned, readme)
+        self.assertIn('5dbb59c2a0c32c69217a4f7d3ff1e0f541f2a7361919b2c3e5c190fc6bf8c4af', pinned)
 
     def test_readme_lists_experimental_mac_builds_and_limits(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
@@ -64,14 +77,13 @@ class QuickInstallTests(unittest.TestCase):
         self.assertIn('Connect is disabled', en)
         self.assertIn('not Developer ID signed or notarized', en)
 
-    def test_readme_one_liner_runs_real_installer_in_each_windows_shell(self):
+    def test_legacy_one_liner_runs_real_installer_in_each_windows_shell(self):
         if os.name != 'nt':
             self.skipTest('The installer targets Windows')
         shells = [path for name in ('powershell', 'pwsh') if (path := shutil.which(name))]
         if not shells:
             self.skipTest('PowerShell is needed for the one-line fixture')
-        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-        snippet = re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL)[0]
+        snippet = 'irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex'
         for shell in shells:
             for scenario in ('present', 'webview-absent', 'hash-mismatch', 'webview-bad-signature', 'bootstrap-download-failed', 'download-failed', 'setup-cancel'):
                 with self.subTest(shell=shell, scenario=scenario):

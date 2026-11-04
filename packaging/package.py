@@ -33,9 +33,26 @@ def source_files(root):
                   and p.suffix.lower() not in {'.exe', '.dll', '.zip', '.pdb', '.pyc', '.nupkg'})
 
 
+_DIGESTS = {}
+
+
+def sha256_file(path):
+    """Stream a file through SHA-256 once per (path, size, mtime) so a release run never re-hashes unchanged assets."""
+    path = Path(path)
+    stat = path.stat()
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    if key not in _DIGESTS:
+        digest = hashlib.sha256()
+        with path.open('rb') as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b''):
+                digest.update(block)
+        _DIGESTS[key] = digest.hexdigest()
+    return _DIGESTS[key]
+
+
 def file_manifest(root):
     return {p.relative_to(root).as_posix(): {'bytes': p.stat().st_size,
-            'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
+            'sha256': sha256_file(p)}
             for p in sorted(root.rglob('*')) if p.is_file()
             and p.suffix.lower() != '.pdb' and p.name.lower() != 'createdump.exe'}
 
@@ -83,9 +100,8 @@ def collect_licenses(publish, dest, vendor):
     copy(REPO / 'THIRD-PARTY-NOTICES.md', dest / 'THIRD-PARTY-NOTICES.md')
     copy(REPO / 'tools/proton-confgen/LICENSE', dest / 'licenses/Proton-confgen-LICENSE.txt')
     node = tool('node')
-    candidates = (node.parent / 'LICENSE', node.parent / 'node_modules/npm/LICENSE', node.parent / 'LICENSE.txt')
     # npm's license is not Node's license: never silently substitute it.
-    node_license = next((p for p in (candidates[0], candidates[2]) if p.is_file()), None)
+    node_license = next((p for p in (node.parent / 'LICENSE', node.parent / 'LICENSE.txt') if p.is_file()), None)
     if not node_license:
         raise RuntimeError('Place the Node distribution LICENSE beside node.exe before packaging')
     copy(node_license, dest / 'licenses/Node-LICENSE.txt')
@@ -125,6 +141,14 @@ def source_commit(root=REPO):
     return commit
 
 
+def working_tree_dirty(root=REPO):
+    """(dirty, porcelain text): tracked changes or untracked, non-ignored files differ from HEAD."""
+    if not (root / '.git').exists():
+        return False, ''
+    status = subprocess.run(['git', 'status', '--porcelain'], cwd=root, check=True, capture_output=True, text=True).stdout
+    return bool(status.strip()), status
+
+
 def make_source_archive(archive, vendor, build_info):
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('SOURCE-INFO.json', json.dumps(build_info, indent=2))
@@ -150,13 +174,19 @@ def prepare_release_notes(artifacts, version):
     return path
 
 
-def package(skip_build=False, output=None, version=None):
+def package(skip_build=False, output=None, version=None, allow_dirty=False):
     actual_version = project_version()
     version = version or actual_version
     if not VERSION_PATTERN.fullmatch(version):
         raise ValueError('Invalid version')
     if version != actual_version and output is None:
         raise ValueError('Test versions require a separate --output directory')
+    # The source archive and the commit stamp must describe the same tree.
+    dirty, status = working_tree_dirty()
+    if dirty and not allow_dirty:
+        listing = '\n'.join(status.splitlines()[:10])
+        raise RuntimeError('Working tree differs from HEAD, so the commit stamp would not match this build. '
+                           'Commit or stash first, or pass --allow-dirty for a disposable build.\n' + listing)
     artifacts = Path(output).resolve() if output else REPO / 'artifacts'
     artifacts.mkdir(parents=True, exist_ok=True)
     # Disposable upgrade versions use the candidate's notes, not a made-up
@@ -166,6 +196,8 @@ def package(skip_build=False, output=None, version=None):
     dest = artifacts / 'staging'
     release = artifacts / 'releases'
     if not skip_build:
+        # dotnet publish never deletes files left by earlier publishes; stale ones would ship.
+        shutil.rmtree(publish, ignore_errors=True)
         run([tool('node'), 'build.mjs'], cwd=REPO / 'backend')
         run([tool('go'), 'build', '-trimpath', '-ldflags=-s -w', '-o', 'build/proton-confgen.exe', './cmd/protonvpn-wg'], cwd=REPO / 'tools/proton-confgen')
         run([tool('dotnet'), 'publish', PROJECT, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
@@ -188,7 +220,7 @@ def package(skip_build=False, output=None, version=None):
         copy(p, dest / 'docs' / p.name)
     commit = source_commit()
     build_info = {'product': 'Brisa', 'version': version, 'sourceCommit': commit,
-                  'repository': 'https://github.com/insxnsive/brisa', 'license': 'GPL-3.0-or-later'}
+                  'repository': 'https://github.com/insxnsive/brisa', 'license': 'GPL-3.0-or-later', 'dirty': dirty}
     make_source_archive(dest / 'source.zip', vendor, build_info)
     (dest / 'build-info.json').write_text(json.dumps(build_info, indent=2), encoding='utf-8')
     validate_publish(dest)
@@ -214,5 +246,6 @@ if __name__ == '__main__':
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--version')
+    parser.add_argument('--allow-dirty', action='store_true', help='build from a tree that differs from HEAD (stamped dirty; never publish)')
     args = parser.parse_args()
-    package(args.skip_build, args.output, args.version)
+    package(args.skip_build, args.output, args.version, args.allow_dirty)

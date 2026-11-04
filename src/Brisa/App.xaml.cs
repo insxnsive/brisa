@@ -36,6 +36,9 @@ public partial class App : System.Windows.Application
         }
 
         var isolated = testMode || smokeOutput is not null;
+        // "Start When I Sign In" writes --startup. It is a logon launch, so it must stay on
+        // Home and never request elevation on its own.
+        var startupLaunch = !isolated && e.Args.Contains("--startup", StringComparer.OrdinalIgnoreCase);
         var settings = isolated
             ? new SettingsStore(Path.Combine(Environment.GetEnvironmentVariable("TMPDIR") ?? Path.GetTempPath(), "BrisaUiTests", Guid.NewGuid().ToString("N")), false)
             : new SettingsStore();
@@ -46,8 +49,11 @@ public partial class App : System.Windows.Application
         IBackendClient backend;
         if (isolated && e.Args.Contains("--backend-unavailable", StringComparer.OrdinalIgnoreCase)) backend = new UnavailableBackendClient();
         else if (testMode || smokeOutput is not null) backend = new UiTestBackendClient(
-            initial: smokeOutput is not null || e.Args.Contains("--signed-in", StringComparer.OrdinalIgnoreCase)
-                ? new(false, false, true, true, "UI test account", null) : null,
+            initial: e.Args.Contains("--limited", StringComparer.OrdinalIgnoreCase)
+                // Isolated visual check of the unelevated Limited Home; never a real launch.
+                ? new(false, false, false, true, "UI test account", null, RequiresElevation: true)
+                : smokeOutput is not null || e.Args.Contains("--signed-in", StringComparer.OrdinalIgnoreCase)
+                    ? new(false, false, true, true, "UI test account", null) : null,
             commandDelay: testMode ? TimeSpan.FromSeconds(6) : TimeSpan.Zero);
         else
         {
@@ -68,7 +74,7 @@ public partial class App : System.Windows.Application
         _tray = new TrayService(window, settings);
         if (isolated) window.Title = "Brisa — UI Test (No Network)";
         window.Show();
-        await window.InitializeAsync();
+        await window.InitializeAsync(openAccount: !startupLaunch);
     }
 
     private void OnExit(object sender, ExitEventArgs e)

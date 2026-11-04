@@ -158,7 +158,7 @@ export function createDiscordLifecycle(options = {}) {
       if (processes.some(process => process.executablePath && key(process.executablePath) === key(win.normalize(app)))) return;
       if (attempt + 1 < maxAttempts) await sleep(pollIntervalMs, signal);
     }
-    throw new Error(`Discord did not start within the bounded wait (${clock()}).`);
+    throw new Error("Discord did not start within the bounded wait.");
   };
 
   const launch = async (apps, signal) => {

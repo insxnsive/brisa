@@ -1,10 +1,6 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using UserControl = System.Windows.Controls.UserControl;
 using System.Windows.Input;
-using Button = System.Windows.Controls.Button;
-using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Brisa.Models;
@@ -20,6 +16,7 @@ public partial class MainWindow : Window
     private readonly string? _smokeOutput;
     private readonly IUpdateService? _updates;
     private readonly Action<string> _exitWarning;
+    private readonly Action<string> _notice;
     private readonly SemaphoreSlim _operation = new(1, 1);
     private HomeState _state = new(ConnectionPhase.Loading, null);
     private CancellationTokenSource _lifetime = new();
@@ -29,62 +26,136 @@ public partial class MainWindow : Window
     private bool _refreshing;
     private bool _nativeOperationMayBeActive;
     private bool _terminalBackendFailure;
+    // Snapshot commit bookkeeping. Every snapshot-derived state write goes through one gate:
+    // a stale response must never overwrite a newer operation's state, and an operation-owned
+    // final refresh must be distinguishable from a background poll that merely looks current.
+    private long _operationEpoch;
+    private long _navigationEpoch;
+    private long _requestSequence;
+    private long _appliedSequence;
+    private bool _operationOwnsUi;
     private readonly System.Windows.Threading.DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(10) };
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null)
+    private readonly record struct SnapshotTicket(long Operation, long Navigation, long Sequence, bool FromOperation);
+
+    // One definition of "a UI mutation is in flight", used by handlers as well as controls:
+    // disabling a button does not stop a queued or directly raised event.
+    private bool UiMutationBusy => _operationOwnsUi || _operation.CurrentCount == 0
+        || _state.Phase is ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;
+
+    private SnapshotTicket IssueTicket(bool fromOperation = false) =>
+        new(_operationEpoch, _navigationEpoch, Interlocked.Increment(ref _requestSequence), fromOperation);
+
+    private bool CanCommit(SnapshotTicket ticket)
+    {
+        if (_closing || _canClose) return false;
+        if (ticket.Operation != _operationEpoch || ticket.Navigation != _navigationEpoch) return false;
+        return ticket.FromOperation ? _operationOwnsUi : !_operationOwnsUi && _operation.CurrentCount != 0;
+    }
+
+    private bool ApplySnapshot(NativeSnapshot snapshot, SnapshotTicket ticket)
+    {
+        if (!CanCommit(ticket) || ticket.Sequence < _appliedSequence) return false;
+        _appliedSequence = ticket.Sequence;
+        SetState(HomeState.FromSnapshot(snapshot));
+        return true;
+    }
+
+    private async Task<bool> RefreshSnapshotAsync(SnapshotTicket ticket, TimeSpan budget)
+    {
+        using var token = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        token.CancelAfter(budget);
+        try
+        {
+            var snapshot = await _backend.SnapshotAsync(token.Token);
+            return ApplySnapshot(snapshot, ticket);
+        }
+        catch (OperationCanceledException) when (!_lifetime.IsCancellationRequested)
+        {
+            // This budget expiring is our own deadline, not the window shutting down. The
+            // transport sees a cancellable token here, so it reports cancellation rather than
+            // TimeoutException; the deadline has to be classified on this side.
+            if (CanCommit(ticket)) SetError(new TimeoutException(BackendClient.TimeoutMessage), _state.Snapshot);
+            return false;
+        }
+        catch (OperationCanceledException) { return false; }
+        catch (Exception ex)
+        {
+            // A stale failure must not replace a newer healthy state or stop its timer.
+            if (CanCommit(ticket)) SetError(ex, _state.Snapshot);
+            return false;
+        }
+    }
+
+    private void BeginUiMutation()
+    {
+        _operationOwnsUi = true;
+        _operationEpoch++;
+    }
+
+    private void EndUiMutation()
+    {
+        _operationEpoch++;
+        _operationOwnsUi = false;
+    }
+
+    // A rejected final refresh must not leave the window stuck in a busy phase with every
+    // control disabled, so the last known snapshot is republished instead.
+    private void LeaveBusyPhase()
+    {
+        if (_state.Phase is not (ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing)) return;
+        SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
+    }
+
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null)
     {
         InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
         _exitWarning = exitWarning ?? (message => { MessageBox.Show(this, message, "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); });
+        _notice = notice ?? (message => { MessageBox.Show(this, message, "Route", MessageBoxButton.OK, MessageBoxImage.Warning); });
         SetState(_state);
         _statusTimer.Tick += RefreshStatus;
         Closed += (_, _) => _statusTimer.Stop();
         Closing += OnClosing;
+        // The timer is paused while hidden in the tray, so refresh once when the window comes back.
+        IsVisibleChanged += (_, e) => { if (e.NewValue is true) RefreshStatus(this, EventArgs.Empty); };
         PreviewKeyDown += OnNavigationKeyDown;
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(bool openAccount = true)
     {
+        var ticket = IssueTicket();
+        var accepted = false;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
         try
         {
             var snapshot = await _backend.SnapshotAsync(timeout.Token).WaitAsync(timeout.Token);
-            if (_closing || _canClose) return;
-            SetState(HomeState.FromSnapshot(snapshot));
+            accepted = ApplySnapshot(snapshot, ticket);
         }
         catch (Exception ex)
         {
-            if (_closing || _canClose) return;
-            SetError(ex, null);
+            if (CanCommit(ticket)) SetError(ex, null);
         }
-        if (_state.RequiresSignIn && _currentPage is null && !_closing) OpenAccount();
-        _statusTimer.Start();
+        // A logon launch stays on Home: the limited-access state says what is possible
+        // instead of jumping the user into a sign-in they did not ask for. Onboarding also
+        // waits for an accepted snapshot, so a stale or rejected one cannot open Account.
+        if (openAccount && accepted && _state.RequiresSignIn && _currentPage is null && !_closing) OpenAccount();
+        if (!_terminalBackendFailure) _statusTimer.Start();
         if (_smokeOutput is not null) await RunSmokeAsync(_smokeOutput);
     }
 
     private async void RefreshStatus(object? sender, EventArgs e)
     {
-        if (_refreshing || _closing || !IsVisible || _currentPage is not null ||
-            _state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting) return;
+        if (_refreshing || _closing || !IsVisible || _currentPage is not null || UiMutationBusy ||
+            _state.Phase is ConnectionPhase.Loading) return;
         _refreshing = true;
-        var before = _state;
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-            timeout.CancelAfter(TimeSpan.FromSeconds(20));
-            var snapshot = await _backend.SnapshotAsync(timeout.Token);
-            if (!_closing && _currentPage is null && ReferenceEquals(before, _state)) SetState(HomeState.FromSnapshot(snapshot));
-        }
-        catch (Exception ex)
-        {
-            if (!_closing && ReferenceEquals(before, _state)) SetError(ex, _state.Snapshot);
-        }
+        try { await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(20)); }
         finally { _refreshing = false; }
     }
 
     private void SetError(Exception error, NativeSnapshot? snapshot)
     {
-        if (error is BackendUnavailableException) _terminalBackendFailure = true;
+        if (error is BackendUnavailableException) { _terminalBackendFailure = true; _statusTimer.Stop(); }
         SetState(new(ConnectionPhase.Error, snapshot, SafeMessage(error)));
     }
 
@@ -95,7 +166,7 @@ public partial class MainWindow : Window
             && state.Snapshot is { Reliable: true, HasOwnedTunnel: false }) _nativeOperationMayBeActive = false;
         _state = state; StatusText.Text = state.StatusText; DetailText.Text = state.Detail ?? "";
         PrimaryButton.Content = state.PrimaryLabel;
-        var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting;
+        var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;
         ConnectionProgress.IsIndeterminate = busy;
         ConnectionProgress.Visibility = busy ? Visibility.Visible : Visibility.Hidden;
         UpdateActionAvailability();
@@ -108,7 +179,8 @@ public partial class MainWindow : Window
     {
         if (_currentPage is not null || _navigationBusy || _closing) return;
         if (_state.StartupFailed) { RequestExit(); return; }
-        if (!await _operation.WaitAsync(0)) return;
+        if (UiMutationBusy || !await _operation.WaitAsync(0)) return;
+        BeginUiMutation();
         try
         {
             if (_state.RequiresSignIn) { OpenAccount(); return; }
@@ -116,17 +188,27 @@ public partial class MainWindow : Window
             if (command == "connect") _nativeOperationMayBeActive = true;
             SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, Detail = null });
             var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
-            await TrackProgressAsync(pending);
+            await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
             if (!result.Success) MessageBox.Show(this, result.Message ?? "The operation could not be completed.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
-            SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync()));
+            await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
-        catch (OperationCanceledException) { if (!_closing) { try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch (Exception ex) { SetError(ex, _state.Snapshot); } } }
-        catch (Exception ex) { SetError(ex, _state.Snapshot); }
-        finally { _operation.Release(); }
+        catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }
+        catch (Exception ex) { if (CanCommit(IssueTicket(fromOperation: true))) SetError(ex, _state.Snapshot); }
+        finally { EndUiMutation(); LeaveBusyPhase(); _operation.Release(); UpdateActionAvailability(); }
     }
 
-    private async Task TrackProgressAsync(Task pending)
+    // Test seam only: production always runs the real hardened window.
+    internal Func<VerificationChallenge, CancellationToken, Task<VerificationAnswer?>>? VerificationDialogFactory { get; init; }
+
+    private async Task<VerificationAnswer?> ShowVerificationAsync(VerificationChallenge challenge, CancellationToken token)
+    {
+        var dialog = new VerificationWindow(challenge, token) { Owner = this };
+        dialog.Show();
+        return await dialog.Completion;
+    }
+
+    private async Task TrackProgressAsync(Task pending, long ownerEpoch)
     {
         while (!pending.IsCompleted && !_closing)
         {
@@ -140,6 +222,7 @@ public partial class MainWindow : Window
                 var detail = progress.Stage switch
                 {
                     "preparing-profile" => "Preparing your VPN route…",
+                    "installing-wiresock" => "Preparing WireSock SDK. Complete or cancel the visible installer if it opens.",
                     "closing-discord" => "Closing the old Discord session…",
                     "starting-tunnel" => "Starting and settling the tunnel…",
                     "starting-discord" => "Reopening Discord…",
@@ -147,7 +230,10 @@ public partial class MainWindow : Window
                     "stopping-tunnel" => "Restoring the normal connection…",
                     _ => null
                 };
-                if (detail is not null && !pending.IsCompleted && !_closing) SetState(_state with { Detail = detail });
+                // Advisory only, and only while the operation that started it still owns the UI:
+                // a late poll must not repaint a state the user has already left.
+                if (detail is not null && !pending.IsCompleted && !_closing
+                    && _operationOwnsUi && _operationEpoch == ownerEpoch) SetState(_state with { Detail = detail });
             }
             catch { /* Progress is advisory; the command still controls its outcome. */ }
         }
@@ -157,6 +243,11 @@ public partial class MainWindow : Window
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        // Distinguish our own three-minute deadline from a caller or lifetime cancellation, so
+        // a timeout can be reported instead of vanishing as a silent refresh.
+        var deadlineExpired = false;
+        using var deadline = timeout.Token.Register(() => deadlineExpired = true);
+        var presented = false;
         string? token = null, method = null;
         try
         {
@@ -166,32 +257,50 @@ public partial class MainWindow : Window
                 if (result.Success || result.CaptchaUrl is null) return result;
                 if (!VerificationPolicy.TryParseChallenge(result.CaptchaUrl, out var challenge) || challenge is null)
                     return result with { Message = "The verification address was rejected." };
-                var dialog = new VerificationWindow(challenge, timeout.Token) { Owner = this };
-                dialog.Show();
-                var answer = await dialog.Completion;
+                VerificationAnswer? answer;
+                try
+                {
+                    presented = true;
+                    answer = VerificationDialogFactory is null
+                        ? await ShowVerificationAsync(challenge, timeout.Token)
+                        : await VerificationDialogFactory(challenge, timeout.Token);
+                }
+                catch (VerificationUnavailableException)
+                {
+                    // A window that never started is not a cancelled verification.
+                    await _backend.CancelAsync();
+                    return new(false, "VERIFICATION_UNAVAILABLE", "The verification window could not start. Install or repair the WebView2 Runtime, then try again.");
+                }
                 if (answer is null) throw new OperationCanceledException(timeout.Token);
                 token = answer.Token; method = answer.Method;
             }
             return new(false, "VERIFICATION_LIMIT", "Verification could not be completed after two retries.");
+        }
+        catch (OperationCanceledException) when (deadlineExpired && presented)
+        {
+            await _backend.CancelAsync();
+            return new(false, "VERIFICATION_TIMEOUT", "Verification timed out. Try again.");
         }
         catch (OperationCanceledException) { await _backend.CancelAsync(); throw; }
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentPage is not null || _navigationBusy || _closing) return;
-        var view = new SettingsView(_settings, _updates, RequestUpdateRestart, () => Advanced_Click(this, new RoutedEventArgs()));
+        if (_currentPage is not null || _navigationBusy || _closing || UiMutationBusy) return;
+        var view = new SettingsView(_settings, _updates, RequestUpdateRestart, ShowAdvancedAsync);
         view.CloseRequested += async (_, _) => await ReturnHomeAsync();
         ShowPage(view, "Settings");
     }
     private void Account_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentPage is not null || _navigationBusy || _closing || !AccountButton.IsEnabled) return;
+        if (_currentPage is not null || _navigationBusy || _closing || UiMutationBusy || !AccountButton.IsEnabled) return;
         OpenAccount();
     }
     private void OpenAccount() => ShowPage(new AccountView(_backend, this, _state.Snapshot), "Account");
     private void ShowPage(UserControl page, string title)
     {
+        // Any page change invalidates snapshots issued for the previous surface.
+        _navigationEpoch++;
         PageTransition.Stop(HomeContent);
         _currentPage = page; PageHost.Content = page;
         PageTitle.Text = title;
@@ -229,10 +338,8 @@ public partial class MainWindow : Window
             HomeContent.Visibility = HomeActions.Visibility = Visibility.Visible;
             PageTransition.Show(HomeContent);
             PageTitle.Text = "Connection";
-            using var refresh = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-            refresh.CancelAfter(TimeSpan.FromSeconds(5));
-            try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync(refresh.Token))); }
-            catch (Exception ex) { if (!_closing) SetError(ex, _state.Snapshot); }
+            _navigationEpoch++;
+            await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(5));
         }
         catch { if (!_closing) MessageBox.Show(this, "The account operation is still stopping. Please try going back again.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally
@@ -244,30 +351,68 @@ public partial class MainWindow : Window
     private void UpdateActionAvailability()
     {
         var available = !_navigationBusy && !_closing;
-        PrimaryButton.IsEnabled = available && _state.PrimaryEnabled;
-        RouteButton.IsEnabled = available && !_state.RequiresSignIn && _state.Phase == ConnectionPhase.Disconnected && _state.Snapshot is { ExternalTunnel: false, Reliable: true, HasOwnedTunnel: false };
-        AccountButton.IsEnabled = available && _state.Phase is not (ConnectionPhase.Connecting or ConnectionPhase.Disconnecting);
-        SettingsButton.IsEnabled = available;
+        PrimaryButton.IsEnabled = available && _state.PrimaryEnabled && !UiMutationBusy;
+        RouteButton.IsEnabled = available && CanChooseRoute;
+        AccountButton.IsEnabled = available && !UiMutationBusy;
+        // Settings must not be reachable mid-mutation, but it has to come back afterwards.
+        SettingsButton.IsEnabled = available && !UiMutationBusy;
     }
+
+    // One eligibility definition shared by the control and the handler: a queued or directly
+    // raised event can still fire while the button is disabled.
+    private bool CanChooseRoute => !_state.RequiresSignIn && _state.Phase == ConnectionPhase.Disconnected
+        && _state.Snapshot is { ExternalTunnel: false, Reliable: true, HasOwnedTunnel: false };
+
     private async void Route_Click(object sender, RoutedEventArgs e)
     {
+        if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute) return;
         var dialog = new RouteWindow(this) { Owner = this };
         if (dialog.ShowDialog() != true) return;
-        if (!await _operation.WaitAsync(0)) return;
+        // The modal pumps the dispatcher, so eligibility can change while it is open. The
+        // selection is never queued or replayed later; the user is told instead.
+        if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute)
+        { _notice("The connection state changed while choosing a route. Your selection was not applied. Try again when Brisa is idle."); return; }
+        if (!await _operation.WaitAsync(0))
+        { _notice("The connection state changed while choosing a route. Your selection was not applied. Try again when Brisa is idle."); return; }
+        BeginUiMutation();
         try
         {
-            var result = await ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
+            // Optimization can take minutes, so the window says so instead of looking idle.
+            // The detail stays generic: the backend does not promise a useful optimize stage.
+            SetState(new HomeState(ConnectionPhase.Optimizing, _state.Snapshot, "Choosing the best route for your selection…"));
+            var pending = ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
+            await TrackProgressAsync(pending, _operationEpoch);
+            var result = await pending;
             if (!result.Success) MessageBox.Show(this, result.Message ?? "Route optimization failed.", "Route", MessageBoxButton.OK, MessageBoxImage.Warning);
-            SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync()));
+            await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }
         catch (Exception ex) { MessageBox.Show(this, SafeMessage(ex), "Route", MessageBoxButton.OK, MessageBoxImage.Error); }
-        finally { _operation.Release(); }
+        finally { EndUiMutation(); LeaveBusyPhase(); _operation.Release(); UpdateActionAvailability(); }
     }
-    private async void Advanced_Click(object sender, RoutedEventArgs e)
+    private async void ShowAdvancedAsync()
     {
-        new AdvancedWindow(_backend, _state.Snapshot) { Owner = this }.ShowDialog();
-        try { SetState(HomeState.FromSnapshot(await _backend.SnapshotAsync())); } catch { }
+        if (_currentPage is not null || _navigationBusy || _closing || UiMutationBusy) return;
+        new AdvancedWindow(_backend, _state.Snapshot, ImportConfigAsync) { Owner = this }.ShowDialog();
+        await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(20));
+    }
+
+    /// <summary>
+    /// Advanced's import runs through the same UI mutation gate as Connect, so a dialog opened
+    /// from a stale snapshot cannot issue a command mid-connect.
+    /// </summary>
+    internal async Task<CommandResult> ImportConfigAsync(string path)
+    {
+        const string busy = "Another operation is still running. Wait for it to finish and try importing again.";
+        if (_closing || UiMutationBusy) return new(false, "UI_BUSY", busy);
+        if (!await _operation.WaitAsync(0)) return new(false, "UI_BUSY", busy);
+        BeginUiMutation();
+        try
+        {
+            if (_closing) return new(false, "UI_BUSY", busy);
+            return await _backend.CommandAsync("importConfig", new { path }, _lifetime.Token);
+        }
+        finally { EndUiMutation(); _operation.Release(); UpdateActionAvailability(); }
     }
 
     private async Task RunSmokeAsync(string output)
@@ -362,6 +507,8 @@ public partial class MainWindow : Window
 
     private string SafeMessage(Exception ex) => ex switch
     {
+        TimeoutException => BackendClient.TimeoutMessage,
+        InvalidDataException => "The native service returned an unreadable response.",
         FileNotFoundException => "The native backend is not installed with this build.",
         BackendUnavailableException => _nativeOperationMayBeActive
             ? "The native service stopped while a connection may still be active. Brisa cannot confirm a safe disconnect."

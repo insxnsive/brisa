@@ -3,7 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { elevatedPowerShellFileArgs } from "./network/wiresock-service.ts";
-import { ensureWireSockInstalled, findWireSockCandidate, inspectWireSockAsync } from "./network/vpn-windows.ts";
+import { WireSockSetupError } from "./wiresock-setup.mjs";
+import { classifyStartResult, WireSockStartError } from "./wiresock-start-result.mjs";
+import { wireSockSearchRoots } from "./wiresock-discovery.mjs";
+import { ensureWireSockCandidate, inspectWireSockAsync, learnCandidateLease, type WireSockCandidateLease } from "./network/vpn-windows.ts";
 import { formatAllowedApps, sanitizeWireGuardConfig, validateWireGuardConfig } from "./network/vpn-types.ts";
 
 const quotePowerShell = (value: string) => `'${value.replace(/'/g, "''")}'`;
@@ -45,27 +48,45 @@ try {
 } catch { Complete 1 ("DIRECT_REFUSED: "+$_.Exception.Message) }`;
 }
 
+type ExecFailure = { exitCode?: number; timedOut?: boolean };
+
 function runPowerShell(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile("powershell.exe", args, { windowsHide: true, timeout: 120_000 }, error => error ? reject(error) : resolve());
+    execFile("powershell.exe", args, { windowsHide: true, timeout: 120_000 }, error => {
+      if (!error) return resolve();
+      // Only the exit status and timeout flag; the wrapper's stderr is vendor prose and
+      // may carry paths, so it is never carried past this point.
+      const failure: ExecFailure = {};
+      const code = (error as { code?: unknown }).code;
+      if (typeof code === "number") failure.exitCode = code;
+      if ((error as { killed?: boolean }).killed === true) failure.timedOut = true;
+      reject(failure);
+    });
   });
 }
 
-export async function startNativeWireSock(configPath: string, rawConfig: string, allowedAppPaths: string[], signal?: AbortSignal) {
+export async function startNativeWireSock(configPath: string, rawConfig: string, allowedAppPaths: string[], signal?: AbortSignal, options?: { onStage?: (stage: string) => void; onEvent?: (code: string, data?: Record<string, number | boolean>) => void; onLease?: (lease: WireSockCandidateLease) => void }) {
   if (process.platform !== "win32" || process.arch !== "x64") throw new Error("Windows x64 is required.");
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
   const validation = validateWireGuardConfig(rawConfig);
   if (!validation.valid) throw new Error("The WireGuard profile is invalid.");
   const before = await inspectWireSockAsync(configPath);
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-  if (!before.reliable) throw new Error("WireSock state is unreliable.");
-  if (before.active && !before.owned) throw new Error("Another WireSock tunnel is active.");
+  if (!before.reliable) throw new WireSockStartError("START_STATE_UNRELIABLE");
+  if (before.active && !before.owned) throw new WireSockStartError("START_EXTERNAL_ACTIVE");
   if (before.active && before.owned) return { configPath };
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-  await ensureWireSockInstalled(() => {});
+  // Um único preparo do SDK devolve o par inteiro; descobrir de novo aqui só repetia o
+  // registry/CIM e podia escolher um par diferente do que acabou de ser validado.
+  options?.onStage?.("installing-wiresock");
+  const candidate = await ensureWireSockCandidate(() => {}, { signal, onEvent: options?.onEvent });
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-  const candidate = findWireSockCandidate();
-  if (!candidate) throw new Error("A compatible WireSock SDK installation is required.");
+  // A linha de base é aprendida agora, junto da seleção e antes do lançamento: aprender depois
+  // carimbaria como confiável um par que já pudesse ter sido trocado durante o start.
+  const lease = await learnCandidateLease(candidate, signal);
+  if (lease) options?.onLease?.(lease);
+  if (signal?.aborted) throw new Error("WireSock start was cancelled.");
+  options?.onStage?.("starting-tunnel");
 
   const target = path.resolve(configPath);
   const nonce = `${process.pid}.${Date.now()}`;
@@ -74,6 +95,7 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   const resultPath = `${target}.${nonce}.result`;
   const cancelPath = `${target}.${nonce}.cancel`;
   let cancellationMarked = false;
+  let execFailure: ExecFailure | null = null;
   const markCancelled = () => {
     cancellationMarked = true;
     try { fs.writeFileSync(cancelPath, "cancelled", { encoding: "utf8", mode: 0o600, flag: "wx" }); } catch {}
@@ -86,11 +108,13 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
     fs.renameSync(staging, target);
     fs.writeFileSync(scriptPath, nativeDirectScript(candidate.executable, target, resultPath, cancelPath), { encoding: "utf8", mode: 0o600, flag: "wx" });
     if (signal?.aborted) markCancelled();
-    try { await runPowerShell(elevatedPowerShellFileArgs(scriptPath, resultPath)); } catch { markCancelled(); }
+    try { await runPowerShell(elevatedPowerShellFileArgs(scriptPath, resultPath)); }
+    catch (failure) { execFailure = failure as ExecFailure; markCancelled(); }
     let result = "";
     try { result = fs.readFileSync(resultPath, "utf8"); } catch {}
     if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-    if (!/^0\r?\nDIRECT_RUNNING: pid=\d+\s*$/.test(result)) throw new Error("The elevated WireSock start was refused.");
+    const verdict = classifyStartResult(result, execFailure);
+    if (!verdict.ok) throw new WireSockStartError(verdict.code, verdict.data);
   } finally {
     signal?.removeEventListener("abort", markCancelled);
     for (const file of [staging, scriptPath, resultPath, `${resultPath}.tmp`, cancelPath, `${resultPath}.stdout`, `${resultPath}.stderr`]) {
@@ -100,6 +124,7 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   }
   const after = await inspectWireSockAsync(target);
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-  if (!after.reliable || !after.active || !after.owned) throw new Error("WireSock did not confirm the exact native-owned config.");
-  return { configPath: target };
+  if (!after.reliable) throw new WireSockStartError("START_NOT_CONFIRMED", { reliable: false });
+  if (!after.active || !after.owned) throw new WireSockStartError("START_NOT_CONFIRMED", { active: after.active === true, owned: after.owned === true });
+  return { configPath: target, candidate };
 }

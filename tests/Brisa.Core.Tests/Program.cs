@@ -26,12 +26,71 @@ var tests = new (string Name, Action Run)[]
         Assert(state.Phase == ConnectionPhase.Blocked && !state.PrimaryEnabled && state.Detail!.Contains("Another app"));
     }),
     ("unreliable inspection fails closed", () => Assert(!HomeState.FromSnapshot(new(false, false, false, false, "", null)).PrimaryEnabled)),
+    ("mixed ownership keeps the app open instead of exiting", () =>
+    {
+        var snapshot = new NativeSnapshot(false, true, true, true, "u", null, OwnedTunnelPresent: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.Phase == ConnectionPhase.Blocked && !state.PrimaryEnabled && state.Detail!.Contains("still running alongside"));
+        var backend = new UiTestBackendClient(snapshot);
+        Throws<InvalidOperationException>(() => ExitGuard.StopOwnedAsync(backend, false).GetAwaiter().GetResult());
+        Assert(!backend.Commands.Contains("disconnect"));
+    }),
+    ("unreliable but positively owned never exits or connects", () =>
+    {
+        var snapshot = new NativeSnapshot(false, false, false, true, "u", null, OwnedTunnelPresent: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(!state.PrimaryEnabled && state.Detail!.Contains("may still be running"));
+        var backend = new UiTestBackendClient(snapshot);
+        Throws<InvalidOperationException>(() => ExitGuard.StopOwnedAsync(backend, false).GetAwaiter().GetResult());
+        Assert(!backend.Commands.Contains("disconnect"));
+    }),
+    ("limited access keeps Connect disabled and is not an error", () =>
+    {
+        var snapshot = new NativeSnapshot(false, false, false, false, "", null, RequiresElevation: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.Phase == ConnectionPhase.Limited && !state.PrimaryEnabled && state.PrimaryLabel == "Connect");
+        Assert(state.Detail!.Contains("administrator") && !state.StartupFailed);
+    }),
+    ("optimizing has its own busy text and disables the primary action", () =>
+    {
+        var snapshot = new NativeSnapshot(false, false, true, true, "u", null);
+        var state = new HomeState(ConnectionPhase.Optimizing, snapshot, "Choosing the best route for your selection…");
+        Assert(state.StatusText == "Optimizing route…");
+        Assert(!state.PrimaryEnabled);
+        // The snapshot itself is idle: only the phase says an operation is running, so the
+        // state must not be mistaken for a fresh Disconnected observation.
+        Assert(HomeState.FromSnapshot(snapshot).Phase == ConnectionPhase.Disconnected);
+    }),
+    ("hasOwnedTunnel round-trips once and old JSON still loads", () =>
+    {
+        var json = JsonSerializer.Serialize(new NativeSnapshot(false, true, true, true, "u", null, OwnedTunnelPresent: true),
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        Assert(json.Contains("\"hasOwnedTunnel\":true"));
+        Assert(json.Split("\"hasOwnedTunnel\"").Length == 2);
+        var old = JsonSerializer.Deserialize<NativeSnapshot>(
+            "{\"connected\":false,\"tunnelActive\":false,\"externalTunnel\":false,\"reliable\":true,\"signedIn\":true,\"username\":\"u\",\"route\":null}",
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert(!old.HasOwnedTunnel && !old.RequiresElevation);
+    }),
     ("ndjson parses exact envelope", () =>
     {
         var frame = NdjsonProtocol.ParseResponse("{\"id\":\"a\",\"ok\":true,\"result\":{\"success\":true}}");
         Assert(frame.Id == "a" && frame.Ok && frame.Result.GetProperty("success").GetBoolean());
         Throws<InvalidDataException>(() => NdjsonProtocol.ParseResponse("{\"id\":\"a\"}\n{}"));
         Throws<InvalidDataException>(() => NdjsonProtocol.ParseResponse("not json"));
+    }),
+    ("ndjson recovers only an unambiguous request id", () =>
+    {
+        Assert(NdjsonProtocol.TryRecoverRequestId("{\"id\":\"a\",\"ok\":true}", out var recovered) && recovered == "a");
+        // Duplicate or non-string ids are ambiguous: the frame must not be attributed.
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":\"a\",\"id\":\"b\"}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":7}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":\"  \"}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"ok\":true}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("[{\"id\":\"a\"}]", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("not json", out _));
+        // An oversized frame is never re-parsed.
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":\"a\",\"pad\":\"" + new string('x', NdjsonProtocol.MaxResponseCharacters) + "\"}", out _));
     }),
     ("ndjson request keeps secrets in framed payload", () =>
     {

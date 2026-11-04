@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using UserControl = System.Windows.Controls.UserControl;
 using Brisa.Models;
 using Brisa.Services;
 
@@ -15,6 +14,7 @@ public partial class AccountView : UserControl, IAsyncDisposable
     private Task _pending = Task.CompletedTask;
     private Task? _leaveTask;
     private bool _closed;
+    private string? _notice;
     public AccountView(IBackendClient backend, MainWindow main, NativeSnapshot? snapshot, Action<Uri>? openExternal = null)
     {
         InitializeComponent(); _backend = backend; _main = main; _snapshot = snapshot;
@@ -28,9 +28,13 @@ public partial class AccountView : UserControl, IAsyncDisposable
         SignedInPanel.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         RegistrationPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         if (signedIn) Subtitle.Text = "Your Proton account.";
+        else if (_notice is not null) Subtitle.Text = _notice;
         UsernameText.Text = _snapshot?.Username ?? "";
         ActionButton.Content = signedIn ? "Sign Out" : "Sign In";
-        ActionButton.IsEnabled = !_closed && (!signedIn || _snapshot is { HasOwnedTunnel: false, ExternalTunnel: false, Reliable: true });
+        // Signing out is only unsafe while Brisa's own tunnel is up; elevation and a foreign
+        // tunnel must not hide the button, or the backend's deferred-cleanup path is
+        // unreachable from the app.
+        ActionButton.IsEnabled = !_closed && (!signedIn || _snapshot is not { HasOwnedTunnel: true });
     }
     private void SignUp_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
@@ -68,6 +72,9 @@ public partial class AccountView : UserControl, IAsyncDisposable
             }
             if (_closed) return;
             if (!result.Success) { MessageBox.Show(_main, result.Message ?? "The account operation failed.", "Account", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            // A successful sign-out can still carry a warning, for example that the native
+            // tunnel profile was kept because ownership could not be verified.
+            if (!string.IsNullOrWhiteSpace(result.Message)) _notice = result.Message;
             using var refresh = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             refresh.CancelAfter(TimeSpan.FromSeconds(5));
             _snapshot = await _backend.SnapshotAsync(refresh.Token);

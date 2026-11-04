@@ -17,9 +17,16 @@ public sealed class BackendClient : IBackendClient
     private int _disposed;
     private readonly object _transportLock = new();
     private Exception? _terminalError;
+    // A caller that supplies its own cancellable token owns its deadline. Only a default
+    // token falls back to this bound, so a three-minute command budget is never shortened.
+    private readonly TimeSpan _requestTimeout;
+    internal const string TimeoutMessage = "The native service did not respond in time. Check the connection status before retrying.";
 
-    public BackendClient(string appDirectory, string dataDirectory)
+    public BackendClient(string appDirectory, string dataDirectory) : this(appDirectory, dataDirectory, TimeSpan.FromSeconds(60)) { }
+
+    internal BackendClient(string appDirectory, string dataDirectory, TimeSpan requestTimeout)
     {
+        _requestTimeout = requestTimeout;
         var node = Path.Combine(appDirectory, "runtime", "node.exe");
         var script = Path.Combine(appDirectory, "backend", "backend.cjs");
         if (!File.Exists(node) || !File.Exists(script))
@@ -33,6 +40,10 @@ public sealed class BackendClient : IBackendClient
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // The backend speaks UTF-8. Without these, a windowless app falls back to a console code page.
+            StandardInputEncoding = new System.Text.UTF8Encoding(false),
+            StandardOutputEncoding = new System.Text.UTF8Encoding(false),
+            StandardErrorEncoding = new System.Text.UTF8Encoding(false),
             CreateNoWindow = true
         };
         start.ArgumentList.Add(script);
@@ -54,8 +65,13 @@ public sealed class BackendClient : IBackendClient
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         await CommandAsync("cancel", new { }, timeout.Token);
-        // Abort acknowledgement is not a cleanup acknowledgement.
-        await CommandAsync("waitForIdle", new { }, timeout.Token);
+        // Abort acknowledgement is not a cleanup acknowledgement. A refused waitForIdle (for
+        // example an installer whose supervision was lost) must not look like a clean cancel.
+        var idle = await CommandAsync("waitForIdle", new { }, timeout.Token);
+        if (!idle.Success)
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(idle.Message)
+                ? "The native backend did not confirm that it became idle. Brisa will stay open."
+                : idle.Message);
     }
 
     public async Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default)
@@ -81,15 +97,30 @@ public sealed class BackendClient : IBackendClient
             if (_terminalError is not null) throw _terminalError;
             if (!_pending.TryAdd(id, completion)) throw new InvalidOperationException("Duplicate request id.");
         }
-        using var registration = token.Register(() => completion.TrySetCanceled(token));
+        var bounded = !token.CanBeCanceled;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
+        if (bounded) deadline.CancelAfter(_requestTimeout);
+        var effective = deadline.Token;
+        using var registration = effective.Register(() => completion.TrySetCanceled(effective));
         try
         {
+            // Never emit a frame for a request that is already abandoned.
+            effective.ThrowIfCancellationRequested();
             var line = NdjsonProtocol.SerializeRequest(id, command, payload);
-            await _writeLock.WaitAsync(token);
-            try { await _process.StandardInput.WriteLineAsync(line.AsMemory(), token); await _process.StandardInput.FlushAsync(token); }
+            await _writeLock.WaitAsync(effective);
+            try
+            {
+                await _process.StandardInput.WriteLineAsync(line.AsMemory(), effective);
+                await _process.StandardInput.FlushAsync(effective);
+            }
+            catch (OperationCanceledException) when (bounded && !token.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+            { throw new TimeoutException(TimeoutMessage); }
             catch (IOException) { var failure = new BackendUnavailableException(); FailPending(failure); throw failure; }
             finally { _writeLock.Release(); }
-            var response = await completion.Task;
+            BackendEnvelope response;
+            try { response = await completion.Task; }
+            catch (OperationCanceledException) when (bounded && !token.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+            { throw new TimeoutException(TimeoutMessage); }
             if (!response.Ok) throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Error) ? "Backend request failed." : response.Error);
             return response;
         }
@@ -104,7 +135,17 @@ public sealed class BackendClient : IBackendClient
             {
                 BackendEnvelope? response;
                 try { response = NdjsonProtocol.ParseResponse(line); }
-                catch (InvalidDataException) { continue; }
+                catch (InvalidDataException)
+                {
+                    // A frame we cannot parse is either one request's bad luck or a broken
+                    // stream. Only a single recoverable id makes it that request's problem;
+                    // anything else poisons the transport so no caller waits forever.
+                    if (NdjsonProtocol.TryRecoverRequestId(line, out var recoveredId)
+                        && _pending.TryGetValue(recoveredId, out var faulty))
+                    { faulty.TrySetException(new InvalidDataException("The native service returned an unreadable response.")); continue; }
+                    FailPending(new BackendUnavailableException());
+                    return;
+                }
                 if (response is not null && _pending.TryGetValue(response.Id, out var completion)) completion.TrySetResult(response);
             }
             FailPending(new BackendUnavailableException());
