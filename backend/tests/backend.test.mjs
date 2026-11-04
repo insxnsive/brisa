@@ -1256,3 +1256,46 @@ test("a Discord discovery failure still lets a fresh session stop its tunnel", a
   assert.match(text, /DISCORD_DISCOVERY_FAILED/);
   assert.doesNotMatch(JSON.stringify(result), /private|synthetic-user|token/);
 });
+
+test("a snapshot that overlapped a mutation cannot clear the session ownership", async () => {
+  // The mutation bumps the generation only when it begins, so a snapshot that started while it
+  // was running could pass the old freshness test and publish its pre-tunnel reading as current.
+  // The key includes the sequence, and the sequence now moves at the end of a mutation too.
+  let releaseStart;
+  const startGate = new Promise(resolve => { releaseStart = resolve; });
+  let releaseInspect = () => {};
+  let holdInspect = false;
+  let current = { active: false, owned: false, reliable: true };
+  const discordArgs = [];
+  const { backend, files, calls } = harness({
+    start: async (configPath, raw, apps) => {
+      calls.push(["start", configPath]);
+      await startGate;
+      current = { active: true, owned: true, reliable: true };
+    },
+    inspect: async () => {
+      if (holdInspect) {
+        holdInspect = false;
+        await new Promise(resolve => { releaseInspect = resolve; });
+        return { active: false, owned: false, reliable: true };
+      }
+      return current;
+    },
+    discordRunning: async apps => { discordArgs.push(apps); return true; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const connecting = backend.execute("connect", {});
+  await new Promise(resolve => setTimeout(resolve, 20));
+  holdInspect = true;
+  const stale = backend.execute("snapshot", {});
+  await new Promise(resolve => setTimeout(resolve, 20));
+  releaseStart();
+  assert.equal((await connecting).success, true);
+  releaseInspect();
+  await stale;
+  // The session's ownership survived: the next snapshot still asks about the apps Discord was
+  // restarted with instead of treating the session as empty.
+  const after = await backend.execute("snapshot", {});
+  assert.ok(discordArgs.some(apps => Array.isArray(apps) && apps.length), "the session apps must survive");
+  assert.equal(after.hasOwnedTunnel, true);
+});

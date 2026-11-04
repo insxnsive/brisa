@@ -415,24 +415,24 @@ export function createBackend(deps, paths) {
         let entry = snapshotInspection;
         if (mutationBusy || !entry || entry.key !== snapshotKey) entry = null;
         if (!entry) {
-          const created = { key: snapshotKey, generation, promise: null };
+          const created = { key: snapshotKey, promise: null };
           created.promise = inspect().finally(() => {
             if (snapshotInspection === created) snapshotInspection = null;
           });
           snapshotInspection = created;
           entry = created;
         }
-        const mine = entry.generation;
         const status = await entry.promise;
         const tunnelActive = status?.reliable === true && status.active === true && status.owned === true;
-        // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só a geração
-        // atual e um estado sem mutação podem dizer que não há túnel próprio.
-        const fresh = mine === generation && !mutationBusy;
+        // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só uma leitura
+        // iniciada e concluída no mesmo estado, sem mutação em curso, pode dizer que não há
+        // túnel próprio.
+        const fresh = entry.key === `${generation}:${mutationSeq}` && !mutationBusy;
         const ownPresent = fresh ? hasOwned(status) : (ownsTunnel(status) || sessionOwned);
         const tunnelKey = tunnelActive ? ownedTunnelKey(status) : null;
         // Publish inspection-derived state before any unrelated await, and only while this
         // snapshot is still current, so a late snapshot cannot overwrite a newer tunnel.
-        if (mine === generation && !mutationBusy) {
+        if (fresh) {
           if (!tunnelActive) {
             resetRoute();
             // A positively identified native tunnel (mixed or partly readable) may still be
@@ -451,12 +451,12 @@ export function createBackend(deps, paths) {
           const age = lastRouteCheck ? now() - lastRouteCheck : Infinity;
           // Never block a snapshot (or ExitGuard) on the route probes; the verdict lands
           // in a later snapshot once the re-check completes.
-          if (discordRunning && age >= ROUTE_STALE_AFTER_MS && !routeRecheck && mine === generation && !mutationBusy) startRouteRecheck(tunnelKey);
+          if (discordRunning && age >= ROUTE_STALE_AFTER_MS && !routeRecheck && fresh) startRouteRecheck(tunnelKey);
         }
         const verdictAge = lastRouteCheck ? now() - lastRouteCheck : null;
         const verified = routeVerification.verified && verdictAge !== null && verdictAge < ROUTE_VERDICT_MAX_AGE_MS;
         return {
-          connected: !installerUnknown && tunnelActive && discordRunning && verified && mine === generation && !mutationBusy,
+          connected: !installerUnknown && tunnelActive && discordRunning && verified && fresh,
           tunnelActive,
           hasOwnedTunnel: ownPresent,
           requiresElevation: deps.requiresElevation === true,
@@ -730,6 +730,9 @@ export function createBackend(deps, paths) {
       } finally {
         if (connectOperation) finish(connectOperation);
         mutationBusy = false;
+        // Também no fim: uma inspeção que atravessou qualquer parte da mutação não pode
+        // compartilhar chave com o estado posterior a ela.
+        mutationSeq += 1;
         // Com o instalador desconhecido o estágio não volta para idle: idle seria uma promessa
         // de que nada nativo está em andamento.
         if (!installerUnknown) stage = "idle";
