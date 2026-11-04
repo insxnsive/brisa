@@ -782,7 +782,13 @@ const WIRESOCK_INSPECTION_RETRIES = 6;
 // orçamento de 35 s é do stop inteiro, não de cada passo.
 // ---------------------------------------------------------------------------
 
-const STOP_BUDGET_MS = 35_000;
+// O reset opcional tem timeout de 30 s e precisa caber junto da reserva final, senão a
+// regra de canAfford o desligaria para sempre em produção.
+const STOP_BUDGET_MS = 45_000;
+// Reserva para a verificação residual final: sem ela, ações opcionais podem consumir o
+// orçamento inteiro e um túnel já comprovadamente inativo é reportado como stopped:false.
+const STOP_RESERVE_MS = 10_000;
+
 const STOP_STEP_TIMEOUT_MS = {
     snapshot: 8_000,
     serviceStop: 30_000,
@@ -877,6 +883,8 @@ export interface StopOwnedOptions {
     candidateLease?: WireSockCandidateLease | null;
     /** Sonda de frescor injetável: produção usa `leaseIsFresh`. */
     freshness?: (lease: WireSockCandidateLease, guard: () => void) => Promise<boolean>;
+    /** Reserva final injetável: produção usa STOP_RESERVE_MS. */
+    reserveMs?: number;
     /** Checagem de confiança injetável: produção usa a sondagem única. */
     isTrusted?: (executable: string, booster: string) => boolean | Promise<boolean>;
 }
@@ -952,13 +960,15 @@ export const defaultStopRuntime: StopRuntime = {
 
 class StopScope {
     private readonly deadlineAt: number;
-    constructor(readonly runtime: StopRuntime, budgetMs: number, readonly signal?: AbortSignal) {
+    constructor(readonly runtime: StopRuntime, budgetMs: number, readonly signal?: AbortSignal, readonly reserveMs: number = STOP_RESERVE_MS) {
         this.deadlineAt = runtime.now() + budgetMs;
     }
     get aborted(): boolean { return this.signal?.aborted === true; }
     get remaining(): number { return Math.max(0, this.deadlineAt - this.runtime.now()); }
     get live(): boolean { return !this.aborted && this.remaining > 0; }
     budget(stepMs: number): number { return Math.min(stepMs, this.remaining); }
+    /** Só começa uma ação opcional se o tempo dela couber e ainda sobrar a reserva final. */
+    canAfford(stepMs: number): boolean { return !this.aborted && this.remaining >= stepMs + this.reserveMs; }
     check(): void {
         if (this.aborted) throw new StopCancelledError();
         if (this.remaining <= 0) throw new StopDeadlineError();
@@ -983,7 +993,7 @@ async function withinDeadline<T>(work: Promise<T>, remainingMs: number): Promise
 export async function stopOwnedWireSock(configPath: string, log: WireSockLogger, options: StopOwnedOptions = {}): Promise<WireSockCleanupResult> {
     if (!isWindows()) return { stopped: true, servicesResidual: [], processResidual: [], networkLockReset: false, dnsCleared: false, dnsFlushed: false };
     const runtime = options.runtime ?? defaultStopRuntime;
-    const scope = new StopScope(runtime, options.timeoutMs ?? STOP_BUDGET_MS, options.signal);
+    const scope = new StopScope(runtime, options.timeoutMs ?? STOP_BUDGET_MS, options.signal, options.reserveMs);
     let last: WireSockInspection | null = null;
     let lastSnapshot: WireSockSnapshot | null = null;
 
@@ -1107,13 +1117,13 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
         };
 
         const lease = options.candidateLease ?? null;
-        if (lease && scope.live) {
+        if (lease && scope.canAfford(0)) {
             let blocked = await blockedBeforeGlobalAction();
             if (blocked) return blocked;
             // A prova de frescor consome orçamento e tempo: ela precisa caber no que resta e ser
             // seguida de um novo check. Um reset com orçamento zero roda sem timeout.
             const probe = options.freshness ?? ((value, guard) => leaseIsFresh(value, scope.signal, guard));
-            const fresh = await withinDeadline(probe(lease, () => scope.check()), scope.remaining);
+            const fresh = await withinDeadline(probe(lease, () => scope.check()), Math.max(0, scope.remaining - scope.reserveMs));
             scope.check();
             if (fresh) {
                 // Inatividade comprovada imediatamente antes do reset, não antes do hash.
@@ -1122,6 +1132,9 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
                 scope.check();
                 // O reset também é elevado: revalidar a assinatura e o caminho do binário agora,
                 // não só quando o par foi escolhido.
+                // O reset tem timeout próprio e só começa se ele e a reserva couberem.
+                if (!scope.canAfford(STOP_STEP_TIMEOUT_MS.networkLockReset)) { networkLockReset = false; }
+                else {
                 let trustedNow = false;
                 try {
                     trustedNow = await (options.isTrusted ?? (async () => {
@@ -1137,9 +1150,10 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
                     const result = await runtime.run(lease.executable, ["reset-network-lock"], scope.budget(STOP_STEP_TIMEOUT_MS.networkLockReset), scope.signal);
                     networkLockReset = result.ok;
                 }
+                }
             }
         }
-        if (scope.live) {
+        if (scope.canAfford(STOP_STEP_TIMEOUT_MS.dnsReset)) {
             const blocked = await blockedBeforeGlobalAction();
             if (blocked) return blocked;
             const script = "Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -match 'ProTUN|WireSock' -or $_.InterfaceDescription -match 'ProTUN|WireSock' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }";
@@ -1147,7 +1161,7 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
             dnsCleared = result.ok;
             if (!result.ok) log("warn", "não consegui limpar DNS do adaptador WireSock", { timedOut: result.timedOut, aborted: result.aborted });
         }
-        if (scope.live) {
+        if (scope.canAfford(STOP_STEP_TIMEOUT_MS.flushDns)) {
             const blocked = await blockedBeforeGlobalAction();
             if (blocked) return blocked;
             const result = await runtime.run("ipconfig.exe", ["/flushdns"], scope.budget(STOP_STEP_TIMEOUT_MS.flushDns), scope.signal);
@@ -1155,7 +1169,9 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
             if (!result.ok) log("warn", "flushdns falhou", { timedOut: result.timedOut, aborted: result.aborted });
         }
 
-        scope.check();
+        // A reserva existe para isto: se o orçamento acabou apesar dela, ainda vale ler o estado
+        // final. Um erro de cancelamento continua valendo; um prazo estourado, não.
+        if (scope.aborted) throw new StopCancelledError();
         const residual = await inspectUntilReliable();
         last = residual;
         // O veredito só vale se o stop inteiro ainda estiver vivo: um abort ou um orçamento

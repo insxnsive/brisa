@@ -184,6 +184,7 @@ test("a budget that expires during the freshness proof never runs the reset", as
     runtime,
     candidateLease: lease, isTrusted: () => true,
     timeoutMs: 5_000,
+    reserveMs: 0,
     freshness: async () => { probes += 1; clock.t += 10_000; return true; },
   });
   assert.equal(probes, 1, "the freshness proof must actually run");
@@ -202,6 +203,7 @@ test("a freshness proof that never settles still times out inside the budget", a
     runtime,
     candidateLease: lease, isTrusted: () => true,
     timeoutMs: 700,
+    reserveMs: 0,
     freshness: () => new Promise(() => {}),
   });
   assert.equal(result.stopped, false);
@@ -280,4 +282,24 @@ test("an aborted command reports aborted and settles exactly once", async () => 
   const result = await pending;
   assert.equal(result.aborted, true);
   assert.equal(result.ok, false);
+});
+
+test("a tight budget skips the optional actions and still reports a down tunnel as stopped", async () => {
+  // Finding 7: the optional global actions must not eat the budget that the final residual
+  // verification needs. With only the reserve left, they are skipped, and a tunnel that is
+  // already down is still reported stopped instead of stopped:false.
+  const { runtime, calls } = fakeRuntime({ snapshots: [activeOwned, inactive, inactive] });
+  const { lease } = sessionLease();
+  const result = await stopOwnedWireSock(config, quietLog, {
+    runtime,
+    candidateLease: lease, isTrusted: () => true,
+    timeoutMs: 12_000,
+    freshness: async () => true,
+  });
+  assert.equal(result.stopped, true);
+  assert.equal(result.networkLockReset, false);
+  assert.equal(result.dnsCleared, false);
+  assert.equal(result.dnsFlushed, false);
+  assert.ok(!calls.some(call => call.startsWith("wiresock-client.exe")), "no elevated reset on a tight budget");
+  assert.ok(!calls.some(call => call.startsWith("ipconfig.exe")), "no flush on a tight budget");
 });
