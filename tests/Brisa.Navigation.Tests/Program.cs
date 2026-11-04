@@ -178,6 +178,15 @@ internal static class Program
             Click((Button)settings.FindName("SaveButton")); Pump(() => host.Content is null);
             Check(store.Current.Theme == AppTheme.Light && home.IsVisible, "Save applies settings and returns Home");
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
+            // The Advanced button lives on the Settings page, so an open page must not block it.
+            var advancedOpened = 0;
+            main.PresentAdvanced = _ => advancedOpened++;
+            var settingsPage = (UserControl)host.Content;
+            Click((Button)settingsPage.FindName("AdvancedButton"));
+            Check(advancedOpened == 1, "Advanced opens from the Settings page");
+            Check(host.Content == settingsPage, "opening Advanced keeps the Settings page underneath");
+            main.PresentAdvanced = null;
+            Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
             var cancelled = (UserControl)host.Content;
             ((RadioButton)cancelled.FindName("DarkTheme")).IsChecked = true;
             Click((Button)cancelled.FindName("CancelButton")); Pump(() => host.Content is null);

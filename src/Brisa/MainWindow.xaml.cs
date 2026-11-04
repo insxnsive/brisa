@@ -346,7 +346,7 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentPage is not null || _navigationBusy || _closing || UiMutationBusy) return;
+        if (_navigationBusy || _closing || UiMutationBusy) return;
         var view = new SettingsView(_settings, _updates, RequestUpdateRestart, ShowAdvancedAsync);
         view.CloseRequested += async (_, _) => await ReturnHomeAsync();
         ShowPage(view, "Settings");
@@ -450,10 +450,18 @@ public partial class MainWindow : Window
         catch (Exception ex) { MessageBox.Show(this, SafeMessage(ex), "Route", MessageBoxButton.OK, MessageBoxImage.Error); }
         finally { EndUiMutation(); LeaveBusyPhase(); _operation.Release(); UpdateActionAvailability(); }
     }
+    /// <summary>Test seam: the real app shows a modal dialog, fixtures record the request.</summary>
+    internal Action<AdvancedWindow>? PresentAdvanced { get; set; }
+
     private async void ShowAdvancedAsync()
     {
-        if (_currentPage is not null || _navigationBusy || _closing || UiMutationBusy) return;
-        new AdvancedWindow(_backend, _state.Snapshot, ImportConfigAsync) { Owner = this }.ShowDialog();
+        // The button lives on the Settings page, so an open page is the only context it exists
+        // in: refusing because one is open made the button dead. Navigating, closing and a
+        // running UI mutation still refuse, because a dialog opened mid-transition or mid-connect
+        // would work from a snapshot that no longer matches.
+        if (_navigationBusy || _closing || UiMutationBusy) return;
+        var dialog = new AdvancedWindow(_backend, _state.Snapshot, ImportConfigAsync) { Owner = this };
+        (PresentAdvanced ?? (window => window.ShowDialog()))(dialog);
         await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(20));
     }
 
