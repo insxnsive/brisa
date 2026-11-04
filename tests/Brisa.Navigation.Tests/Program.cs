@@ -225,15 +225,18 @@ internal static class Program
             var connecting = new MainWindow(connectBackend, store); connecting.Show(); connecting.InitializeAsync().GetAwaiter().GetResult();
             Click((Button)connecting.FindName("PrimaryButton")); Pump(() => connectBackend.Started);
             connecting.UpdateLayout();
-            var indicator = connecting.FindName("ConnectionProgress") as ProgressBar;
-            var progressVisible = indicator is { IsVisible: true, IsIndeterminate: true, ActualWidth: > 0, ActualHeight: > 0 };
+            // 8b: o traço salmão virou um anel neutro em volta do selo, que gira enquanto há
+            // trabalho a caminho e para quando o estado assenta.
+            var indicator = connecting.FindName("StatusRing") as System.Windows.Shapes.Ellipse;
+            var rotation = connecting.FindName("StatusRingRotation") as System.Windows.Media.RotateTransform;
+            var progressVisible = indicator is { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 } && rotation is { HasAnimatedProperties: true };
             var wasDisabled = !((Button)connecting.FindName("PrimaryButton")).IsEnabled;
             connecting.Close(); Pump(() => !connecting.IsVisible);
             Check(!connectBackend.Release.Task.IsCompleted && app.Windows.Cast<Window>().Contains(connecting),
                 "X during Connect hides the window without cancelling the operation");
             connectBackend.Release.TrySetResult(); Pump(() => ((Button)connecting.FindName("PrimaryButton")).IsEnabled);
             connecting.Show();
-            var stoppedAnimating = indicator is { IsIndeterminate: false, Visibility: Visibility.Hidden };
+            var stoppedAnimating = indicator is { Visibility: Visibility.Collapsed } && rotation is { HasAnimatedProperties: false };
             connecting.RequestExit(); Pump(() => app.Windows.Count == 0);
             Check(progressVisible && wasDisabled, "connecting shows visible animated progress and prevents double submission");
             Check(stoppedAnimating, "progress stops after completion");

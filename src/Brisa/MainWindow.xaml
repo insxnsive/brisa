@@ -11,19 +11,30 @@
         <controls:ToolbarButton x:Name="SettingsButton" Style="{StaticResource ToolbarAction}" ToolTip="Settings" AutomationProperties.Name="Settings" Click="Settings_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;"/></controls:ToolbarButton>
       </StackPanel>
     </Grid>
-    <Grid x:Name="HomeContent" Grid.Row="1">
+    <Grid x:Name="HomeContent" Grid.Row="1" Focusable="True" FocusVisualStyle="{x:Null}">
       <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,20" Padding="20">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
         <StackPanel x:Name="StatusBlock" VerticalAlignment="Center" Margin="0,0,0,16">
-          <Border x:Name="StatusBadge" Width="56" Height="56" CornerRadius="28" Background="{DynamicResource NativeIconSurface}" HorizontalAlignment="Center">
-            <TextBlock x:Name="StatusIcon" FontFamily="Segoe Fluent Icons" FontSize="24" Text="&#xE785;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <TextBlock x:Name="StatusText" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}" AutomationProperties.HelpText="Connection status" Margin="0,14,0,0" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Text="Checking status…"/>
+          <Grid HorizontalAlignment="Center" Width="64" Height="64">
+            <!-- Anel neutro de progresso: um arco gira em volta do selo. Antes era um traço salmão
+                 solto embaixo do texto, que lia como artefato em vez de "conectando". -->
+            <Ellipse x:Name="StatusRing" Width="64" Height="64" StrokeThickness="2" StrokeDashArray="30 70"
+                     Stroke="{DynamicResource NativeChartLine}" Visibility="Collapsed"
+                     RenderTransformOrigin="0.5,0.5" AutomationProperties.Name="Connection in progress">
+              <Ellipse.RenderTransform><RotateTransform x:Name="StatusRingRotation"/></Ellipse.RenderTransform>
+            </Ellipse>
+            <Border x:Name="StatusBadge" Width="56" Height="56" CornerRadius="28" Background="{DynamicResource NativeIconSurface}" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <TextBlock x:Name="StatusIcon" FontFamily="Segoe Fluent Icons" FontSize="24" Text="&#xE785;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </Grid>
+          <Grid Margin="0,14,0,0">
+            <TextBlock x:Name="StatusTextGhost" AutomationProperties.IsOffscreenBehavior="Offscreen" IsHitTestVisible="False" Visibility="Collapsed" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Text=""/>
+            <TextBlock x:Name="StatusText" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}" AutomationProperties.HelpText="Connection status" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Text="Checking status…"/>
+          </Grid>
           <TextBlock x:Name="DetailText" Style="{StaticResource SecondaryText}" Margin="0,8,0,0" TextAlignment="Center" MinHeight="38"/>
-          <ProgressBar x:Name="ConnectionProgress" AutomationProperties.Name="Connection in progress" Width="104" Height="4" Margin="0,8,0,0" Visibility="Hidden" IsIndeterminate="False" HorizontalAlignment="Center"/>
         </StackPanel>
         <!-- Conectado: o status encolhe para uma linha de cabeçalho alinhada à esquerda e o painel
              de detalhes ocupa o espaço que o bloco centralizado usava. Desconectado não mostra
@@ -46,15 +57,20 @@
               <Grid>
                 <TextBlock FontSize="12" Opacity=".75" VerticalAlignment="Center" Text="Discord traffic"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                  <TextBlock FontFamily="Segoe Fluent Icons" FontSize="11" VerticalAlignment="Center" Text="&#xE896;" Foreground="{DynamicResource NativeStatusConnected}" AutomationProperties.Name="Download"/>
-                  <TextBlock x:Name="DownRateText" Margin="4,0,0,0" MinWidth="76" TextAlignment="Right" Typography.NumeralAlignment="Tabular" FontSize="12" VerticalAlignment="Center" AutomationProperties.Name="Download rate" Text="0 B/s"/>
-                  <TextBlock FontFamily="Segoe Fluent Icons" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Text="&#xE898;" Foreground="{DynamicResource NativeChartLine}" AutomationProperties.Name="Upload"/>
-                  <TextBlock x:Name="UpRateText" Margin="4,0,0,0" MinWidth="76" TextAlignment="Right" Typography.NumeralAlignment="Tabular" FontSize="12" Opacity=".75" VerticalAlignment="Center" AutomationProperties.Name="Upload rate" Text="0 B/s"/>
+                  <StackPanel Orientation="Horizontal">
+                    <TextBlock FontFamily="Segoe Fluent Icons" FontSize="11" VerticalAlignment="Center" Text="&#xE896;" Foreground="{DynamicResource NativeStatusConnected}" AutomationProperties.Name="Download"/>
+                    <TextBlock x:Name="DownRateText" Margin="4,0,0,0" Typography.NumeralAlignment="Tabular" FontSize="12" VerticalAlignment="Center" AutomationProperties.Name="Download rate" Text="0 B/s"/>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="18,0,0,0">
+                    <TextBlock FontFamily="Segoe Fluent Icons" FontSize="11" VerticalAlignment="Center" Text="&#xE898;" Foreground="{DynamicResource NativeChartLine}" AutomationProperties.Name="Upload"/>
+                    <TextBlock x:Name="UpRateText" Margin="4,0,0,0" Typography.NumeralAlignment="Tabular" FontSize="12" Opacity=".75" VerticalAlignment="Center" AutomationProperties.Name="Upload rate" Text="0 B/s"/>
+                  </StackPanel>
                 </StackPanel>
               </Grid>
               <Grid x:Name="ChartHost" Height="56" Margin="0,8,0,0" ClipToBounds="True" AutomationProperties.Name="Discord traffic chart">
                 <Canvas x:Name="ChartCanvas" ClipToBounds="True">
-                  <Polygon x:Name="DownArea" Fill="{DynamicResource NativeChartFill}" Stroke="{DynamicResource NativeStatusConnected}" StrokeThickness="1.5" StrokeLineJoin="Round" Points=""/>
+                  <Polygon x:Name="DownArea" Fill="{DynamicResource NativeChartFill}" Stroke="{x:Null}" StrokeThickness="0" Points=""/>
+                  <Polyline x:Name="DownLine" Stroke="{DynamicResource NativeStatusConnected}" StrokeThickness="1.5" StrokeLineJoin="Round" Points=""/>
                   <Polyline x:Name="UpLine" Stroke="{DynamicResource NativeChartLine}" StrokeThickness="1.5" StrokeDashArray="3 3" Points=""/>
                 </Canvas>
               </Grid>

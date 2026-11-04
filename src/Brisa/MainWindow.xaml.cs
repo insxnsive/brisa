@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using Brisa.Models;
 using Brisa.Security;
@@ -53,6 +54,10 @@ public partial class MainWindow : Window
     private ulong _totalReceived, _totalSent;
     private int _sampleCount;
     private bool _detailsVisible;
+    private bool _keyboardInput;
+    private string? _renderedStatus;
+    private string? _renderedGlyph;
+    private readonly Func<bool>? _allowMotion;
 
     private readonly record struct SnapshotTicket(long Operation, long Navigation, long Sequence, bool FromOperation);
 
@@ -125,7 +130,7 @@ public partial class MainWindow : Window
         SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
     }
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null)
     {
         InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
         _traffic = traffic ?? new InterfaceTrafficSource();
@@ -143,7 +148,11 @@ public partial class MainWindow : Window
         Closing += OnClosing;
         // The timer is paused while hidden in the tray, so refresh once when the window comes back.
         IsVisibleChanged += (_, e) => { if (e.NewValue is true) { RefreshStatus(this, EventArgs.Empty); SyncDetailsTimer(); } else SyncDetailsTimer(); };
+        _allowMotion = allowMotion;
         PreviewKeyDown += OnNavigationKeyDown;
+        // A última entrada decide se um anel de foco é cortesia ou ruído.
+        PreviewKeyDown += (_, _) => _keyboardInput = true;
+        PreviewMouseDown += (_, _) => _keyboardInput = false;
     }
 
     public async Task InitializeAsync(bool openAccount = true)
@@ -189,11 +198,10 @@ public partial class MainWindow : Window
         if (state.Snapshot?.HasOwnedTunnel == true) _nativeOperationMayBeActive = true;
         else if (_operation.CurrentCount != 0 && state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Blocked
             && state.Snapshot is { Reliable: true, HasOwnedTunnel: false, Stage: "idle" }) _nativeOperationMayBeActive = false;
-        _state = state; StatusText.Text = state.StatusText; DetailText.Text = state.Detail ?? "";
+        _state = state; RenderStatusText(state.StatusText); DetailText.Text = state.Detail ?? "";
         PrimaryButton.Content = state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;
-        ConnectionProgress.IsIndeterminate = busy;
-        ConnectionProgress.Visibility = busy ? Visibility.Visible : Visibility.Hidden;
+        SetStatusRing(busy);
         UpdateActionAvailability();
 
         if (state.Snapshot?.Route is { } route)
@@ -229,9 +237,15 @@ public partial class MainWindow : Window
         // Conectado é o único estado com acento: o resto fica neutro, e o Limited usa o escudo de
         // administrador porque um cadeado aberto lê como "livre", o oposto do que ele significa.
         var connected = state.Phase == ConnectionPhase.Connected;
-        StatusIcon.Text = connected ? "\uE73E"
+        var glyph = connected ? "\uE73E"
             : state.Phase == ConnectionPhase.Limited ? "\uEA18"
             : state.Phase is ConnectionPhase.Blocked or ConnectionPhase.Error ? "\uE7BA" : "\uE785";
+        if (_renderedGlyph != glyph)
+        {
+            if (_renderedGlyph is not null) StatusMotion.FadeIn(StatusBadge, _allowMotion);
+            _renderedGlyph = glyph;
+        }
+        StatusIcon.Text = glyph;
         StatusBadge.SetResourceReference(Border.BackgroundProperty, connected ? "NativeStatusConnectedSurface" : "NativeIconSurface");
         StatusIcon.SetResourceReference(TextBlock.ForegroundProperty, connected ? "NativeStatusConnected" : "NativeForeground");
 
@@ -250,11 +264,65 @@ public partial class MainWindow : Window
             _sampleCount = 0;
             RenderDetails();
         }
+        if (showDetails != _detailsVisible)
+        {
+            if (showDetails)
+            {
+                StatusBlock.Visibility = Visibility.Collapsed;
+                DetailsHost.Visibility = Visibility.Visible;
+                PageTransition.Show(DetailsHost, _allowMotion);
+            }
+            else
+            {
+                // Some primeiro, recolhe depois: o bloco centralizado só volta quando o painel
+                // terminou de sair, senão os dois aparecem ao mesmo tempo.
+                StatusBlock.Visibility = Visibility.Collapsed;
+                StatusMotion.FadeOut(DetailsHost, () =>
+                {
+                    DetailsHost.Visibility = Visibility.Collapsed;
+                    StatusBlock.Visibility = Visibility.Visible;
+                }, _allowMotion);
+            }
+        }
+        else
+        {
+            StatusBlock.Visibility = showDetails ? Visibility.Collapsed : Visibility.Visible;
+            if (showDetails) DetailsHost.Visibility = Visibility.Visible;
+        }
         _detailsVisible = showDetails;
-        StatusBlock.Visibility = showDetails ? Visibility.Collapsed : Visibility.Visible;
-        DetailsHost.Visibility = showDetails ? Visibility.Visible : Visibility.Collapsed;
         CompactStatusText.Text = state.StatusText;
         SyncDetailsTimer();
+    }
+
+    // A palavra do estado troca com um cross-fade: o texto antigo sai por baixo enquanto o novo
+    // entra, no mesmo lugar, e o valor real é escrito na hora para que nenhuma leitura dependa do
+    // fim da animação.
+    private void RenderStatusText(string text)
+    {
+        StatusText.Text = text;
+        var previous = _renderedStatus;
+        _renderedStatus = text;
+        if (previous is null || previous == text || !StatusMotion.Allowed(_allowMotion)) return;
+        StatusTextGhost.Text = previous;
+        StatusTextGhost.Visibility = Visibility.Visible;
+        StatusMotion.CrossFade(StatusText, StatusTextGhost, _allowMotion);
+    }
+
+    // O anel só existe enquanto há trabalho a caminho. Com "Mostrar animações" desligado ele fica
+    // parado, mas continua visível: o estado ainda precisa ser lido sem movimento.
+    private void SetStatusRing(bool busy)
+    {
+        var wanted = busy ? Visibility.Visible : Visibility.Collapsed;
+        if (StatusRing.Visibility != wanted)
+        {
+            StatusRing.Visibility = wanted;
+            if (!busy) StatusRingRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        }
+        if (!busy) return;
+        if (!StatusMotion.Allowed(_allowMotion)) { StatusRingRotation.Angle = 0; return; }
+        if (StatusRingRotation.HasAnimatedProperties) return;
+        StatusRingRotation.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(0, 360, new Duration(TimeSpan.FromMilliseconds(1100))) { RepeatBehavior = RepeatBehavior.Forever });
     }
 
     // O nome do pais vem do .NET, sem pacote e sem tabela. EnglishName e nao DisplayName: o ICU
@@ -309,6 +377,7 @@ public partial class MainWindow : Window
         if (count < 2)
         {
             DownArea.Points = new PointCollection();
+            DownLine.Points = new PointCollection();
             UpLine.Points = new PointCollection();
             return;
         }
@@ -320,14 +389,20 @@ public partial class MainWindow : Window
         var step = width / (ChartSamples - 1);
         var area = new PointCollection(count + 2) { new System.Windows.Point(width - (count - 1) * step, height) };
         var line = new PointCollection(count);
+        var downLine = new PointCollection(count);
         for (var i = 0; i < count; i++)
         {
             var x = width - (count - 1 - i) * step;
-            area.Add(new System.Windows.Point(x, height - Math.Min(height, down[i] / peak * height)));
+            var downPoint = new System.Windows.Point(x, height - Math.Min(height, down[i] / peak * height));
+            area.Add(downPoint);
+            // A linha de baixo é um traço próprio: o polígono do preenchimento não tem contorno,
+            // senão as arestas de fechamento desenhavam uma barra vertical nas bordas.
+            downLine.Add(downPoint);
             line.Add(new System.Windows.Point(x, height - Math.Min(height, up[i] / peak * height)));
         }
         area.Add(new System.Windows.Point(width, height));
         DownArea.Points = area;
+        DownLine.Points = downLine;
         UpLine.Points = line;
     }
 
@@ -593,7 +668,14 @@ public partial class MainWindow : Window
         finally
         {
             _navigationBusy = false; BackButton.IsEnabled = true; UpdateActionAvailability();
-            if (_currentPage is null && !_closing) (page is SettingsView ? SettingsButton : AccountButton).Focus();
+            if (_currentPage is null && !_closing)
+            {
+                // Voltar o foco para o botão que abriu a página é certo no teclado. No mouse, o anel
+                // de foco apareceria sem o usuário ter pedido: nesse caso o foco vai para a página,
+                // que não pinta retângulo.
+                if (_keyboardInput) (page is SettingsView ? SettingsButton : AccountButton).Focus();
+                else HomeContent.Focus();
+            }
         }
     }
     private void UpdateActionAvailability()

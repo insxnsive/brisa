@@ -314,6 +314,11 @@ internal static class Program
                 Check(statusBlock.Visibility == Visibility.Collapsed, "the centred status block steps aside while the panel shows");
                 Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "WireGuard (UDP)"), "the protocol cell names WireGuard over UDP");
                 Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "Total traffic"), "the panel carries a total traffic cell");
+                // 8b: um anel neutro no lugar do traço salmão, e nada dele quando já está conectado.
+                var ring = (System.Windows.Shapes.Ellipse)connected.FindName("StatusRing");
+                Check(ring.Visibility == Visibility.Collapsed, "the progress ring is absent once connected");
+                Check(ring.Stroke is not null && !(ring.Stroke is System.Windows.Media.SolidColorBrush b && b.Color.R > 150 && b.Color.G < 120),
+                    "the progress ring is neutral, not the salmon action colour");
                 Check(Descendants(detailsHost).OfType<Grid>().Any(g => System.Windows.Automation.AutomationProperties.GetName(g) == "Discord traffic chart"),
                     "the chart is one named object for a screen reader");
                 var rateGlyphs = Descendants(detailsHost).OfType<TextBlock>()

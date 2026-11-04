@@ -18,11 +18,12 @@ public interface ITrafficSource
 /// <summary>Counters of the WireSock adapter, read from the IP statistics the stack already keeps.</summary>
 public sealed class InterfaceTrafficSource : ITrafficSource
 {
-    private NetworkInterface? _adapter;
+    private NetworkInterface? _adapter = null;
 
     public TrafficReading? Read()
     {
         var adapter = _adapter is { } cached && IsTunnel(cached) ? cached : Find();
+        _adapter = adapter;
         if (adapter is null) return null;
         try
         {
