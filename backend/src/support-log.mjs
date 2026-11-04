@@ -34,7 +34,7 @@ export function renderSupportLog({ generatedAt, facts = {}, events = [] }) {
     const add = (label, value) => { if (value !== null && value !== undefined) lines.push(`${label}: ${value}`); };
 
     add("Elevated", flag(facts.elevated));
-    add("Discord flavour", code("discordFlavour", facts.discordFlavour));
+    add("Discord client", code("discordFlavour", facts.discordFlavour));
 
     // Versão em quatro inteiros: um texto pontuado seria justamente o tipo de string que este
     // arquivo se recusa a aceitar.

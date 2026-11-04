@@ -16,7 +16,7 @@ test("only app-owned codes pass, whatever their shape", () => {
     generatedAt: at,
     facts: { discordFlavour: "PTB", mode: "proton", protocol: "wireguard_udp", phase: "connected" },
   });
-  assert.match(text, /^Discord flavour: PTB$/m);
+  assert.match(text, /^Discord client: PTB$/m);
   assert.match(text, /^Mode: PROTON$/m);
   assert.match(text, /^Protocol: WIREGUARD_UDP$/m);
   assert.doesNotMatch(text, /^Theme:/m, "the product does not emit a theme, so the log has no theme line");

@@ -13,7 +13,7 @@
         <Button x:Name="ImportButton" Click="Import_Click" ToolTip="Choose a WireGuard configuration file">
           <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8E5;" VerticalAlignment="Center"/><TextBlock Margin="8,0,0,0" Text="Import Configuration"/></StackPanel>
         </Button>
-        <Button x:Name="LogButton" Margin="8,0,0,0" Click="GenerateLog_Click" Content="Generate log"/>
+        <Button x:Name="LogButton" Margin="8,0,0,0" Click="GenerateLog_Click" Content="Generate Log"/>
       </WrapPanel>
       <!-- O log é só isto: os bytes que o backend produziu, sem a interface remontar linha nenhuma.
            Salvar e copiar ficam desabilitados até existir um log, para não gerar arquivo vazio. -->

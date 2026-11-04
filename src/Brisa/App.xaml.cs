@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Input;
 using Brisa.Models;
 using Brisa.Services;
 using Velopack;
@@ -26,7 +27,7 @@ public partial class App : System.Windows.Application
 
     private async void OnStartup(object sender, StartupEventArgs e)
     {
-        // A interface é em inglês até o seletor de idioma existir. Fixar a cultura mantém datas e
+       // A interface é em inglês até o seletor de idioma existir. Fixar a cultura mantém datas e
         // números consistentes com esse idioma; os nomes de país usam EnglishName pelo mesmo motivo.
         System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
         System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("en-US");

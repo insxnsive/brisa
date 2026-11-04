@@ -129,8 +129,8 @@ internal static class Program
                             "the copy confirmation is announced politely");
                         Check(AdvancedView.SupportLogFileName(new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc)) == "brisa-log-20260304-0506.txt",
                             "the default file name is the UTC date and time");
-                        Check(Descendants(view).OfType<Button>().Any(b => b.Name == "LogButton" && (b.Content as string) == "Generate log"),
-                            "the diagnostics action is Generate log");
+                        Check(Descendants(view).OfType<Button>().Any(b => b.Name == "LogButton" && (b.Content as string) == "Generate Log"),
+                            "the diagnostics action is Generate Log, in title case like every other button");
                         Check(!Descendants(view).OfType<Button>().Any(b => (b.Content as string) == "Refresh Diagnostics"),
                             "Refresh Diagnostics is gone");
                     }
