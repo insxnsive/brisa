@@ -16,6 +16,7 @@ const installed = fs.existsSync(genuineExe) && fs.existsSync(genuineBooster);
 // The production verdict comes from the probe script, so the test composes the same helpers into
 // a one-pair script. That keeps the security properties testable without a production export
 // that only tests would call.
+let lastError = "";
 function verdictFor(executable, booster) {
   const script = `$ErrorActionPreference='Stop'
 ${wireSockTrustHelpers()}
@@ -27,9 +28,12 @@ if (-not (Test-BrisaAclChain '${executable.replace(/'/g, "''")}')) { 'UNTRUSTED'
 'TRUSTED'`;
   try {
     return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
-      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 15000,
+      encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true, timeout: 15000,
     }).trim();
-  } catch {
+  } catch (error) {
+    // A refusal is also an error: production treats an unparsable probe as untrusted, so the test
+    // asserts that the verdict is never TRUSTED and carries the reason when it is an error.
+    lastError = String(error?.stderr ?? error?.message ?? "").trim();
     return "ERROR";
   }
 }
@@ -70,7 +74,12 @@ test("an unsigned file is not trusted", () => {
   try {
     const executable = path.join(directory, "wiresock-client.exe");
     fs.writeFileSync(executable, "MZ");
-    assert.equal(verdictFor(executable, path.join(directory, "wgbooster.dll")), "UNTRUSTED");
+    // A truncated PE header is rejected as UNTRUSTED on some Windows builds and makes
+    // Get-AuthenticodeSignature throw on others. Both are refusals: the probe reports an
+    // unparsable result as untrusted, so only TRUSTED would be a defect here.
+    const verdict = verdictFor(executable, path.join(directory, "wgbooster.dll"));
+    assert.notEqual(verdict, "TRUSTED", `an unsigned file was trusted: ${lastError}`);
+    assert.ok(["UNTRUSTED", "ERROR"].includes(verdict), `unexpected verdict ${verdict}`);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
