@@ -37,8 +37,8 @@
           </StackPanel>
           <Grid Margin="0,16,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-            <StackPanel><TextBlock FontSize="11" Opacity=".75" Text="Connected for"/><TextBlock x:Name="DurationValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" AutomationProperties.Name="Connected for" Text="0:00"/></StackPanel>
-            <StackPanel Grid.Column="1"><TextBlock FontSize="11" Opacity=".75" Text="Total traffic"/><TextBlock x:Name="TrafficValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" AutomationProperties.Name="Total traffic" Text="0 B"/></StackPanel>
+            <StackPanel><TextBlock FontSize="11" Opacity=".75" Text="Connected for"/><TextBlock x:Name="DurationValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" AutomationProperties.Name="Connected for" Text="0:00"/></StackPanel>
+            <StackPanel Grid.Column="1"><TextBlock FontSize="11" Opacity=".75" Text="Total traffic"/><TextBlock x:Name="TrafficValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" AutomationProperties.Name="Total traffic" Text="0 B"/></StackPanel>
             <StackPanel Grid.Column="2"><TextBlock FontSize="11" Opacity=".75" Text="Protocol"/><TextBlock Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" Text="WireGuard (UDP)"/></StackPanel>
           </Grid>
           <Border Margin="0,12,0,0" Style="{StaticResource SettingsSurface}" Padding="12">
@@ -46,11 +46,13 @@
               <Grid>
                 <TextBlock FontSize="12" Opacity=".75" VerticalAlignment="Center" Text="Discord traffic"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                  <TextBlock x:Name="DownRateText" FontSize="12" VerticalAlignment="Center" AutomationProperties.Name="Download rate" Text="0 B/s"/>
-                  <TextBlock x:Name="UpRateText" Margin="10,0,0,0" FontSize="12" Opacity=".75" VerticalAlignment="Center" AutomationProperties.Name="Upload rate" Text="0 B/s"/>
+                  <TextBlock FontFamily="Segoe Fluent Icons" FontSize="11" VerticalAlignment="Center" Text="&#xE896;" Foreground="{DynamicResource NativeStatusConnected}" AutomationProperties.Name="Download"/>
+                  <TextBlock x:Name="DownRateText" Margin="4,0,0,0" MinWidth="76" TextAlignment="Right" Typography.NumeralAlignment="Tabular" FontSize="12" VerticalAlignment="Center" AutomationProperties.Name="Download rate" Text="0 B/s"/>
+                  <TextBlock FontFamily="Segoe Fluent Icons" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" Text="&#xE898;" Foreground="{DynamicResource NativeChartLine}" AutomationProperties.Name="Upload"/>
+                  <TextBlock x:Name="UpRateText" Margin="4,0,0,0" MinWidth="76" TextAlignment="Right" Typography.NumeralAlignment="Tabular" FontSize="12" Opacity=".75" VerticalAlignment="Center" AutomationProperties.Name="Upload rate" Text="0 B/s"/>
                 </StackPanel>
               </Grid>
-              <Grid x:Name="ChartHost" Height="56" Margin="0,8,0,0" ClipToBounds="True">
+              <Grid x:Name="ChartHost" Height="56" Margin="0,8,0,0" ClipToBounds="True" AutomationProperties.Name="Discord traffic chart">
                 <Canvas x:Name="ChartCanvas" ClipToBounds="True">
                   <Polygon x:Name="DownArea" Fill="{DynamicResource NativeChartFill}" Stroke="{DynamicResource NativeStatusConnected}" StrokeThickness="1.5" StrokeLineJoin="Round" Points=""/>
                   <Polyline x:Name="UpLine" Stroke="{DynamicResource NativeChartLine}" StrokeThickness="1.5" StrokeDashArray="3 3" Points=""/>

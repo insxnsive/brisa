@@ -293,10 +293,10 @@ public partial class MainWindow : Window
         _downSamples[_sampleCount % ChartSamples] = down;
         _upSamples[_sampleCount % ChartSamples] = up;
         _sampleCount++;
-        DurationValue.Text = DurationText(DateTime.UtcNow - _connectedSince);
-        TrafficValue.Text = SizeText(_totalReceived + _totalSent);
-        DownRateText.Text = SizeText((ulong)down) + "/s";
-        UpRateText.Text = SizeText((ulong)up) + "/s";
+        DurationValue.Text = MetricsFormat.Duration(DateTime.UtcNow - _connectedSince);
+        TrafficValue.Text = MetricsFormat.Size(_totalReceived + _totalSent);
+        DownRateText.Text = MetricsFormat.Rate(down);
+        UpRateText.Text = MetricsFormat.Rate(up);
         DrawChart();
     }
 
@@ -314,7 +314,7 @@ public partial class MainWindow : Window
         }
         var down = Ordered(_downSamples, count, _sampleCount);
         var up = Ordered(_upSamples, count, _sampleCount);
-        var peak = Math.Max(1.0, Math.Max(down.Max(), up.Max()));
+        var peak = Math.Max(MetricsFormat.MinimumChartScale, Math.Max(down.Max(), up.Max()) * MetricsFormat.ChartHeadroom);
         // Espaçamento fixo: a amostra mais nova encosta na direita e a linha anda para a esquerda,
         // em vez de esticar e comprimir a cada segundo.
         var step = width / (ChartSamples - 1);
@@ -341,18 +341,6 @@ public partial class MainWindow : Window
         return result;
     }
 
-    private static string DurationText(TimeSpan elapsed) =>
-        elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}:{elapsed.Minutes:00}:{elapsed.Seconds:00}" : $"{elapsed.Minutes}:{elapsed.Seconds:00}";
-
-    // A cultura da máquina é pt-BR mesmo com a interface em inglês: sem fixar a formatação o
-    // tamanho sairia "26,1 MB" no meio de uma tela em inglês.
-    private static string SizeText(ulong bytes) => bytes switch
-    {
-        < 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes} B"),
-        < 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0.#} KB"),
-        < 1024L * 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0.#} MB"),
-        _ => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024 * 1024):0.##} GB")
-    };
 
     private async void Primary_Click(object sender, RoutedEventArgs e)
     {
@@ -523,7 +511,13 @@ public partial class MainWindow : Window
     private void OpenSettings()
     {
         var view = new SettingsView(_settings, ShowAdvanced);
-        view.CloseRequested += async (_, _) => await ReturnHomeAsync();
+        view.CloseRequested += async (_, _) =>
+        {
+            // A preferência do painel pode ter mudado: repinta o Home antes de voltar, senão o
+            // painel só apareceria no próximo snapshot.
+            if (_currentPage is SettingsView) SetState(_state);
+            await ReturnHomeAsync();
+        };
         ShowPage(view, "Settings");
     }
     private void Account_Click(object sender, RoutedEventArgs e)

@@ -253,6 +253,34 @@ var tests = new (string Name, Action Run)[]
         service.CheckNowAsync().GetAwaiter().GetResult();
         Assert(service.Status.Phase == UpdatePhase.Error);
         Assert(!service.Status.Message.Contains("private", StringComparison.OrdinalIgnoreCase));
+    }),
+    ("the panel numbers keep three significant figures", () =>
+    {
+        Assert(MetricsFormat.Rate(430_000) == "430 KB/s");
+        Assert(MetricsFormat.Rate(92_100) == "92.1 KB/s");
+        Assert(MetricsFormat.Rate(9_070) == "9.07 KB/s");
+        Assert(MetricsFormat.Rate(842) == "842 B/s");
+    }),
+    ("units switch at one thousand, not one thousand and twenty-four", () =>
+    {
+        Assert(MetricsFormat.Size(999) == "999 B");
+        Assert(MetricsFormat.Size(1_000) == "1.00 KB");
+        Assert(MetricsFormat.Size(1_600_000) == "1.60 MB");
+        Assert(MetricsFormat.Size(82_500_000) == "82.5 MB");
+        Assert(MetricsFormat.Size(1_250_000_000) == "1.25 GB");
+    }),
+    ("the duration switches to hours at the boundary", () =>
+    {
+        Assert(MetricsFormat.Duration(TimeSpan.FromSeconds(65)) == "1:05");
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(59.5)) == "59:30");
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(60)) == "1:00:00");
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(65)) == "1:05:00");
+        Assert(MetricsFormat.Duration(TimeSpan.FromHours(12.5)) == "12:30:00");
+    }),
+    ("an English UI never formats numbers with a comma decimal", () =>
+    {
+        Assert(!MetricsFormat.Size(26_100_000).Contains(','));
+        Assert(!MetricsFormat.Rate(907_900).Contains(','));
     })
 };
 

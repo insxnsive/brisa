@@ -124,6 +124,12 @@ internal static class Program
                             "the tray note is the new copy");
                         Check(Descendants(view).OfType<ScrollViewer>().First().ScrollableHeight == 0,
                             "Settings does not scroll at the default size");
+                        // Item 9: a preferência do painel mora em General, ao lado do início com o Windows.
+                        var details = (CheckBox)view.FindName("DetailsBox");
+                        Check(details.Content as string == "Show connection details", "the details preference is labelled Show connection details");
+                        Check(details.IsChecked == true, "the details panel is on by default");
+                        Check(details.TranslatePoint(new Point(), view).Y > ((CheckBox)view.FindName("StartupBox")).TranslatePoint(new Point(), view).Y,
+                            "the details checkbox sits under Start with Windows in General");
                         // O anel de foco só aparece com foco de teclado: UIA SetFocus não pinta,
                         // então a evidência do anel sai daqui e os estados checados saem do app real.
                         var startup = (CheckBox)view.FindName("StartupBox");
@@ -308,6 +314,11 @@ internal static class Program
                 Check(statusBlock.Visibility == Visibility.Collapsed, "the centred status block steps aside while the panel shows");
                 Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "WireGuard (UDP)"), "the protocol cell names WireGuard over UDP");
                 Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "Total traffic"), "the panel carries a total traffic cell");
+                Check(Descendants(detailsHost).OfType<Grid>().Any(g => System.Windows.Automation.AutomationProperties.GetName(g) == "Discord traffic chart"),
+                    "the chart is one named object for a screen reader");
+                var rateGlyphs = Descendants(detailsHost).OfType<TextBlock>()
+                    .Where(t => System.Windows.Automation.AutomationProperties.GetName(t) is "Download" or "Upload").ToList();
+                Check(rateGlyphs.Count == 2, "each rate carries a direction glyph with an accessible name");
                 Capture(connected, theme + "-Connected");
                 connected.RequestExit();
                 main.RequestExit();
