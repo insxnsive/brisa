@@ -259,6 +259,16 @@ var tests = new (string Name, Action Run)[]
 var failures = new List<string>();
 foreach (var test in tests) try { test.Run(); Console.WriteLine($"PASS {test.Name}"); } catch (Exception ex) { failures.Add($"FAIL {test.Name}: {ex.Message}"); }
 foreach (var failure in failures) Console.Error.WriteLine(failure);
+        // Finding 3: a visible vendor installer must not be cancelled by the three-minute limit,
+        // and the hard ceiling must still bound the wait.
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        Assert(InstallerDeadline.Decide(start, TimeSpan.FromSeconds(30), start.AddMinutes(2), true) == InstallerDeadline.Expiry.None);
+        Assert(InstallerDeadline.Decide(start, TimeSpan.FromMinutes(3), start.AddMinutes(4), false) == InstallerDeadline.Expiry.Connect);
+        Assert(InstallerDeadline.Decide(start, TimeSpan.FromMinutes(29), start.AddMinutes(31), true) == InstallerDeadline.Expiry.Ceiling);
+        Assert(InstallerDeadline.IsInstallerActive(start, start.AddSeconds(2)));
+        Assert(!InstallerDeadline.IsInstallerActive(start, start.AddSeconds(4)));
+        Assert(!InstallerDeadline.IsInstallerActive(null, start));
+
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed");
 return failures.Count == 0 ? 0 : 1;
 

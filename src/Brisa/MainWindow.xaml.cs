@@ -18,6 +18,9 @@ public partial class MainWindow : Window
     private readonly Action<string> _exitWarning;
     private readonly Action<string> _notice;
     private readonly Func<string, bool> _exitConfirm;
+    // Último instante em que o instalador visível do fornecedor estava na tela; o prazo do
+    // connect pausa enquanto isso, e o teto de 30 minutos continua valendo.
+    private DateTime? _installerStageSeenAt;
     private readonly SemaphoreSlim _operation = new(1, 1);
     private HomeState _state = new(ConnectionPhase.Loading, null);
     private CancellationTokenSource _lifetime = new();
@@ -236,6 +239,7 @@ public partial class MainWindow : Window
                 };
                 // Advisory only, and only while the operation that started it still owns the UI:
                 // a late poll must not repaint a state the user has already left.
+                _installerStageSeenAt = progress.Stage == "installing-wiresock" ? DateTime.UtcNow : null;
                 if (detail is not null && !pending.IsCompleted && !_closing
                     && _operationOwnsUi && _operationEpoch == ownerEpoch) SetState(_state with { Detail = detail });
             }
@@ -246,11 +250,34 @@ public partial class MainWindow : Window
     public async Task<CommandResult> ExecuteWithVerificationAsync(string command, Func<string?, string?, object> payloadFactory, CancellationToken cancellationToken = default)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
-        timeout.CancelAfter(TimeSpan.FromMinutes(3));
-        // Distinguish our own three-minute deadline from a caller or lifetime cancellation, so
-        // a timeout can be reported instead of vanishing as a silent refresh.
+        // Distinguish our own deadline from a caller or lifetime cancellation, so a timeout can be
+        // reported instead of vanishing as a silent refresh.
         var deadlineExpired = false;
         using var deadline = timeout.Token.Register(() => deadlineExpired = true);
+        var ceilingExpired = false;
+        _installerStageSeenAt = null;
+        // O prazo de três minutos mede o tempo em que o app está trabalhando. Enquanto o
+        // instalador visível do fornecedor está aberto, esse tempo não corre; o teto de trinta
+        // minutos continua correndo e é o que impede uma janela ocupada para sempre.
+        var startedAt = DateTime.UtcNow;
+        var waited = TimeSpan.Zero;
+        var lastTick = startedAt;
+        _ = Task.Run(async () =>
+        {
+            while (!timeout.IsCancellationRequested)
+            {
+                try { await Task.Delay(TimeSpan.FromMilliseconds(500), timeout.Token); } catch { return; }
+                var now = DateTime.UtcNow;
+                var installerActive = InstallerDeadline.IsInstallerActive(_installerStageSeenAt, now);
+                if (!installerActive) waited += now - lastTick;
+                lastTick = now;
+                var expiry = InstallerDeadline.Decide(startedAt, waited, now, installerActive);
+                if (expiry == InstallerDeadline.Expiry.None) continue;
+                ceilingExpired = expiry == InstallerDeadline.Expiry.Ceiling;
+                timeout.Cancel();
+                return;
+            }
+        });
         var presented = false;
         string? token = null, method = null;
         try
@@ -279,6 +306,13 @@ public partial class MainWindow : Window
                 token = answer.Token; method = answer.Method;
             }
             return new(false, "VERIFICATION_LIMIT", "Verification could not be completed after two retries.");
+        }
+        catch (OperationCanceledException) when (deadlineExpired && ceilingExpired)
+        {
+            // The installer never closed. Do not let this look like an ordinary cancel: say what
+            // is on screen and leave the vendor process alone, since the backend waits for it.
+            try { await _backend.CancelAsync(); } catch { /* the message matters more than the ack */ }
+            return new(false, "SDK_INSTALLER_STILL_OPEN", "The WireSock installer is still open. Finish or cancel it in the Windows installer window, then try again.");
         }
         catch (OperationCanceledException) when (deadlineExpired && presented)
         {
