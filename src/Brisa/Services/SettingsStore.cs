@@ -69,6 +69,14 @@ public sealed class SettingsStore
         app.Resources["NativeSecondary"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#C5C5C5" : "#5D5D5D");
         app.Resources["NativeStroke"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#353535" : "#E5E5E5");
         app.Resources["NativeIconSurface"] = SystemParameters.HighContrast ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#363636" : "#F3F3F3");
+
+        // Um acento só para "conectado/protegido": o teal da marca. Salmon continua sendo só ação.
+        // O fundo é o mesmo teal em baixa opacidade, resolvido por tema porque #125B50 sobre #2B2B2B
+        // fica indistinguível do cartão.
+        app.Resources["NativeStatusConnectedSurface"] = SystemParameters.HighContrast
+            ? System.Windows.SystemColors.HighlightBrush : Brush(dark ? "#1E3A35" : "#E3F1EE");
+        app.Resources["NativeStatusConnected"] = SystemParameters.HighContrast
+            ? System.Windows.SystemColors.HighlightTextBrush : Brush(dark ? "#4FD1B8" : "#125B50");
     }
     private static void SetStartup(bool enabled)
     {

@@ -180,7 +180,14 @@ public partial class MainWindow : Window
         UpdateActionAvailability();
 
         RouteText.Text = state.Snapshot?.Route is { } route ? $"{route.Country} · {route.Server}" : "Automatic";
-        StatusIcon.Text = state.Phase == ConnectionPhase.Connected ? "\uE73E" : state.Phase == ConnectionPhase.Blocked ? "\uE783" : "\uE785";
+        // Conectado é o único estado com acento: o resto fica neutro, e o Limited usa o escudo de
+        // administrador porque um cadeado aberto lê como "livre", o oposto do que ele significa.
+        var connected = state.Phase == ConnectionPhase.Connected;
+        StatusIcon.Text = connected ? "\uE73E"
+            : state.Phase == ConnectionPhase.Limited ? "\uEA18"
+            : state.Phase == ConnectionPhase.Blocked ? "\uE783" : "\uE785";
+        StatusBadge.SetResourceReference(Border.BackgroundProperty, connected ? "NativeStatusConnectedSurface" : "NativeIconSurface");
+        StatusIcon.SetResourceReference(TextBlock.ForegroundProperty, connected ? "NativeStatusConnected" : "NativeForeground");
     }
 
     private async void Primary_Click(object sender, RoutedEventArgs e)

@@ -17,7 +17,7 @@
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel VerticalAlignment="Center" Margin="0,0,0,16">
-          <Border Width="56" Height="56" CornerRadius="28" Background="{DynamicResource NativeIconSurface}" HorizontalAlignment="Center">
+          <Border x:Name="StatusBadge" Width="56" Height="56" CornerRadius="28" Background="{DynamicResource NativeIconSurface}" HorizontalAlignment="Center">
             <TextBlock x:Name="StatusIcon" FontFamily="Segoe Fluent Icons" FontSize="24" Text="&#xE785;" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <TextBlock x:Name="StatusText" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}" AutomationProperties.HelpText="Connection status" Margin="0,14,0,0" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Text="Checking status…"/>
