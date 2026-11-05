@@ -168,6 +168,20 @@
   <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>WireSock started, but Brisa could not confirm it is running with Brisa's own profile. Try again.</value></data>
   <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>The Brisa tunnel could not be started. Check WireSock and your VPN profile, then try again.</value></data>
   <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>Brisa could not read the WireSock state reliably, so it made no changes. Run Brisa as administrator and try again.</value></data>
+  <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Enter your Proton two-factor code and try again.</value></data>
+  <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>The Proton two-factor code was rejected or expired.</value></data>
+  <data name="Backend.CAPTCHA_REQUIRED" xml:space="preserve"><value>Complete Proton's security check and try again.</value></data>
+  <data name="Backend.CAPTCHA_INVALID" xml:space="preserve"><value>The security check was rejected or expired. Open a new one and try again.</value></data>
+  <data name="Backend.NETWORK_ERROR" xml:space="preserve"><value>Could not reach Proton. Check your connection and try again.</value></data>
+  <data name="Backend.TIMEOUT" xml:space="preserve"><value>Proton did not respond in time. Try again.</value></data>
+  <data name="Backend.MISSING_EXECUTABLE" xml:space="preserve"><value>The packaged Proton helper is unavailable.</value></data>
+  <data name="Backend.SESSION_PERSISTENCE" xml:space="preserve"><value>The Proton session could not be saved. Close other Brisa instances and try again.</value></data>
+  <data name="Backend.CONFIGURATION_ERROR" xml:space="preserve"><value>The WireGuard profile could not be generated. Try another route.</value></data>
+  <data name="Backend.UNKNOWN" xml:space="preserve"><value>The Proton operation failed. Try again.</value></data>
+  <data name="Backend.PROFILE_EMPTY" xml:space="preserve"><value>This WireGuard file is empty.</value></data>
+  <data name="Backend.START_CANCELLED" xml:space="preserve"><value>The start was cancelled.</value></data>
+  <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>WireSock setup did not finish. Brisa will guide you through it again.</value></data>
+  <data name="Backend.DISCORD_CHECK_FAILED" xml:space="preserve"><value>Brisa could not verify the installed Discord client. Finish any Discord update, restart Discord, then try again.</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>
   <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely.</value></data>

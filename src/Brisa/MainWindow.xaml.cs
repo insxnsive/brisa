@@ -235,7 +235,9 @@ public partial class MainWindow : Window
     private void SetError(Exception error, NativeSnapshot? snapshot)
     {
         if (error is BackendUnavailableException) { _terminalBackendFailure = true; _statusTimer.Stop(); }
-        SetState(new(ConnectionPhase.Error, snapshot, SafeMessage(error)));
+        // Uma chave: HomeState resolve o texto na pintura, então o erro também acompanha
+        // uma troca de idioma. A frase pronta continua existindo para quem chama MessageBox.
+        SetState(new(ConnectionPhase.Error, snapshot, SafeMessageKey(error)));
     }
 
     private void SetState(HomeState state)
@@ -911,14 +913,14 @@ public partial class MainWindow : Window
         finally { if (acquired) _operation.Release(); }
     }
 
-    private string SafeMessage(Exception ex) => ex switch
+    private string SafeMessage(Exception ex) => LocalizationManager.Current[SafeMessageKey(ex)];
+
+    private string SafeMessageKey(Exception ex) => ex switch
     {
-        TimeoutException => LocalizationManager.Current["ServiceTimeout"],
-        InvalidDataException => LocalizationManager.Current["ServiceUnreadableResponse"],
-        FileNotFoundException => LocalizationManager.Current["BackendNotInstalled"],
-        BackendUnavailableException => _nativeOperationMayBeActive
-            ? LocalizationManager.Current["ServiceStoppedUnsafe"]
-            : LocalizationManager.Current["ServiceStoppedRetry"],
-        _ => LocalizationManager.Current["ServiceActionIncomplete"]
+        TimeoutException => "ServiceTimeout",
+        InvalidDataException => "ServiceUnreadableResponse",
+        FileNotFoundException => "BackendNotInstalled",
+        BackendUnavailableException => _nativeOperationMayBeActive ? "ServiceStoppedUnsafe" : "ServiceStoppedRetry",
+        _ => "ServiceActionIncomplete"
     };
 }

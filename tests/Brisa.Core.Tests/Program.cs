@@ -309,24 +309,32 @@ var tests = new (string Name, Action Run)[]
     }),
     ("every code the backend can emit has a string in both languages", () =>
     {
-        // O contrato é: um código novo no backend sem tradução vira uma mensagem genérica. Este
-        // teste falha em vez de deixar isso passar despercebido.
+        // O contrato é: um código novo no backend sem tradução vira uma mensagem genérica, sem a
+        // causa nem a orientação. Este teste percorre todos os módulos, não só backend.mjs, e falha
+        // quando o backend cresce um código sem string.
         var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "backend", "src", "backend.mjs")))
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "backend", "src")))
             root = root.Parent;
         Assert(root is not null);
-        var source = File.ReadAllText(Path.Combine(root!.FullName, "backend", "src", "backend.mjs"));
+        var backend = Path.Combine(root!.FullName, "backend", "src");
         var codes = new HashSet<string>(StringComparer.Ordinal);
-        foreach (System.Text.RegularExpressions.Match table in System.Text.RegularExpressions.Regex.Matches(
-                     source, @"(?:APP_MESSAGES|START_MESSAGES|PROFILE_MESSAGES) = Object\.freeze\(\{(?<body>.*?)\n\}\);",
-                     System.Text.RegularExpressions.RegexOptions.Singleline))
-            foreach (System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(
-                         table.Groups["body"].Value, @"\n  (?<code>[A-Z][A-Z_0-9]+):"))
-                codes.Add(entry.Groups["code"].Value);
-        foreach (System.Text.RegularExpressions.Match literal in System.Text.RegularExpressions.Regex.Matches(
-                     source, @"code: ""(?<code>[A-Z][A-Z_0-9]+)"""))
-            codes.Add(literal.Groups["code"].Value);
-        Assert(codes.Count > 20);
+        var tables = @"(?:APP_MESSAGES|START_MESSAGES|PROFILE_MESSAGES|FAILURE_MESSAGES) = Object\.freeze\(\{(?<body>.*?)\n\}\);";
+        var literals = @"code\s*[:=]\s*""(?<code>[A-Z][A-Z_0-9]{2,})""";
+        foreach (var file in Directory.EnumerateFiles(backend, "*.mjs", SearchOption.AllDirectories)
+                     .Concat(Directory.EnumerateFiles(backend, "*.ts", SearchOption.AllDirectories)))
+        {
+            var source = File.ReadAllText(file);
+            foreach (System.Text.RegularExpressions.Match table in System.Text.RegularExpressions.Regex.Matches(
+                         source, tables, System.Text.RegularExpressions.RegexOptions.Singleline))
+                foreach (System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(
+                             table.Groups["body"].Value, @"\n  (?<code>[A-Z][A-Z_0-9]{2,}):"))
+                    codes.Add(entry.Groups["code"].Value);
+            foreach (System.Text.RegularExpressions.Match literal in System.Text.RegularExpressions.Regex.Matches(source, literals))
+                codes.Add(literal.Groups["code"].Value);
+        }
+        // Códigos de plataforma que nunca chegam a uma mensagem do produto.
+        codes.Remove("ABORT_ERR");
+        Assert(codes.Count > 50);
         var localization = Path.Combine(root!.FullName, "src", "Brisa", "Localization");
         var missing = new List<string>();
         foreach (var file in new[] { "Strings.resx", "Strings.pt-BR.resx" })
@@ -336,6 +344,22 @@ var tests = new (string Name, Action Run)[]
                 if (!text.Contains($"\"Backend.{code}\"", StringComparison.Ordinal)) missing.Add($"{file}: {code}");
         }
         if (missing.Count > 0) throw new Exception("missing translations: " + string.Join(", ", missing));
+    }),
+    ("a retained error state follows the language without a refresh", () =>
+    {
+        // O estado de erro guarda uma chave, então o texto muda com o idioma mesmo sem um snapshot
+        // novo: antes ele guardava a frase já traduzida e ficava no idioma antigo.
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        var state = new Brisa.Models.HomeState(Brisa.Models.ConnectionPhase.Error, null, "ServiceTimeout");
+        var portuguese = state.Detail;
+        Assert(portuguese == loc["ServiceTimeout"] && portuguese != "ServiceTimeout");
+        loc.Apply(Brisa.Localization.LocalizationManager.English);
+        Assert(state.Detail == loc["ServiceTimeout"]);
+        Assert(state.Detail != portuguese);
+        Assert(state.StatusText == loc["StatusError"]);
+        loc.Apply(before);
     }),
     ("the system language survives a language switch", () =>
     {

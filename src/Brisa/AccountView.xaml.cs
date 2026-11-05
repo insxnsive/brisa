@@ -20,6 +20,9 @@ public partial class AccountView : UserControl, IAsyncDisposable
     // idioma reescreve a mesma chave em vez de deixar o texto anterior.
     private string _subtitleKey = "SignInHelper";
     private string? _subtitleNotice;
+    // O pedido de dois fatores é um estado da tela, não um texto avulso: sem isto o Render do
+    // finally devolvia a legenda padrão e o usuário perdia a instrução que acabara de receber.
+    private bool _twoFactorPrompt;
     private readonly System.ComponentModel.PropertyChangedEventHandler _languageChanged;
     public AccountView(IBackendClient backend, MainWindow main, NativeSnapshot? snapshot, Action<Uri>? openExternal = null)
     {
@@ -35,7 +38,8 @@ public partial class AccountView : UserControl, IAsyncDisposable
         SignedOutPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         SignedInPanel.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         RegistrationPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
-        _subtitleKey = signedIn ? "AccountSubtitle" : "SignInHelper";
+        if (signedIn) _twoFactorPrompt = false;
+        _subtitleKey = signedIn ? "AccountSubtitle" : _twoFactorPrompt ? "TwoFactorPrompt" : "SignInHelper";
         _subtitleNotice = signedIn ? null : _notice;
         Subtitle.Text = _subtitleNotice ?? LocalizationManager.Current[_subtitleKey];
         UsernameText.Text = _snapshot?.Username ?? "";
@@ -77,7 +81,14 @@ public partial class AccountView : UserControl, IAsyncDisposable
                 finally { PasswordInput.Clear(); TwoFactorInput.Clear(); password = ""; twoFactor = ""; }
                 if (_closed) return;
                 if (!result.Success && result.Code is "TWO_FACTOR_REQUIRED" or "2FA_REQUIRED")
-                { TwoFactorPanel.Visibility = Visibility.Visible; Subtitle.Text = LocalizationManager.Current["TwoFactorPrompt"]; return; }
+                {
+                    _twoFactorPrompt = true;
+                    _notice = null;
+                    TwoFactorPanel.Visibility = Visibility.Visible;
+                    Render();
+                    return;
+                }
+                if (!result.Success) _twoFactorPrompt = false;
             }
             if (_closed) return;
             if (!result.Success) { MessageBox.Show(_main, BackendText.For(result.Code, result.Message, "AccountOperationFailed"), LocalizationManager.Current["Account"], MessageBoxButton.OK, MessageBoxImage.Warning); return; }

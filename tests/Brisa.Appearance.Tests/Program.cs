@@ -374,6 +374,37 @@ internal static class Program
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 Console.WriteLine("PASS loaded Fluent controls: " + theme);
             }
+            // Regressão do dois fatores: o pedido é estado da tela, então precisa sobreviver ao
+            // Render do finally e a uma troca de idioma, e não só ao instante em que foi pedido.
+            var loc = Brisa.Localization.LocalizationManager.Current;
+            var savedLanguage = loc.Language;
+            var stub = new UiTestBackendClient(new(false, false, true, false, "", null));
+            stub.LoginResult = new Brisa.Models.CommandResult(false, Code: "TWO_FACTOR_REQUIRED");
+            var twoFactorWindow = new MainWindow(stub, store);
+            twoFactorWindow.Show();
+            twoFactorWindow.InitializeAsync().GetAwaiter().GetResult();
+            Settle(twoFactorWindow);
+            ((Button)twoFactorWindow.FindName("AccountButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var accountView = (AccountView)((ContentControl)twoFactorWindow.FindName("PageHost")).Content;
+            ((TextBox)accountView.FindName("UsernameBox")).Text = "fixture";
+            ((PasswordBox)accountView.FindName("PasswordInput")).Password = "fixture";
+            ((Button)accountView.FindName("ActionButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var subtitle = (TextBlock)accountView.FindName("Subtitle");
+            var panel = (FrameworkElement)accountView.FindName("TwoFactorPanel");
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (panel.Visibility != Visibility.Visible && DateTime.UtcNow < deadline) Spin(50);
+            Check(panel.Visibility == Visibility.Visible, "a two-factor challenge reveals the code field");
+            Check(subtitle.Text == loc["TwoFactorPrompt"], "the two-factor prompt survives the render that follows the attempt");
+            loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+            Spin(100);
+            var englishPrompt = "Enter your password again with your two-factor code.";
+            Check(subtitle.Text == loc["TwoFactorPrompt"] && subtitle.Text != englishPrompt && subtitle.Text.Length > 0,
+                "the two-factor prompt follows a language change");
+            loc.Apply(savedLanguage);
+            Spin(100);
+            Check(subtitle.Text == loc["TwoFactorPrompt"], "the two-factor prompt returns with the language");
+            twoFactorWindow.RequestExit();
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             Console.WriteLine($"{assertions} loaded-window assertions passed");
             return 0;
         }

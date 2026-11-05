@@ -191,7 +191,7 @@ function valueIsValid(key: string, value: string): boolean {
  * understand is rejected instead of passed through.
  */
 function parseWireGuardConfig(raw: string): ParsedConfig {
-    if (typeof raw !== "string" || !raw.trim()) return { ok: false, code: "PROFILE_EMPTY", error: "A configuração WireGuard está vazia." };
+    if (typeof raw !== "string" || !raw.trim()) return { ok: false, code: "PROFILE_EMPTY", error: "This WireGuard file is empty." };
     // A bare CR or a Unicode line separator is a line break for some parsers and not for
     // this one; reject the file instead of letting the two disagree about what it says.
     if (CONTROL_CHARS.test(raw) || /\r(?!\n)/.test(raw)) return { ok: false, code: "PROFILE_CONTROL_CHARS" };

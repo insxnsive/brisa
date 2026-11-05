@@ -15,6 +15,8 @@ public sealed class UiTestBackendClient : IBackendClient
         _state = (initial ?? new(false, false, true, false, "", null)) with { Route = route ?? initial?.Route };
         _commandDelay = commandDelay ?? TimeSpan.Zero;
     }
+    // Um resultado de login forçado, para exercitar os caminhos de recusa sem um servidor real.
+    public CommandResult? LoginResult { get; set; }
     public Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(_state);
     public async Task<CommandResult> CommandAsync(string command, object payload, CancellationToken cancellationToken = default)
     {
@@ -28,6 +30,11 @@ public sealed class UiTestBackendClient : IBackendClient
         _inFlight = "";
         if (command == "connect") _state = _state with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true, Route = _route ?? _state.Route };
         if (command == "disconnect") _state = _state with { Connected = false, TunnelActive = false, OwnedTunnelPresent = false };
+        if (command == "login" && LoginResult is { } forced)
+        {
+            if (forced.Success) _state = _state with { SignedIn = true, Username = "fixture" };
+            return forced;
+        }
         if (command == "logout") _state = _state with { SignedIn = false, Username = "" };
         return new CommandResult(true, Route: _state.Route);
     }

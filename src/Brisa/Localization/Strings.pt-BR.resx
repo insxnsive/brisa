@@ -168,6 +168,20 @@
   <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>O WireSock iniciou, mas o Brisa não conseguiu confirmar que ele está rodando com o perfil do próprio Brisa. Tente de novo.</value></data>
   <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>Não foi possível iniciar o túnel do Brisa. Confira o WireSock e o seu perfil de VPN e tente de novo.</value></data>
   <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>O Brisa não conseguiu ler o estado do WireSock com confiança, então não alterou nada. Abra o Brisa como administrador e tente de novo.</value></data>
+  <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Digite o código de dois fatores do Proton e tente de novo.</value></data>
+  <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>O código de dois fatores do Proton foi recusado ou expirou.</value></data>
+  <data name="Backend.CAPTCHA_REQUIRED" xml:space="preserve"><value>Conclua a verificação de segurança do Proton e tente de novo.</value></data>
+  <data name="Backend.CAPTCHA_INVALID" xml:space="preserve"><value>A verificação de segurança foi recusada ou expirou. Abra uma nova e tente de novo.</value></data>
+  <data name="Backend.NETWORK_ERROR" xml:space="preserve"><value>Não foi possível falar com o Proton. Confira a conexão e tente de novo.</value></data>
+  <data name="Backend.TIMEOUT" xml:space="preserve"><value>O Proton não respondeu a tempo. Tente de novo.</value></data>
+  <data name="Backend.MISSING_EXECUTABLE" xml:space="preserve"><value>O componente do Proton que vem com o Brisa não está disponível.</value></data>
+  <data name="Backend.SESSION_PERSISTENCE" xml:space="preserve"><value>Não foi possível salvar a sessão do Proton. Feche outras instâncias do Brisa e tente de novo.</value></data>
+  <data name="Backend.CONFIGURATION_ERROR" xml:space="preserve"><value>Não foi possível gerar o perfil do WireGuard. Tente outra rota.</value></data>
+  <data name="Backend.UNKNOWN" xml:space="preserve"><value>A operação do Proton falhou. Tente de novo.</value></data>
+  <data name="Backend.PROFILE_EMPTY" xml:space="preserve"><value>Este arquivo do WireGuard está vazio.</value></data>
+  <data name="Backend.START_CANCELLED" xml:space="preserve"><value>A inicialização foi cancelada.</value></data>
+  <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>A instalação do WireSock não terminou. O Brisa vai orientar você de novo.</value></data>
+  <data name="Backend.DISCORD_CHECK_FAILED" xml:space="preserve"><value>O Brisa não conseguiu verificar o Discord instalado. Termine qualquer atualização do Discord, reabra o Discord e tente de novo.</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Algo deu errado. Tente de novo.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>Não foi possível ler o estado do WireSock com confiança; nada foi alterado.</value></data>
   <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>O túnel do Brisa continua ativo junto com outro túnel do WireSock. Feche o outro túnel e desconecte o Brisa. O Brisa fica aberto até o túnel dele poder ser parado com segurança.</value></data>
