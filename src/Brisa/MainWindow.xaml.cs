@@ -453,7 +453,8 @@ public partial class MainWindow : Window
             var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
-            if (!result.Success) MessageBox.Show(this, result.Message ?? "The operation could not be completed.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!result.Success)
+                Localization.BackendText.Show(this, result.Code, result.Message, "Brisa");
             await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
         catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }
@@ -734,7 +735,8 @@ public partial class MainWindow : Window
             var pending = ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
-            if (!result.Success) MessageBox.Show(this, result.Message ?? "Route optimization failed.", "Route", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (!result.Success)
+                Localization.BackendText.Show(this, result.Code, result.Message, Localization.LocalizationManager.Current["Route"]);
             await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
         catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }

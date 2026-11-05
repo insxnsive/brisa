@@ -114,4 +114,24 @@
   <data name="ServerWithPing" xml:space="preserve"><value>Servidor {0}, {1} ms</value></data>
   <data name="ServerOnly" xml:space="preserve"><value>Servidor {0}</value></data>
   <data name="DiscordTrafficHeader" xml:space="preserve"><value>Tráfego do Discord</value></data>
+  <data name="BackendUnknown" xml:space="preserve"><value>Algo deu errado. Tente de novo.</value></data>
+  <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>Não foi possível ler o estado do WireSock com confiança; nada foi alterado.</value></data>
+  <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>O túnel do Brisa ainda está ativo junto com outro túnel do WireSock. Feche o outro túnel e desconecte o Brisa. O Brisa vai ficar aberto até conseguir parar o túnel com segurança.</value></data>
+  <data name="Backend.TUNNEL_EXTERNAL_ACTIVE" xml:space="preserve"><value>Outro túnel do WireSock está ativo; nada foi alterado.</value></data>
+  <data name="Backend.PROTON_HELPER_MISSING" xml:space="preserve"><value>O auxiliar da Proton incluído no aplicativo não está disponível.</value></data>
+  <data name="Backend.NOT_SIGNED_IN" xml:space="preserve"><value>Entre na ProtonVPN primeiro.</value></data>
+  <data name="Backend.MUTATION_BUSY" xml:space="preserve"><value>Outra operação do serviço nativo ainda está em andamento.</value></data>
+  <data name="Backend.SIGN_OUT_WITH_TUNNEL" xml:space="preserve"><value>Desconecte o túnel nativo antes de sair da conta.</value></data>
+  <data name="Backend.SIGN_OUT_PROFILE_KEPT" xml:space="preserve"><value>Você saiu da conta. O Brisa manteve o perfil do túnel nativo porque não conseguiu confirmar a posse do túnel. Abra o Brisa como administrador e saia da conta de novo para limpar esse perfil.</value></data>
+  <data name="Backend.ROUTE_CHANGE_ACTIVE" xml:space="preserve"><value>Desconecte antes de otimizar; túneis ativos nunca são trocados automaticamente.</value></data>
+  <data name="Backend.PROFILE_PATH_NOT_ABSOLUTE" xml:space="preserve"><value>Selecione um arquivo .conf do WireGuard com caminho absoluto.</value></data>
+  <data name="Backend.PROFILE_UNREADABLE" xml:space="preserve"><value>Não foi possível ler o arquivo do WireGuard selecionado.</value></data>
+  <data name="Backend.TUNNEL_ALREADY_ACTIVE" xml:space="preserve"><value>Já existe um túnel do Brisa ativo. Desconecte antes de iniciar uma nova conexão com o Discord.</value></data>
+  <data name="Backend.PROFILE_MISSING" xml:space="preserve"><value>Importe um perfil do WireGuard primeiro.</value></data>
+  <data name="Backend.ROUTE_UNVERIFIED" xml:space="preserve"><value>O Discord foi reaberto e o túnel está ativo, mas não foi possível confirmar a conexão pela rota. Desconecte e tente outra rota.</value></data>
+  <data name="Backend.TUNNEL_OWNERSHIP_UNCONFIRMED" xml:space="preserve"><value>O túnel do Brisa pode ainda estar ativo, mas não foi possível confirmar a posse. Abra o Brisa como administrador e tente de novo. O Brisa vai ficar aberto.</value></data>
+  <data name="Backend.DISCORD_REOPEN_FAILED" xml:space="preserve"><value>O túnel foi parado, mas não foi possível reabrir o Discord. Abra o Discord manualmente.</value></data>
+  <data name="Backend.SDK_INSTALL_STAYS_OPEN" xml:space="preserve"><value>O status da instalação do WireSock é desconhecido. O Brisa vai ficar aberto; reinicie o Brisa antes de tentar de novo.</value></data>
+  <data name="Backend.SDK_INSTALL_DISCORD_CLOSED" xml:space="preserve"><value>O Discord foi fechado; abra-o de novo manualmente.</value></data>
+  <data name="Backend.CANCEL_RESTORE_UNCONFIRMED" xml:space="preserve"><value>O cancelamento não conseguiu confirmar a volta da rota normal. Verifique o status do túnel e o Discord antes de tentar de novo.</value></data>
 </root>

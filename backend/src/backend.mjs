@@ -25,6 +25,32 @@ const FAILURE_MESSAGES = Object.freeze({
 });
 const safeFailure = code => FAILURE_MESSAGES[code] || "Operation failed. Try again.";
 
+// Falhas sem código próprio: o texto fica aqui e acompanha um código, para a interface traduzir em
+// vez de o Node escrever a frase de um idioma só.
+export const APP_MESSAGES = Object.freeze({
+  WIRESOCK_STATE_UNRELIABLE: "WireSock state could not be inspected reliably; no changes were made.",
+  TUNNEL_MIXED_OWNERSHIP: "Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely.",
+  TUNNEL_EXTERNAL_ACTIVE: "Another WireSock tunnel is active; no changes were made.",
+  SDK_INSTALL_STAYS_OPEN: "WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again.",
+  SDK_INSTALL_DISCORD_CLOSED: "Discord was closed; open it again manually.",
+  PROTON_HELPER_MISSING: "The packaged Proton helper is unavailable.",
+  NOT_SIGNED_IN: "Sign in to ProtonVPN first.",
+  CANCEL_RESTORE_UNCONFIRMED: "Cancellation could not confirm normal-route restoration. Check tunnel status and Discord before retrying.",
+  MUTATION_BUSY: "Another native backend operation is still running.",
+  SIGN_OUT_WITH_TUNNEL: "Disconnect the native tunnel before signing out.",
+  SIGN_OUT_PROFILE_KEPT: "Signed out. Brisa kept its native tunnel profile because tunnel ownership could not be verified. Open Brisa as administrator and sign out again to finish clearing that profile.",
+  ROUTE_CHANGE_ACTIVE: "Disconnect before optimizing; active tunnels are never switched automatically.",
+  PROFILE_PATH_NOT_ABSOLUTE: "Select an absolute WireGuard .conf file.",
+  PROFILE_UNREADABLE: "The selected WireGuard file could not be read.",
+  TUNNEL_ALREADY_ACTIVE: "A Brisa tunnel is already active. Disconnect it before starting a fresh Discord connection.",
+  PROFILE_MISSING: "Import a WireGuard profile first.",
+  ROUTE_UNVERIFIED: "Discord was reopened and the tunnel is running, but the routed connection could not be verified. Disconnect and try another route.",
+  TUNNEL_OWNERSHIP_UNCONFIRMED: "Brisa's tunnel may still be running, but ownership could not be confirmed. Run Brisa as administrator and retry. Brisa will stay open.",
+  DISCORD_REOPEN_FAILED: "The tunnel was stopped, but Discord could not be reopened. Open Discord manually.",
+});
+const appFailure = code => ({ success: false, code, message: APP_MESSAGES[code] });
+
+
 // Start failures get their own messages: one generic line for every start failure is what
 // made a refused start impossible to diagnose. Codes are app-owned; nothing from the
 // elevated worker's output reaches these strings.
@@ -257,15 +283,15 @@ export function createBackend(deps, paths) {
     const status = await inspect();
     if (!status?.reliable) {
       note("guard", "GUARD_UNRELIABLE", { ownPresent: hasOwned(status) });
-      return { status, failure: { success: false, message: "WireSock state could not be inspected reliably; no changes were made." } };
+      return { status, failure: { success: false, message: APP_MESSAGES.WIRESOCK_STATE_UNRELIABLE, code: "WIRESOCK_STATE_UNRELIABLE" } };
     }
     if (status.active && !status.owned) {
       note("guard", "GUARD_EXTERNAL_TUNNEL", { ownPresent: hasOwned(status) });
       // Mixed ownership is not "someone else's tunnel only": Brisa's own instance may still
       // be running, and it cannot be stopped safely while the other one exists.
-      return { status, failure: { success: false, message: hasOwned(status)
-        ? "Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely."
-        : "Another WireSock tunnel is active; no changes were made." } };
+      return { status, failure: appFailure(hasOwned(status)
+        ? "TUNNEL_MIXED_OWNERSHIP"
+        : "TUNNEL_EXTERNAL_ACTIVE") };
     }
     return { status };
   };
@@ -306,10 +332,10 @@ export function createBackend(deps, paths) {
   };
 
   const generate = async (payload, operation) => {
-    if (!deps.helperAvailable()) return { success: false, message: "The packaged Proton helper is unavailable." };
+    if (!deps.helperAvailable()) return { success: false, message: APP_MESSAGES.PROTON_HELPER_MISSING, code: "PROTON_HELPER_MISSING" };
     const currentUsername = await username();
     if (!operation.isCurrent()) return cancelled();
-    if (!currentUsername) return { success: false, message: "Sign in to ProtonVPN first." };
+    if (!currentUsername) return { success: false, message: APP_MESSAGES.NOT_SIGNED_IN, code: "NOT_SIGNED_IN" };
     let freeOnly = true;
     try {
       const plan = await deps.getPlan(paths.dataDir, currentUsername);
@@ -376,7 +402,7 @@ export function createBackend(deps, paths) {
     } catch { return false; }
   };
   const cleanupCancelledStart = async (apps) => (await rollbackStart(apps)) ? cancelled() :
-    { success: false, message: "Cancellation could not confirm normal-route restoration. Check tunnel status and Discord before retrying." };
+    { success: false, message: APP_MESSAGES.CANCEL_RESTORE_UNCONFIRMED, code: "CANCEL_RESTORE_UNCONFIRMED" };
   const cancelledStart = (apps) => {
     note(stage === "idle" ? "startup" : stage, "START_CANCELLED");
     return cleanupCancelledStart(apps);
@@ -508,7 +534,7 @@ export function createBackend(deps, paths) {
         };
       }
 
-      if (mutationBusy) return { success: false, message: "Another native backend operation is still running." };
+      if (mutationBusy) return { success: false, message: APP_MESSAGES.MUTATION_BUSY, code: "MUTATION_BUSY" };
       mutationBusy = true;
       mutationSeq += 1;
       mutationDone = new Promise(resolve => { releaseMutation = resolve; });
@@ -522,7 +548,7 @@ export function createBackend(deps, paths) {
         if (guarded.failure) return guarded.failure;
 
       if (command === "login") {
-        if (!deps.helperAvailable()) return { success: false, message: "The packaged Proton helper is unavailable." };
+        if (!deps.helperAvailable()) return { success: false, message: APP_MESSAGES.PROTON_HELPER_MISSING, code: "PROTON_HELPER_MISSING" };
         const operation = begin();
         try {
           const result = await deps.login(paths.dataDir, payload.username, payload.password, payload.twoFactorCode,
@@ -533,7 +559,7 @@ export function createBackend(deps, paths) {
       }
 
       if (command === "logout") {
-        if (guarded.status.active && guarded.status.owned) return { success: false, message: "Disconnect the native tunnel before signing out." };
+        if (guarded.status.active && guarded.status.owned) return { success: false, message: APP_MESSAGES.SIGN_OUT_WITH_TUNNEL, code: "SIGN_OUT_WITH_TUNNEL" };
         await deps.files.removeOwned(paths.sessionPath);
         await deps.files.removeOwned(`${paths.sessionPath}.lock`);
         await deps.files.removeOwned(paths.generatedProfilePath);
@@ -545,11 +571,11 @@ export function createBackend(deps, paths) {
         state = { ...state, route: null };
         await saveState();
         return nativeAbsent ? { success: true }
-          : { success: true, message: "Signed out. Brisa kept its native tunnel profile because tunnel ownership could not be verified. Open Brisa as administrator and sign out again to finish clearing that profile." };
+          : { success: true, message: APP_MESSAGES.SIGN_OUT_PROFILE_KEPT, code: "SIGN_OUT_PROFILE_KEPT" };
       }
 
       if (command === "optimize") {
-        if (guarded.status.active) return { success: false, message: "Disconnect before optimizing; active tunnels are never switched automatically." };
+        if (guarded.status.active) return { success: false, message: APP_MESSAGES.ROUTE_CHANGE_ACTIVE, code: "ROUTE_CHANGE_ACTIVE" };
         const operation = begin();
         try { return await generate(payload, operation); }
         catch { return operation.isCurrent() ? { success: false, message: safeFailure() } : cancelled(); }
@@ -559,11 +585,11 @@ export function createBackend(deps, paths) {
       if (command === "importConfig") {
         const selected = payload.path;
         if (!(path.isAbsolute(selected) || path.win32.isAbsolute(selected)) || path.extname(selected).toLowerCase() !== ".conf") {
-          return { success: false, message: "Select an absolute WireGuard .conf file." };
+          return { success: false, message: APP_MESSAGES.PROFILE_PATH_NOT_ABSOLUTE, code: "PROFILE_PATH_NOT_ABSOLUTE" };
         }
         let raw;
         try { raw = await deps.files.readExplicit(selected); }
-        catch { return { success: false, message: "The selected WireGuard file could not be read." }; }
+        catch { return { success: false, message: APP_MESSAGES.PROFILE_UNREADABLE, code: "PROFILE_UNREADABLE" }; }
         const validation = deps.validateConfig(raw);
         if (!validation?.valid) {
           note("preparing-profile", validation?.code ?? "PROFILE_INVALID");
@@ -584,7 +610,7 @@ export function createBackend(deps, paths) {
         const operation = connectOperation;
         if (!operation?.isCurrent()) return cancelled();
         if (guarded.status.active && guarded.status.owned)
-          return { success: false, message: "A Brisa tunnel is already active. Disconnect it before starting a fresh Discord connection." };
+          return { success: false, message: APP_MESSAGES.TUNNEL_ALREADY_ACTIVE, code: "TUNNEL_ALREADY_ACTIVE" };
         let apps;
         try { apps = await discordApps(); }
         catch (error) { return operation.isCurrent() ? discordCompatibilityFailure(error) : cancelled(); }
@@ -593,13 +619,13 @@ export function createBackend(deps, paths) {
         if (state.mode === "proton") {
           const currentUsername = await username();
           if (!operation.isCurrent()) return cancelled();
-          if (!currentUsername) return { success: false, message: "Sign in to ProtonVPN first." };
+          if (!currentUsername) return { success: false, message: APP_MESSAGES.NOT_SIGNED_IN, code: "NOT_SIGNED_IN" };
         }
         let profilePath = state.mode === "custom" ? paths.importedProfilePath : paths.generatedProfilePath;
         const profileExists = await deps.files.existsOwned(profilePath);
         if (!operation.isCurrent()) return cancelled();
         if (!profileExists) {
-          if (state.mode === "custom") return { success: false, message: "Import a WireGuard profile first." };
+          if (state.mode === "custom") return { success: false, message: APP_MESSAGES.PROFILE_MISSING, code: "PROFILE_MISSING" };
           try {
             const result = await generate(payload, operation);
             if (!result.success) return result;
@@ -653,7 +679,7 @@ export function createBackend(deps, paths) {
           if (!routeVerification.verified) {
             note("verifying-route", "ROUTE_UNVERIFIED", { reason: String(routeVerification.reason).toUpperCase() });
             return { success: false, code: "ROUTE_UNVERIFIED",
-              message: "Discord was reopened and the tunnel is running, but the routed connection could not be verified. Disconnect and try another route." };
+              message: APP_MESSAGES.ROUTE_UNVERIFIED, code: "ROUTE_UNVERIFIED" };
           }
           return { success: true, ...(state.route ? { route: state.route } : {}) };
         } catch (error) {
@@ -669,7 +695,8 @@ export function createBackend(deps, paths) {
               try { await deps.launchDiscord(apps); restored = true; } catch { restored = false; }
             }
             return { success: false, code: "SDK_INSTALL_SUPERVISION_LOST",
-              message: `WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again.${restored || !apps.length ? "" : " Discord was closed; open it again manually."}` };
+              code: "SDK_INSTALL_SUPERVISION_LOST",
+              message: `${APP_MESSAGES.SDK_INSTALL_STAYS_OPEN}${restored || !apps.length ? "" : " " + APP_MESSAGES.SDK_INSTALL_DISCORD_CLOSED}` };
           }
           if (!operation.isCurrent()) return await cancelledStart(apps);
           const failedStage = stage;
@@ -695,7 +722,7 @@ export function createBackend(deps, paths) {
       if (command === "disconnect") {
         generation += 1;
         if (!guarded.status.active && !hasOwned(guarded.status)) return { success: true };
-        if (!guarded.status.active) return { success: false, message: "Brisa's tunnel may still be running, but ownership could not be confirmed. Run Brisa as administrator and retry. Brisa will stay open." };
+        if (!guarded.status.active) return { success: false, message: APP_MESSAGES.TUNNEL_OWNERSHIP_UNCONFIRMED, code: "TUNNEL_OWNERSHIP_UNCONFIRMED" };
         // A descoberta do Discord não pode impedir a parada do túnel: sem a lista, a parada segue
         // e o Discord reconecta pela rota normal. Deixar o túnel de pé seria pior.
         let apps = sessionApps;
@@ -733,7 +760,7 @@ export function createBackend(deps, paths) {
           if (apps.length) await deps.launchDiscord(apps);
           return { success: true };
         } catch {
-          if (stage === "starting-discord") return { success: false, message: "The tunnel was stopped, but Discord could not be reopened. Open Discord manually." };
+          if (stage === "starting-discord") return { success: false, message: APP_MESSAGES.DISCORD_REOPEN_FAILED, code: "DISCORD_REOPEN_FAILED" };
           note("stop", "STOP_NOT_CONFIRMED", { rollback: false, discordClosed });
           return { success: false, message: discordClosed
             ? "Discord was closed, but the native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before reopening Discord."

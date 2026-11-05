@@ -281,7 +281,18 @@ var tests = new (string Name, Action Run)[]
     {
         Assert(!MetricsFormat.Size(26_100_000).Contains(','));
         Assert(!MetricsFormat.Rate(907_900).Contains(','));
-    })
+    }),
+    ("backend text follows the language and falls back to English", () =>
+    {
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Outra operação do serviço nativo ainda está em andamento.");
+        Assert(Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.") == "English fallback.");
+        loc.Apply(Brisa.Localization.LocalizationManager.English);
+        Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Another native backend operation is still running.");
+        loc.Apply(before);
+    }),
 };
 
 var failures = new List<string>();

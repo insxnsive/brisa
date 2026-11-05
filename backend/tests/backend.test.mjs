@@ -648,7 +648,7 @@ test("mutating commands are serialized while cancel remains independently accept
   });
   const login = backend.execute("login", { username: "u", password: "p" });
   await started;
-  assert.deepEqual(await backend.execute("optimize", {}), { success: false, message: "Another native backend operation is still running." });
+  assert.deepEqual(await backend.execute("optimize", {}), { success: false, code: "MUTATION_BUSY", message: "Another native backend operation is still running." });
   assert.deepEqual(await backend.execute("cancel", {}), { success: true });
   release();
   assert.equal((await login).success, false);
@@ -670,7 +670,7 @@ test("import validates an explicit absolute .conf and writes only sanitized nati
   assert.deepEqual(result, { success: true });
   assert.match(files.get("C:\\native-data\\imported.conf"), /AllowedApps = C:\\Discord\\Discord\.exe/);
   assert.equal(calls.some(call => call[0] === "start" || call[0] === "stop"), false);
-  assert.deepEqual(await backend.execute("importConfig", { path: "relative.conf" }), { success: false, message: "Select an absolute WireGuard .conf file." });
+  assert.deepEqual(await backend.execute("importConfig", { path: "relative.conf" }), { success: false, code: "PROFILE_PATH_NOT_ABSOLUTE", message: "Select an absolute WireGuard .conf file." });
 });
 
 test("disconnect mutates only when exact native-owned config is active", async () => {

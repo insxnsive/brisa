@@ -114,4 +114,24 @@
   <data name="ServerWithPing" xml:space="preserve"><value>Server {0}, {1} ms</value></data>
   <data name="ServerOnly" xml:space="preserve"><value>Server {0}</value></data>
   <data name="DiscordTrafficHeader" xml:space="preserve"><value>Discord traffic</value></data>
+  <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
+  <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>
+  <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely.</value></data>
+  <data name="Backend.TUNNEL_EXTERNAL_ACTIVE" xml:space="preserve"><value>Another WireSock tunnel is active; no changes were made.</value></data>
+  <data name="Backend.PROTON_HELPER_MISSING" xml:space="preserve"><value>The packaged Proton helper is unavailable.</value></data>
+  <data name="Backend.NOT_SIGNED_IN" xml:space="preserve"><value>Sign in to ProtonVPN first.</value></data>
+  <data name="Backend.MUTATION_BUSY" xml:space="preserve"><value>Another native backend operation is still running.</value></data>
+  <data name="Backend.SIGN_OUT_WITH_TUNNEL" xml:space="preserve"><value>Disconnect the native tunnel before signing out.</value></data>
+  <data name="Backend.SIGN_OUT_PROFILE_KEPT" xml:space="preserve"><value>Signed out. Brisa kept its native tunnel profile because tunnel ownership could not be verified. Open Brisa as administrator and sign out again to finish clearing that profile.</value></data>
+  <data name="Backend.ROUTE_CHANGE_ACTIVE" xml:space="preserve"><value>Disconnect before optimizing; active tunnels are never switched automatically.</value></data>
+  <data name="Backend.PROFILE_PATH_NOT_ABSOLUTE" xml:space="preserve"><value>Select an absolute WireGuard .conf file.</value></data>
+  <data name="Backend.PROFILE_UNREADABLE" xml:space="preserve"><value>The selected WireGuard file could not be read.</value></data>
+  <data name="Backend.TUNNEL_ALREADY_ACTIVE" xml:space="preserve"><value>A Brisa tunnel is already active. Disconnect it before starting a fresh Discord connection.</value></data>
+  <data name="Backend.PROFILE_MISSING" xml:space="preserve"><value>Import a WireGuard profile first.</value></data>
+  <data name="Backend.ROUTE_UNVERIFIED" xml:space="preserve"><value>Discord was reopened and the tunnel is running, but the routed connection could not be verified. Disconnect and try another route.</value></data>
+  <data name="Backend.TUNNEL_OWNERSHIP_UNCONFIRMED" xml:space="preserve"><value>Brisa's tunnel may still be running, but ownership could not be confirmed. Run Brisa as administrator and retry. Brisa will stay open.</value></data>
+  <data name="Backend.DISCORD_REOPEN_FAILED" xml:space="preserve"><value>The tunnel was stopped, but Discord could not be reopened. Open Discord manually.</value></data>
+  <data name="Backend.SDK_INSTALL_STAYS_OPEN" xml:space="preserve"><value>WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again.</value></data>
+  <data name="Backend.SDK_INSTALL_DISCORD_CLOSED" xml:space="preserve"><value>Discord was closed; open it again manually.</value></data>
+  <data name="Backend.CANCEL_RESTORE_UNCONFIRMED" xml:space="preserve"><value>Cancellation could not confirm normal-route restoration. Check tunnel status and Discord before retrying.</value></data>
 </root>
