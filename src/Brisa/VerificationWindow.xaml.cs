@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using Brisa.Localization;
 using Brisa.Security;
 using Microsoft.Web.WebView2.Core;
 
@@ -16,7 +17,8 @@ public partial class VerificationWindow : Window
 
     public VerificationWindow(VerificationChallenge challenge, CancellationToken cancellationToken)
     {
-        InitializeComponent(); _challenge = challenge; _cancellationToken = cancellationToken;
+        InitializeComponent(); Title = LocalizationManager.Current["VerificationTitle"];
+        _challenge = challenge; _cancellationToken = cancellationToken;
         Loaded += OnLoaded; Closed += OnClosed;
     }
 

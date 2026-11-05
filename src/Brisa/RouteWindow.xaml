@@ -1,11 +1,10 @@
 <Window x:Class="Brisa.RouteWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:Brisa.Localization"
-        Title="Choose Route" Width="420" Height="520" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
+        Title="Brisa" Width="420" Height="520" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
   <Grid Margin="24">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="{loc:Loc ChooseRouteAction}"/><TextBlock Style="{StaticResource SecondaryText}" Margin="0,5,0,20" Text="{loc:Loc ChooseRouteHelper}"/></StackPanel>
+    <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="{loc:Loc ChooseRoute}"/><TextBlock Style="{StaticResource SecondaryText}" Margin="0,5,0,20" Text="{loc:Loc ChooseRouteHelper}"/></StackPanel>
     <Border Grid.Row="1" Style="{StaticResource SettingsSurface}" Padding="4">
       <ListBox x:Name="CountryList" AutomationProperties.Name="{loc:Loc RouteCountry}" SelectedIndex="0" BorderThickness="0" Background="Transparent">
-        <ListBoxItem Content="{loc:Loc Automatic}" Tag=""/><ListBoxItem Content="{loc:Loc Canada}" Tag="CA"/><ListBoxItem Content="{loc:Loc Germany}" Tag="DE"/><ListBoxItem Content="{loc:Loc Japan}" Tag="JP"/><ListBoxItem Content="{loc:Loc Netherlands}" Tag="NL"/><ListBoxItem Content="{loc:Loc UnitedStates}" Tag="US"/>
       </ListBox>
     </Border>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">

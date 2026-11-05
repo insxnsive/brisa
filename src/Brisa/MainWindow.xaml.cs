@@ -173,7 +173,7 @@ public partial class MainWindow : Window
             {
                 SettingsView => loc["SettingsTitle"],
                 AccountView => loc["Account"],
-                AdvancedView => loc["AdvancedTitle"],
+                AdvancedView => loc["Advanced"],
                 _ => PageTitle.Text,
             };
         };
@@ -783,7 +783,7 @@ public partial class MainWindow : Window
         // que já não corresponde ao estado.
         if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not SettingsView) return;
         _advancedFromSettings = true;
-        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), Localization.LocalizationManager.Current["AdvancedTitle"]);
+        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), Localization.LocalizationManager.Current["Advanced"]);
     }
 
     /// <summary>

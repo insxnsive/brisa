@@ -4,7 +4,7 @@
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <controls:ToolbarButton x:Name="BackButton" Style="{StaticResource ToolbarAction}" Visibility="Collapsed" Margin="0,0,8,0" Click="Back_Click" ToolTip="{loc:Loc Back (Alt+Left)}" AutomationProperties.Name="{loc:Loc Back}"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;"/></controls:ToolbarButton>
+      <controls:ToolbarButton x:Name="BackButton" Style="{StaticResource ToolbarAction}" Visibility="Collapsed" Margin="0,0,8,0" Click="Back_Click" ToolTip="{loc:Loc BackLabel}" AutomationProperties.Name="{loc:Loc Back}"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;"/></controls:ToolbarButton>
       <TextBlock x:Name="PageTitle" Grid.Column="1" Style="{StaticResource PageTitle}" VerticalAlignment="Center" Visibility="Collapsed"/>
       <StackPanel x:Name="HomeActions" Grid.Column="2" Orientation="Horizontal">
         <controls:ToolbarButton x:Name="AccountButton" Style="{StaticResource ToolbarAction}" ToolTip="{loc:Loc Account}" AutomationProperties.Name="{loc:Loc Account}" Click="Account_Click" Margin="0,0,4,0"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77B;"/></controls:ToolbarButton>
