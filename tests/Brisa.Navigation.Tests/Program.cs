@@ -230,18 +230,21 @@ internal static class Program
             // trabalho a caminho e para quando o estado assenta.
             var indicator = connecting.FindName("StatusRing") as System.Windows.Shapes.Ellipse;
             var rotation = connecting.FindName("StatusRingRotation") as System.Windows.Media.RotateTransform;
-            // O anel começa a animar no ciclo de composição seguinte. Num runner lento ler logo
-            // depois do UpdateLayout pega o transform antes da animação, e o teste falha por
-            // timing, não por comportamento. Espera o quadro, e o limite do Pump ainda acusa.
-            if (rotation is not null) Pump(() => rotation.HasAnimatedProperties);
-            var progressVisible = indicator is { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 } && rotation is { HasAnimatedProperties: true };
+            // O anel só gira onde o Windows permite animação. O runner de CI roda com as animações
+            // desligadas, então exigir o giro ali mediria a configuração do sistema, não o app: o
+            // que o teste cobra é o anel visível durante o trabalho e parado depois, e o giro
+            // quando o sistema o permite.
+            var motionAllowed = StatusMotion.Allowed(null);
+            if (motionAllowed && rotation is not null) Pump(() => rotation.HasAnimatedProperties);
+            var ringShown = indicator is { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 };
+            var progressVisible = ringShown && (!motionAllowed || rotation is { HasAnimatedProperties: true });
             var wasDisabled = !((Button)connecting.FindName("PrimaryButton")).IsEnabled;
             connecting.Close(); Pump(() => !connecting.IsVisible);
             Check(!connectBackend.Release.Task.IsCompleted && app.Windows.Cast<Window>().Contains(connecting),
                 "X during Connect hides the window without cancelling the operation");
             connectBackend.Release.TrySetResult(); Pump(() => ((Button)connecting.FindName("PrimaryButton")).IsEnabled);
             connecting.Show();
-            var stoppedAnimating = indicator is { Visibility: Visibility.Collapsed } && rotation is { HasAnimatedProperties: false };
+            var stoppedAnimating = indicator is { Visibility: Visibility.Collapsed } && (!motionAllowed || rotation is { HasAnimatedProperties: false });
             connecting.RequestExit(); Pump(() => app.Windows.Count == 0);
             Check(progressVisible && wasDisabled, "connecting shows visible animated progress and prevents double submission");
             Check(stoppedAnimating, "progress stops after completion");
