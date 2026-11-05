@@ -108,7 +108,6 @@
   <data name="ServiceStoppingRetry" xml:space="preserve"><value>The service has not finished stopping. Please try exiting again.</value></data>
   <data name="VerificationRejected" xml:space="preserve"><value>The verification address was rejected.</value></data>
   <data name="SecondaryWindowFailed" xml:space="preserve"><value>Secondary window failed to load.</value></data>
-  <data name="ShowAnimations" xml:space="preserve"><value>Mostrar animações</value></data>
   <data name="SaveLogFilter" xml:space="preserve"><value>Text file (*.txt)|*.txt</value></data>
   <data name="TrayOpen" xml:space="preserve"><value>Open</value></data>
   <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
@@ -132,6 +131,13 @@
   <data name="ConfigurationImported" xml:space="preserve"><value>Configuration imported.</value></data>
   <data name="ConfigurationRejected" xml:space="preserve"><value>The configuration was rejected.</value></data>
   <data name="NativeServiceUnavailable" xml:space="preserve"><value>The native service is unavailable.</value></data>
+  <data name="DetailTunnelMixedOwnership" xml:space="preserve"><value>Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely.</value></data>
+  <data name="DetailOwnershipUnreliable" xml:space="preserve"><value>Brisa's tunnel may still be running, but ownership could not be checked reliably. Run Brisa as administrator and retry. Brisa will stay open.</value></data>
+  <data name="DetailInstallerUnknown" xml:space="preserve"><value>WireSock installation status is unknown. Restart Brisa before connecting.</value></data>
+  <data name="DetailExternalTunnel" xml:space="preserve"><value>Another app owns the active tunnel. Close it before continuing.</value></data>
+  <data name="DetailRequiresElevation" xml:space="preserve"><value>Open Brisa as administrator to connect or disconnect. You can sign in and import a profile here.</value></data>
+  <data name="DetailOwnershipUnverified" xml:space="preserve"><value>Tunnel ownership could not be verified. Run Brisa as administrator. No changes were made.</value></data>
+  <data name="DetailTunnelUnverified" xml:space="preserve"><value>The tunnel is running, but Discord routing is not verified. Disconnect and try again.</value></data>
   <data name="DiscordTrafficHeader" xml:space="preserve"><value>Discord traffic</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>

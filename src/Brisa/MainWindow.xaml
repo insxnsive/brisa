@@ -13,7 +13,7 @@
     </Grid>
     <Grid x:Name="HomeContent" Grid.Row="1" Focusable="True" FocusVisualStyle="{x:Null}">
       <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,0" Padding="20">
+    <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,20" Padding="20">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
@@ -32,14 +32,14 @@
           </Grid>
           <Grid Margin="0,14,0,0">
             <TextBlock x:Name="StatusTextGhost" AutomationProperties.IsOffscreenBehavior="Offscreen" IsHitTestVisible="False" Visibility="Collapsed" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Text=""/>
-            <TextBlock x:Name="StatusText" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}" AutomationProperties.HelpText="{loc:Loc ConnectionStatus}" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" Text="Checking status…"/>
+            <TextBlock x:Name="StatusText" AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}}" AutomationProperties.HelpText="{loc:Loc ConnectionStatus}" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Stretch" TextAlignment="Center" TextWrapping="Wrap" Margin="8,0" Text="Checking status…"/>
           </Grid>
-          <TextBlock x:Name="DetailText" Style="{StaticResource SecondaryText}" Margin="0,8,0,0" TextAlignment="Center" MinHeight="38"/>
+          <TextBlock x:Name="DetailText" Style="{StaticResource SecondaryText}" Margin="8,8,8,0" TextAlignment="Center" TextWrapping="Wrap" MinHeight="38"/>
         </StackPanel>
         <!-- Conectado: o status encolhe para uma linha de cabeçalho alinhada à esquerda e o painel
              de detalhes ocupa o espaço que o bloco centralizado usava. Desconectado não mostra
              painel nenhum: zero e travessão são piores que a ausência do dado. -->
-        <StackPanel x:Name="DetailsHost" Visibility="Collapsed" VerticalAlignment="Bottom">
+        <StackPanel x:Name="DetailsHost" Visibility="Collapsed" VerticalAlignment="Top">
           <StackPanel Orientation="Horizontal">
             <Border x:Name="CompactBadge" Width="40" Height="40" CornerRadius="20" Background="{DynamicResource NativeStatusConnectedSurface}">
               <TextBlock x:Name="CompactIcon" FontFamily="Segoe Fluent Icons" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE73E;"/>

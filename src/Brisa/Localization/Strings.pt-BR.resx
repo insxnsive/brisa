@@ -108,7 +108,6 @@
   <data name="ServiceStoppingRetry" xml:space="preserve"><value>O serviço ainda não terminou de parar. Tente sair de novo.</value></data>
   <data name="VerificationRejected" xml:space="preserve"><value>O endereço de verificação foi recusado.</value></data>
   <data name="SecondaryWindowFailed" xml:space="preserve"><value>A janela secundária não carregou.</value></data>
-  <data name="ShowAnimations" xml:space="preserve"><value>Mostrar animações</value></data>
   <data name="SaveLogFilter" xml:space="preserve"><value>Arquivo de texto (*.txt)|*.txt</value></data>
   <data name="TrayOpen" xml:space="preserve"><value>Abrir</value></data>
   <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
@@ -132,6 +131,13 @@
   <data name="ConfigurationImported" xml:space="preserve"><value>Configuração importada.</value></data>
   <data name="ConfigurationRejected" xml:space="preserve"><value>A configuração foi recusada.</value></data>
   <data name="NativeServiceUnavailable" xml:space="preserve"><value>O serviço nativo não está disponível.</value></data>
+  <data name="DetailTunnelMixedOwnership" xml:space="preserve"><value>O túnel do Brisa continua ativo junto com outro túnel do WireSock. Feche o outro túnel e desconecte o Brisa. O Brisa fica aberto até o túnel dele poder ser parado com segurança.</value></data>
+  <data name="DetailOwnershipUnreliable" xml:space="preserve"><value>O túnel do Brisa pode continuar ativo, mas não foi possível confirmar a titularidade. Abra o Brisa como administrador e tente de novo. O Brisa fica aberto.</value></data>
+  <data name="DetailInstallerUnknown" xml:space="preserve"><value>O status da instalação do WireSock é desconhecido. Reinicie o Brisa antes de conectar.</value></data>
+  <data name="DetailExternalTunnel" xml:space="preserve"><value>Outro app é dono do túnel ativo. Feche-o antes de continuar.</value></data>
+  <data name="DetailRequiresElevation" xml:space="preserve"><value>Abra o Brisa como administrador para conectar ou desconectar. Aqui você ainda pode entrar na conta e importar um perfil.</value></data>
+  <data name="DetailOwnershipUnverified" xml:space="preserve"><value>Não foi possível verificar o dono do túnel. Abra o Brisa como administrador. Nada foi alterado.</value></data>
+  <data name="DetailTunnelUnverified" xml:space="preserve"><value>O túnel está ativo, mas o roteamento do Discord não foi verificado. Desconecte e tente de novo.</value></data>
   <data name="DiscordTrafficHeader" xml:space="preserve"><value>Tráfego do Discord</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Algo deu errado. Tente de novo.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>Não foi possível ler o estado do WireSock com confiança; nada foi alterado.</value></data>

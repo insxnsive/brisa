@@ -361,7 +361,7 @@ public partial class MainWindow : Window
         StatusMotion.CrossFade(StatusText, StatusTextGhost, _allowMotion);
     }
 
-    // O anel só existe enquanto há trabalho a caminho. Com LocalizationManager.Current["ShowAnimations"] desligado ele fica
+    // O anel só existe enquanto há trabalho a caminho. Com o anel desligado ele fica
     // parado, mas continua visível: o estado ainda precisa ser lido sem movimento.
     private void SetStatusRing(bool busy)
     {

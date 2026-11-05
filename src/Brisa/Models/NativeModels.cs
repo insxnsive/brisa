@@ -62,21 +62,21 @@ public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, 
         // Brisa's own tunnel is positively identified next to another WireSock tunnel. It
         // cannot be stopped safely while the other one exists, so say so instead of exiting.
         { HasOwnedTunnel: true, ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot,
-            "Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely."),
+            Localization.LocalizationManager.Current["DetailTunnelMixedOwnership"]),
         { HasOwnedTunnel: true, Reliable: false } => new(ConnectionPhase.Blocked, snapshot,
-            "Brisa's tunnel may still be running, but ownership could not be checked reliably. Run Brisa as administrator and retry. Brisa will stay open."),
+            Localization.LocalizationManager.Current["DetailOwnershipUnreliable"]),
         // Supervision of the vendor installer was lost: the tunnel state is still readable, but
         // the install result is not, so say what is actually unknown instead of asking for
         // elevation the user already has.
         { InstallerUnknown: true } => new(ConnectionPhase.Blocked, snapshot,
-            "WireSock installation status is unknown. Restart Brisa before connecting."),
-        { ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot, "Another app owns the active tunnel. Close it before continuing."),
+            Localization.LocalizationManager.Current["DetailInstallerUnknown"]),
+        { ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot, Localization.LocalizationManager.Current["DetailExternalTunnel"]),
         // Limited access is not a broken state: sign-in and import work without elevation.
         { RequiresElevation: true } => new(ConnectionPhase.Limited, snapshot,
-            "Open Brisa as administrator to connect or disconnect. You can sign in and import a profile here."),
-        { Reliable: false } => new(ConnectionPhase.Blocked, snapshot, "Tunnel ownership could not be verified. Run Brisa as administrator. No changes were made."),
+            Localization.LocalizationManager.Current["DetailRequiresElevation"]),
+        { Reliable: false } => new(ConnectionPhase.Blocked, snapshot, Localization.LocalizationManager.Current["DetailOwnershipUnverified"]),
         { Connected: true } => new(ConnectionPhase.Connected, snapshot),
-        { TunnelActive: true } => new(ConnectionPhase.Unverified, snapshot, "The tunnel is running, but Discord routing is not verified. Disconnect and try again."),
+        { TunnelActive: true } => new(ConnectionPhase.Unverified, snapshot, Localization.LocalizationManager.Current["DetailTunnelUnverified"]),
         _ => new(ConnectionPhase.Disconnected, snapshot)
     };
 }
