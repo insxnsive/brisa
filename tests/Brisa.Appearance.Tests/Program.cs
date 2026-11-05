@@ -146,8 +146,14 @@ internal static class Program
                             "the startup checkbox says Start with Windows");
                         Check(settingsText.Contains("Closing the window keeps Brisa running in the tray. Use Exit in the tray menu to quit."),
                             "the tray note is the new copy");
-                        Check(Descendants(view).OfType<ScrollViewer>().First().ScrollableHeight == 0,
-                            "Settings does not scroll at the default size");
+                        // A mensagem carrega as medidas: num runner com fonte de fallback o
+                        // excesso aparece aqui, e o número diz se é um pixel ou uma seção inteira.
+                        var settingsScroll = Descendants(view).OfType<ScrollViewer>().First();
+                        Check(settingsScroll.ScrollableHeight == 0,
+                            "Settings does not scroll at the default size"
+                            + $": scrollable={settingsScroll.ScrollableHeight:0.#} viewport={settingsScroll.ViewportHeight:0.#}"
+                            + $" extent={settingsScroll.ExtentHeight:0.#} font={SystemFonts.MessageFontFamily.Source}"
+                            + $" dpi={System.Windows.Media.VisualTreeHelper.GetDpi(view).PixelsPerDip:0.##}");
                         // Item 9: a preferência do painel mora em General, ao lado do início com o Windows.
                         var details = (CheckBox)view.FindName("DetailsBox");
                         Check(details.Content as string == "Show connection details", "the details preference is labelled Show connection details");
