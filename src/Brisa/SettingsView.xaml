@@ -24,7 +24,7 @@
           <Grid Margin="0,14,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock x:Name="LanguageLabel" Text="{loc:Loc LanguageLabel}" VerticalAlignment="Center"/>
-            <ComboBox x:Name="LanguageBox" Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+            <ComboBox x:Name="LanguageBox" Grid.Column="1" MinWidth="240" VerticalAlignment="Center"
                       AutomationProperties.Name="{loc:Loc LanguageLabel}">
               <ComboBoxItem x:Name="LanguageSystemItem" Tag="system" Content="{loc:Loc LanguageSystem}"/>
               <ComboBoxItem x:Name="LanguageEnglishItem" Tag="en" Content="{loc:Loc LanguageEnglish}"/>

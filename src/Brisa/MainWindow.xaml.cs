@@ -252,7 +252,13 @@ public partial class MainWindow : Window
         var routeLocked = state.Snapshot?.HasOwnedTunnel == true
             || state.Phase is ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Connected;
         RouteChevron.Text = routeLocked ? "\uE72E" : "\uE76C";
-        RouteHelper.Visibility = routeLocked ? Visibility.Visible : Visibility.Collapsed;
+        // A rota continua travada enquanto há túnel ativo, mas o motivo fica no hover: uma linha de
+        // texto dentro do cartão só aumentava o bloco do servidor.
+        var routeReason = routeLocked ? Localization.LocalizationManager.Current["DisconnectToChangeRoute"] : null;
+        // O cartão é quem recebe o hover: um botão desabilitado não é um alvo confiável de tooltip.
+        RouteCard.ToolTip = routeReason;
+        RouteButton.ToolTip = routeReason;
+        System.Windows.Automation.AutomationProperties.SetHelpText(RouteButton, routeReason ?? string.Empty);
         // O esmaecimento vem do próprio botão desabilitado. Somar opacidade aqui escurecia a linha de
         // ajuda abaixo do mínimo de contraste, e a instrução é justamente o que precisa ser lido.
         // Conectado é o único estado com acento: o resto fica neutro, e o Limited usa o escudo de
@@ -349,11 +355,10 @@ public partial class MainWindow : Window
     // O nome do pais vem do .NET, sem pacote e sem tabela. EnglishName e nao DisplayName: o ICU
     // desta maquina devolve o nome nativo (Brasil, Deutschland, Haiti), o que misturaria idiomas
     // numa tela em ingles. Quando o seletor de idioma existir, ele troca esta chamada.
-    private static string CountryName(string code)
-    {
-        try { return new System.Globalization.RegionInfo(code).EnglishName is { Length: > 0 } name ? name : code; }
-        catch (ArgumentException) { return code; }
-    }
+    // Um único lugar resolve o nome do país, como no item 2: a tabela CLDR em português e o
+    // RegionInfo em inglês, porque DisplayName devolve o idioma do próprio país.
+    private static string CountryName(string code) =>
+        Localization.CountryNames.Name(code, Localization.LocalizationManager.Current.Language);
 
     // Um timer só, e só enquanto o painel está na tela: minimizado ou na bandeja ele para, porque
     // ninguém está lendo os números.

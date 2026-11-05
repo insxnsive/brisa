@@ -282,6 +282,16 @@ var tests = new (string Name, Action Run)[]
         Assert(!MetricsFormat.Size(26_100_000).Contains(','));
         Assert(!MetricsFormat.Rate(907_900).Contains(','));
     }),
+    ("a Portuguese UI formats numbers with a comma decimal", () =>
+    {
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        Assert(MetricsFormat.Size(26_100_000).Contains(','));
+        Assert(MetricsFormat.Rate(1_310_000).Contains(','));
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(5)) == "5:00");
+        loc.Apply(before);
+    }),
     ("backend text follows the language and falls back to English", () =>
     {
         var loc = Brisa.Localization.LocalizationManager.Current;

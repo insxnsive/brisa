@@ -277,15 +277,15 @@ internal static class Program
                 Check(((Button)connected.FindName("PrimaryButton")).Content as string == "Disconnect", "connected action stays Disconnect");
                 Check(!((Button)connected.FindName("RouteButton")).IsEnabled, "connected route selection stays disabled");
                 Check(((TextBlock)connected.FindName("RouteChevron")).Text == "\uE72E", "connected route row shows the lock glyph");
-                Check(((TextBlock)connected.FindName("RouteHelper")).Visibility == Visibility.Visible,
-                    "connected route row says how to unlock it");
+                Check(((Button)connected.FindName("RouteButton")).ToolTip as string == "Disconnect to change the route",
+                    "the locked route explains itself on hover instead of taking a row");
                 Check(((TextBlock)connected.FindName("RouteServerText")).Visibility == Visibility.Collapsed,
                     "a placeholder server label is never shown as a value");
                 Check(((Button)connected.FindName("RouteButton")).IsTabStop == false || !((Button)connected.FindName("RouteButton")).IsEnabled,
                     "locked route row is not a tab stop");
                 Check(((TextBlock)main.FindName("RouteChevron")).Text == "\uE76C"
-                    && ((TextBlock)main.FindName("RouteHelper")).Visibility == Visibility.Collapsed,
-                    "idle route row keeps the chevron and no helper");
+                    && ((Button)main.FindName("RouteButton")).ToolTip is null,
+                    "idle route row keeps the chevron and no tooltip");
                 var toolbarButton = (Button)connected.FindName("SettingsButton");
                 var accountButton = (Brisa.Controls.ToolbarButton)connected.FindName("AccountButton");
                 Grid Root(Button b) => (Grid)b.Template.FindName("Root", b);

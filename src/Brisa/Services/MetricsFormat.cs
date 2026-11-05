@@ -35,11 +35,17 @@ public static class MetricsFormat
         if (double.IsNaN(value) || value < 0) value = 0;
         var unit = 0;
         while (value >= 999.5 && unit < Units.Length - 1) { value /= 1000; unit++; }
-        if (unit == 0) return string.Create(CultureInfo.InvariantCulture, $"{(long)Math.Round(value)} {Units[0]}");
+        if (unit == 0) return string.Create(NumberCulture, $"{(long)Math.Round(value)} {Units[0]}");
         // Três algarismos significativos: 430, 92.1, 9.07.
-        var text = value >= 100 ? value.ToString("0", CultureInfo.InvariantCulture)
-            : value >= 10 ? value.ToString("0.0", CultureInfo.InvariantCulture)
-            : value.ToString("0.00", CultureInfo.InvariantCulture);
+        var text = value >= 100 ? value.ToString("0", NumberCulture)
+            : value >= 10 ? value.ToString("0.0", NumberCulture)
+            : value.ToString("0.00", NumberCulture);
         return $"{text} {Units[unit]}";
     }
+
+    /// <summary>
+    /// Vírgula decimal em pt-BR e ponto em inglês: a formatação segue o idioma escolhido no aplicativo,
+    /// não a cultura do Windows. Durações continuam invariantes para não mudar de forma em logs.
+    /// </summary>
+    private static CultureInfo NumberCulture => CultureInfo.GetCultureInfo(Localization.LocalizationManager.Current.Language);
 }
