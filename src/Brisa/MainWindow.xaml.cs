@@ -71,6 +71,7 @@ public partial class MainWindow : Window
     private int _sampleCount;
     private bool _detailsVisible;
     private bool _keyboardInput;
+    private readonly System.ComponentModel.PropertyChangedEventHandler _languageChanged;
     private string? _renderedStatus;
     private string? _renderedGlyph;
     private readonly Func<bool>? _allowMotion;
@@ -161,7 +162,7 @@ public partial class MainWindow : Window
         SetState(_state);
         // Troca de idioma repinta esta janela, que continua a mesma: nada é fechado, então o túnel
         // não passa por OnClosing nem pelo ExitGuard.
-        Localization.LocalizationManager.Current.PropertyChanged += (_, _) =>
+        _languageChanged = (_, _) =>
         {
             if (_closing) return;
             SetState(_state);
@@ -177,11 +178,18 @@ public partial class MainWindow : Window
                 _ => PageTitle.Text,
             };
         };
+        Localization.LocalizationManager.Current.PropertyChanged += _languageChanged;
         _statusTimer.Tick += RefreshStatus;
         _detailsTimer.Tick += (_, _) => RenderDetails();
         ChartHost.SizeChanged += (_, _) => DrawChart();
         StateChanged += (_, _) => SyncDetailsTimer();
-        Closed += (_, _) => { _statusTimer.Stop(); _detailsTimer.Stop(); };
+        Closed += (_, _) =>
+        {
+            _statusTimer.Stop(); _detailsTimer.Stop();
+            // O gerenciador é um singleton: um handler anônimo manteria esta janela viva depois de
+            // fechada, e um Apply posterior pintaria uma árvore já descartada.
+            Localization.LocalizationManager.Current.PropertyChanged -= _languageChanged;
+        };
         Closing += OnClosing;
         // The timer is paused while hidden in the tray, so refresh once when the window comes back.
         IsVisibleChanged += (_, e) => { if (e.NewValue is true) { RefreshStatus(this, EventArgs.Empty); SyncDetailsTimer(); } else SyncDetailsTimer(); };
@@ -480,7 +488,7 @@ public partial class MainWindow : Window
             if (_state.RequiresSignIn) { OpenAccount(); return; }
             var command = _state.Snapshot?.HasOwnedTunnel == true ? "disconnect" : "connect";
             if (command == "connect") _nativeOperationMayBeActive = true;
-            SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, Detail = null });
+            SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, DetailKey = null });
             var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
@@ -514,22 +522,24 @@ public partial class MainWindow : Window
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                 timeout.CancelAfter(TimeSpan.FromSeconds(2));
                 var progress = await _backend.CommandAsync("progress", new { }, timeout.Token);
-                var detail = progress.Stage switch
+                // Uma chave, não uma frase: o detalhe é resolvido na pintura, então uma troca de
+                // idioma no meio da operação alcança o texto que já está na tela.
+                var detailKey = progress.Stage switch
                 {
-                    "preparing-profile" => LocalizationManager.Current["StagePreparingRoute"],
-                    "installing-wiresock" => LocalizationManager.Current["SdkPreparing"],
-                    "closing-discord" => LocalizationManager.Current["DiscordClosing"],
-                    "starting-tunnel" => LocalizationManager.Current["StageStartingTunnel"],
-                    "starting-discord" => LocalizationManager.Current["DiscordReopening"],
-                    "verifying-route" => LocalizationManager.Current["StageVerifyingRoute"],
-                    "stopping-tunnel" => LocalizationManager.Current["RestoringConnection"],
+                    "preparing-profile" => "StagePreparingRoute",
+                    "installing-wiresock" => "SdkPreparing",
+                    "closing-discord" => "DiscordClosing",
+                    "starting-tunnel" => "StageStartingTunnel",
+                    "starting-discord" => "DiscordReopening",
+                    "verifying-route" => "StageVerifyingRoute",
+                    "stopping-tunnel" => "RestoringConnection",
                     _ => null
                 };
                 // Advisory only, and only while the operation that started it still owns the UI:
                 // a late poll must not repaint a state the user has already left.
                 Volatile.Write(ref _installerStageSeenTicks, progress.Stage == "installing-wiresock" ? DateTime.UtcNow.Ticks : 0L);
-                if (detail is not null && !pending.IsCompleted && !_closing
-                    && _operationOwnsUi && _operationEpoch == ownerEpoch) SetState(_state with { Detail = detail });
+                if (detailKey is not null && !pending.IsCompleted && !_closing
+                    && _operationOwnsUi && _operationEpoch == ownerEpoch) SetState(_state with { DetailKey = detailKey });
             }
             catch { /* Progress is advisory; the command still controls its outcome. */ }
         }
@@ -717,7 +727,7 @@ public partial class MainWindow : Window
             _navigationEpoch++;
             await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(5));
         }
-        catch { if (!_closing) MessageBox.Show(this, "The account operation is still stopping. Please try going back again.", "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch { if (!_closing) MessageBox.Show(this, Localization.LocalizationManager.Current["AccountOperationStopping"], "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally
         {
             _navigationBusy = false; BackButton.IsEnabled = true; UpdateActionAvailability();
@@ -754,15 +764,15 @@ public partial class MainWindow : Window
         // The modal pumps the dispatcher, so eligibility can change while it is open. The
         // selection is never queued or replayed later; the user is told instead.
         if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute)
-        { _notice("The connection state changed while choosing a route. Your selection was not applied. Try again when Brisa is idle."); return; }
+        { _notice(Localization.LocalizationManager.Current["RouteStateChanged"]); return; }
         if (!await _operation.WaitAsync(0))
-        { _notice("The connection state changed while choosing a route. Your selection was not applied. Try again when Brisa is idle."); return; }
+        { _notice(Localization.LocalizationManager.Current["RouteStateChanged"]); return; }
         BeginUiMutation();
         try
         {
             // Optimization can take minutes, so the window says so instead of looking idle.
             // The detail stays generic: the backend does not promise a useful optimize stage.
-            SetState(new HomeState(ConnectionPhase.Optimizing, _state.Snapshot, "Choosing the best route for your selection…"));
+            SetState(new HomeState(ConnectionPhase.Optimizing, _state.Snapshot, "DetailOptimizing"));
             var pending = ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;

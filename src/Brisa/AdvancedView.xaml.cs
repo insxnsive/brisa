@@ -24,6 +24,8 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
     private readonly Func<string?> _pickFile;
     private readonly IUpdateService? _updates;
     private readonly Action? _restartForUpdate;
+    private readonly System.ComponentModel.PropertyChangedEventHandler _languageChanged;
+    private bool _disposed;
 
     public AdvancedView(IBackendClient backend, NativeSnapshot? snapshot,
         Func<string, Task<CommandResult>>? import = null,
@@ -53,6 +55,10 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
             _updates.StatusChanged += Updates_StatusChanged;
             ShowUpdateStatus(_updates.Status);
         }
+        // O aviso e o status de atualização são texto do produto e já estão na tela: uma troca de
+        // idioma precisa repintá-los sem sair da página.
+        _languageChanged = (_, _) => { if (!_disposed) ShowUpdateStatus(_updates?.Status ?? new(UpdatePhase.Idle, "UpdateIdle")); };
+        LocalizationManager.Current.PropertyChanged += _languageChanged;
     }
 
     private void Source_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
@@ -91,6 +97,8 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        _disposed = true;
+        LocalizationManager.Current.PropertyChanged -= _languageChanged;
         if (_updates is not null) _updates.StatusChanged -= Updates_StatusChanged;
         return ValueTask.CompletedTask;
     }
@@ -106,7 +114,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
 
     private string? PickFile()
     {
-        var picker = new OpenFileDialog { Title = "Import WireGuard configuration", Filter = "WireGuard configuration (*.conf)|*.conf", CheckFileExists = true, Multiselect = false };
+        var picker = new OpenFileDialog { Title = LocalizationManager.Current["ImportDialogTitle"], Filter = "WireGuard configuration (*.conf)|*.conf", CheckFileExists = true, Multiselect = false };
         return picker.ShowDialog(Window.GetWindow(this)) == true ? picker.FileName : null;
     }
 
@@ -122,7 +130,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
             var result = _import is null
                 ? await _backend.CommandAsync("importConfig", new { path })
                 : await _import(path);
-            _notice(result.Message ?? LocalizationManager.Current[result.Success ? "ConfigurationImported" : "ConfigurationRejected"], LocalizationManager.Current["Import"], result.Success);
+            _notice(BackendText.For(result.Code, result.Message, result.Success ? "ConfigurationImported" : "ConfigurationRejected"), LocalizationManager.Current["Import"], result.Success);
         }
         catch { _notice(LocalizationManager.Current["NativeServiceUnavailable"], LocalizationManager.Current["Import"], false); }
         finally { ImportButton.IsEnabled = true; }

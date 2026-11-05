@@ -3,10 +3,10 @@
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <StackPanel Margin="0,0,0,16">
-      <TextBlock x:Name="Subtitle" Style="{StaticResource SecondaryText}" Text="{loc:Loc SignInHelper}"/>
+      <TextBlock x:Name="Subtitle" Style="{StaticResource SecondaryText}" TextWrapping="Wrap"/>
       <StackPanel x:Name="RegistrationPanel" Margin="0,6,0,0">
         <TextBlock Style="{StaticResource SecondaryText}" TextWrapping="Wrap">
-          New to Proton? <Hyperlink x:Name="SignUpLink" NavigateUri="https://account.protonvpn.com/signup?plan=free" RequestNavigate="SignUp_RequestNavigate" AutomationProperties.Name="{loc:Loc CreateAccount}">Create a Free Account</Hyperlink>
+          <Run Text="{loc:Loc NewToProton}"/> <Hyperlink x:Name="SignUpLink" NavigateUri="https://account.protonvpn.com/signup?plan=free" RequestNavigate="SignUp_RequestNavigate" AutomationProperties.Name="{loc:Loc CreateAccount}"><Run Text="{loc:Loc CreateFreeAccount}"/></Hyperlink>
         </TextBlock>
         <TextBlock x:Name="RegistrationHelp" Style="{StaticResource SecondaryText}" Margin="0,6,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
       </StackPanel>
@@ -29,7 +29,7 @@
       </Grid>
     </Border>
     <Grid Grid.Row="2" Margin="0,20,0,0">
-      <Button x:Name="ActionButton" Style="{StaticResource PrimaryAction}" HorizontalAlignment="Right" Click="Action_Click" Content="{loc:Loc SignIn}" IsDefault="True"/>
+      <Button x:Name="ActionButton" Style="{StaticResource PrimaryAction}" HorizontalAlignment="Right" Click="Action_Click" IsDefault="True"/>
     </Grid>
   </Grid>
 </UserControl>

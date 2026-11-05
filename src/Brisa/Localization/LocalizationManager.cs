@@ -49,14 +49,17 @@ public sealed class LocalizationManager : INotifyPropertyChanged
         _ => SystemLanguage(),
     };
 
-    /// <summary>Idioma do Windows, reduzido aos que o aplicativo fala.</summary>
-    public static string SystemLanguage()
-    {
-        var ui = CultureInfo.CurrentUICulture;
-        return ui.TwoLetterISOLanguageName.Equals("pt", StringComparison.OrdinalIgnoreCase)
-            ? PortugueseBrazil
-            : English;
-    }
+    /// <summary>
+    /// Idioma do Windows, reduzido aos que o aplicativo fala. Lido uma única vez, na inicialização
+    /// do tipo: depois do primeiro Apply a cultura do processo passa a ser a escolhida pelo usuário,
+    /// e ler CurrentUICulture devolveria a escolha em vez do idioma do sistema.
+    /// </summary>
+    private static readonly string OperatingSystemLanguage = Detect(CultureInfo.CurrentUICulture);
+
+    public static string SystemLanguage() => OperatingSystemLanguage;
+
+    private static string Detect(CultureInfo ui) =>
+        ui.TwoLetterISOLanguageName.Equals("pt", StringComparison.OrdinalIgnoreCase) ? PortugueseBrazil : English;
 
     /// <summary>Aplica a preferência. Devolve true quando o idioma em uso mudou.</summary>
     public bool Apply(string preference)

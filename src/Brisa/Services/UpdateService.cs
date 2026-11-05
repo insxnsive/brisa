@@ -6,7 +6,22 @@ namespace Brisa.Services;
 
 public enum UpdatePhase { Idle, Checking, Downloading, Current, Ready, Error }
 
-public sealed record UpdateStatus(UpdatePhase Phase, string Message, string? Version = null, int? Progress = null);
+/// <summary>
+/// O segundo campo é uma chave da tabela de strings, não uma frase pronta. A frase é resolvida na
+/// leitura, então uma troca de idioma alcança um status que já estava publicado. Um texto que não
+/// seja chave volta como ele mesmo, que é o que os clientes de teste passam.
+/// </summary>
+public sealed record UpdateStatus(UpdatePhase Phase, string MessageKey, string? Version = null, int? Progress = null)
+{
+    public string Message
+    {
+        get
+        {
+            var text = Localization.LocalizationManager.Current[MessageKey];
+            return Version is not null && text.Contains("{0}") ? string.Format(text, Version) : text;
+        }
+    }
+}
 
 public sealed record UpdateRelease(string Version, object NativeRelease);
 
@@ -113,7 +128,7 @@ public sealed class UpdateService : IUpdateService
         _checkInterval = checkInterval ?? DefaultCheckInterval;
         _status = client.HasPendingUpdate
             ? Ready(null)
-            : new(UpdatePhase.Idle, "Updates are checked automatically.");
+            : new(UpdatePhase.Idle, "UpdateIdle");
     }
 
     public UpdateStatus Status => Volatile.Read(ref _status);
@@ -153,11 +168,11 @@ public sealed class UpdateService : IUpdateService
             {
                 acquired = await _singleFlight.WaitAsync(0, linked.Token).ConfigureAwait(false);
                 if (!acquired) return;
-                Publish(new(UpdatePhase.Checking, "Checking for updates…"));
+                Publish(new(UpdatePhase.Checking, "UpdateChecking"));
                 var release = await _client.CheckForUpdatesAsync(linked.Token).ConfigureAwait(false);
                 if (release is null)
                 {
-                    Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "Brisa is up to date."));
+                    Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "UpdateUpToDate"));
                     return;
                 }
 
@@ -165,22 +180,22 @@ public sealed class UpdateService : IUpdateService
                     !SemanticVersion.TryParse(release.Version, out var offered) ||
                     offered.CompareTo(current) <= 0)
                 {
-                    Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "Brisa is up to date."));
+                    Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Current, "UpdateUpToDate"));
                     return;
                 }
 
-                Publish(new(UpdatePhase.Downloading, "Downloading update…", offered.ToString(), 0));
+                Publish(new(UpdatePhase.Downloading, "UpdateDownloading", offered.ToString(), 0));
                 await _client.DownloadUpdatesAsync(release, progress =>
-                    Publish(new(UpdatePhase.Downloading, "Downloading update…", offered.ToString(), Math.Clamp(progress, 0, 100))), linked.Token).ConfigureAwait(false);
+                    Publish(new(UpdatePhase.Downloading, "UpdateDownloading", offered.ToString(), Math.Clamp(progress, 0, 100))), linked.Token).ConfigureAwait(false);
                 Publish(Ready(offered.ToString()));
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested)
             {
-                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Idle, "Updates are checked automatically."));
+                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Idle, "UpdateIdle"));
             }
             catch
             {
-                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Error, "Updates could not be checked. Try again later."));
+                Publish(_client.HasPendingUpdate ? Ready(null) : new(UpdatePhase.Error, "UpdatesCheckFailed"));
             }
         }
         finally
@@ -211,7 +226,7 @@ public sealed class UpdateService : IUpdateService
 
     private static UpdateStatus Ready(string? version) => new(
         UpdatePhase.Ready,
-        version is null ? "An update will install when you exit Brisa." : $"Brisa {version} will install when you exit.",
+        version is null ? "UpdateReadyOnExit" : "UpdateReadyVersion",
         version);
 
     private void Publish(UpdateStatus status)

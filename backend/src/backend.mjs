@@ -47,6 +47,9 @@ export const APP_MESSAGES = Object.freeze({
   ROUTE_UNVERIFIED: "Discord was reopened and the tunnel is running, but the routed connection could not be verified. Disconnect and try another route.",
   TUNNEL_OWNERSHIP_UNCONFIRMED: "Brisa's tunnel may still be running, but ownership could not be confirmed. Run Brisa as administrator and retry. Brisa will stay open.",
   DISCORD_REOPEN_FAILED: "The tunnel was stopped, but Discord could not be reopened. Open Discord manually.",
+  STOP_NOT_CONFIRMED: "The native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before retrying.",
+  STOP_NOT_CONFIRMED_DISCORD_CLOSED: "Discord was closed, but the native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before reopening Discord.",
+  STOP_NOT_CONFIRMED_OR_CLOSED: "Discord or the tunnel could not be stopped safely. Close Discord and try disconnecting again.",
 });
 const appFailure = code => ({ success: false, code, message: APP_MESSAGES[code] });
 
@@ -87,11 +90,17 @@ const PROFILE_MESSAGES = Object.freeze({
   PROFILE_DUPLICATE_KEY: "This WireGuard file repeats a setting. Keep one copy of each and import again.",
   PROFILE_BAD_VALUE: "A setting in this WireGuard file has an invalid value.",
   PROFILE_CONTROL_CHARS: "This WireGuard file contains unexpected control characters.",
+  PROFILE_INVALID: "The WireGuard profile is invalid.",
+  PROFILE_INVALID_SAVED: "The saved WireGuard profile is invalid. Import it again.",
 });
 const profileFailure = (validation, saved) => {
-  const code = Object.hasOwn(PROFILE_MESSAGES, validation?.code) ? validation.code : undefined;
-  const base = code ? PROFILE_MESSAGES[code] : (saved ? "The saved WireGuard profile is invalid." : "The WireGuard profile is invalid.");
-  return { success: false, ...(code ? { code } : {}), message: saved && code ? `${base} (Saved profile: import it again.)` : base };
+  // Toda falha de perfil carrega um código: a interface não pode receber prosa em inglês sem ter
+  // por onde traduzir. A variante "salvo" também tem o seu.
+  const code = Object.hasOwn(PROFILE_MESSAGES, validation?.code)
+    ? validation.code
+    : (saved ? "PROFILE_INVALID_SAVED" : "PROFILE_INVALID");
+  const base = PROFILE_MESSAGES[code];
+  return { success: false, code, message: saved && code !== "PROFILE_INVALID_SAVED" && code !== "PROFILE_INVALID" ? `${base} (Saved profile: import it again.)` : base };
 };
 
 const safeCaptchaUrl = value => {
@@ -753,18 +762,18 @@ export function createBackend(deps, paths) {
             processes: result?.processResidual?.length ?? 0,
             networkLockReset: result?.networkLockReset === true,
           });
-          if (result?.stopped !== true) return { success: false, message: discordClosed
-            ? "Discord was closed, but the native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before reopening Discord."
-            : "The native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before retrying." };
+          if (result?.stopped !== true) return discordClosed
+            ? { success: false, code: "STOP_NOT_CONFIRMED_DISCORD_CLOSED", message: APP_MESSAGES.STOP_NOT_CONFIRMED_DISCORD_CLOSED }
+            : { success: false, code: "STOP_NOT_CONFIRMED", message: APP_MESSAGES.STOP_NOT_CONFIRMED };
           stage = "starting-discord";
           if (apps.length) await deps.launchDiscord(apps);
           return { success: true };
         } catch {
           if (stage === "starting-discord") return { success: false, message: APP_MESSAGES.DISCORD_REOPEN_FAILED, code: "DISCORD_REOPEN_FAILED" };
           note("stop", "STOP_NOT_CONFIRMED", { rollback: false, discordClosed });
-          return { success: false, message: discordClosed
-            ? "Discord was closed, but the native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before reopening Discord."
-            : "Discord or the tunnel could not be stopped safely. Close Discord and try disconnecting again." };
+          return discordClosed
+            ? { success: false, code: "STOP_NOT_CONFIRMED_DISCORD_CLOSED", message: APP_MESSAGES.STOP_NOT_CONFIRMED_DISCORD_CLOSED }
+            : { success: false, code: "STOP_NOT_CONFIRMED_OR_CLOSED", message: APP_MESSAGES.STOP_NOT_CONFIRMED_OR_CLOSED };
         }
       }
 

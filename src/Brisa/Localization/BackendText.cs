@@ -17,11 +17,12 @@ public static class BackendText
             if (!string.Equals(translated, $"Backend.{code}", System.StringComparison.Ordinal))
                 return translated;
         }
-        if (!string.IsNullOrWhiteSpace(englishFallback))
+        // A frase do backend só serve quando a interface está em inglês. Em português ela chegaria
+        // sem tradução, então um código desconhecido cai numa mensagem do próprio produto.
+        if (LocalizationManager.Current.Language == LocalizationManager.English
+            && !string.IsNullOrWhiteSpace(englishFallback))
             return englishFallback;
-        return unknownFallbackKey is null
-            ? LocalizationManager.Current["BackendUnknown"]
-            : LocalizationManager.Current[unknownFallbackKey];
+        return LocalizationManager.Current[unknownFallbackKey ?? "BackendUnknown"];
     }
 
     /// <summary>Mostra a falha do backend já traduzida, com o código como último recurso.</summary>

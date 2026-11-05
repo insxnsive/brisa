@@ -32,8 +32,12 @@ internal partial class NativeJsonContext : JsonSerializerContext;
 
 public enum ConnectionPhase { Loading, Disconnected, Connecting, Connected, Unverified, Disconnecting, Blocked, Error, Limited, Optimizing }
 
-public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, string? Detail = null)
+public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, string? DetailKey = null)
 {
+    // O detalhe é resolvido na hora de pintar, não quando o snapshot chega: assim uma troca de
+    // idioma repinta o texto que veio do estado, e não só o rótulo do status.
+    public string? Detail => DetailKey is null ? null : Loc(DetailKey);
+
     public string StatusText => Phase switch
     {
         ConnectionPhase.Loading => Loc("StatusChecking"),
@@ -62,21 +66,21 @@ public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, 
         // Brisa's own tunnel is positively identified next to another WireSock tunnel. It
         // cannot be stopped safely while the other one exists, so say so instead of exiting.
         { HasOwnedTunnel: true, ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot,
-            Localization.LocalizationManager.Current["DetailTunnelMixedOwnership"]),
+            "DetailTunnelMixedOwnership"),
         { HasOwnedTunnel: true, Reliable: false } => new(ConnectionPhase.Blocked, snapshot,
-            Localization.LocalizationManager.Current["DetailOwnershipUnreliable"]),
+            "DetailOwnershipUnreliable"),
         // Supervision of the vendor installer was lost: the tunnel state is still readable, but
         // the install result is not, so say what is actually unknown instead of asking for
         // elevation the user already has.
         { InstallerUnknown: true } => new(ConnectionPhase.Blocked, snapshot,
-            Localization.LocalizationManager.Current["DetailInstallerUnknown"]),
-        { ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot, Localization.LocalizationManager.Current["DetailExternalTunnel"]),
+            "DetailInstallerUnknown"),
+        { ExternalTunnel: true } => new(ConnectionPhase.Blocked, snapshot, "DetailExternalTunnel"),
         // Limited access is not a broken state: sign-in and import work without elevation.
         { RequiresElevation: true } => new(ConnectionPhase.Limited, snapshot,
-            Localization.LocalizationManager.Current["DetailRequiresElevation"]),
-        { Reliable: false } => new(ConnectionPhase.Blocked, snapshot, Localization.LocalizationManager.Current["DetailOwnershipUnverified"]),
+            "DetailRequiresElevation"),
+        { Reliable: false } => new(ConnectionPhase.Blocked, snapshot, "DetailOwnershipUnverified"),
         { Connected: true } => new(ConnectionPhase.Connected, snapshot),
-        { TunnelActive: true } => new(ConnectionPhase.Unverified, snapshot, Localization.LocalizationManager.Current["DetailTunnelUnverified"]),
+        { TunnelActive: true } => new(ConnectionPhase.Unverified, snapshot, "DetailTunnelUnverified"),
         _ => new(ConnectionPhase.Disconnected, snapshot)
     };
 }

@@ -69,6 +69,27 @@
   <data name="CredentialsHelper" xml:space="preserve"><value>Credentials and sessions are stored only in the native app’s isolated data folder.</value></data>
   <data name="DisconnectToChangeRoute" xml:space="preserve"><value>Disconnect to change the route</value></data>
   <data name="VerificationTitle" xml:space="preserve"><value>Verify your account</value></data>
+  <data name="UpdateIdle" xml:space="preserve"><value>Updates are checked automatically.</value></data>
+  <data name="UpdateChecking" xml:space="preserve"><value>Checking for updates…</value></data>
+  <data name="UpdateDownloading" xml:space="preserve"><value>Downloading update…</value></data>
+  <data name="UpdateUpToDate" xml:space="preserve"><value>Brisa is up to date.</value></data>
+  <data name="UpdateReadyOnExit" xml:space="preserve"><value>An update will install when you exit Brisa.</value></data>
+  <data name="UpdateReadyVersion" xml:space="preserve"><value>Brisa {0} will install when you exit.</value></data>
+  <data name="SignOut" xml:space="preserve"><value>Sign Out</value></data>
+  <data name="AccountSubtitle" xml:space="preserve"><value>Your Proton account.</value></data>
+  <data name="NewToProton" xml:space="preserve"><value>New to Proton?</value></data>
+  <data name="CreateFreeAccount" xml:space="preserve"><value>Create a Free Account</value></data>
+  <data name="SignUpHelp" xml:space="preserve"><value>Open https://account.protonvpn.com/signup?plan=free in your browser to create an account.</value></data>
+  <data name="AccountOperationStopping" xml:space="preserve"><value>The account operation is still stopping. Please try going back again.</value></data>
+  <data name="RouteStateChanged" xml:space="preserve"><value>The connection state changed while choosing a route. Your selection was not applied. Try again when Brisa is idle.</value></data>
+  <data name="DetailOptimizing" xml:space="preserve"><value>Choosing the best route for your selection…</value></data>
+  <data name="Backend.INVALID_CREDENTIALS" xml:space="preserve"><value>The Proton username or password was rejected.</value></data>
+  <data name="Backend.START_CLIENT_EXITED" xml:space="preserve"><value>WireSock started and then stopped right away. Try another route, or check that WireSock is installed correctly.</value></data>
+  <data name="Backend.PROFILE_HOOKS" xml:space="preserve"><value>This WireGuard file contains commands (such as PreUp or PostUp). Brisa never runs those. Remove them and import the file again.</value></data>
+  <data name="Backend.SDK_INSTALL_SUPERVISION_LOST" xml:space="preserve"><value>WireSock installation status is unknown. Restart Brisa before trying again.</value></data>
+  <data name="Backend.STOP_NOT_CONFIRMED" xml:space="preserve"><value>The native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before retrying.</value></data>
+  <data name="Backend.STOP_NOT_CONFIRMED_DISCORD_CLOSED" xml:space="preserve"><value>Discord was closed, but the native-owned tunnel could not be stopped safely. Brisa will stay open. Check the tunnel status before reopening Discord.</value></data>
+  <data name="Backend.STOP_NOT_CONFIRMED_OR_CLOSED" xml:space="preserve"><value>Discord or the tunnel could not be stopped safely. Close Discord and try disconnecting again.</value></data>
   <data name="DiscordTraffic" xml:space="preserve"><value>Discord traffic</value></data>
   <data name="DiscordTrafficChart" xml:space="preserve"><value>Discord traffic chart</value></data>
   <data name="Download" xml:space="preserve"><value>Download</value></data>
@@ -130,6 +151,23 @@
   <data name="DetailRequiresElevation" xml:space="preserve"><value>Open Brisa as administrator to connect or disconnect. You can sign in and import a profile here.</value></data>
   <data name="DetailOwnershipUnverified" xml:space="preserve"><value>Tunnel ownership could not be verified. Run Brisa as administrator. No changes were made.</value></data>
   <data name="DetailTunnelUnverified" xml:space="preserve"><value>The tunnel is running, but Discord routing is not verified. Disconnect and try again.</value></data>
+  <data name="Backend.PROFILE_INVALID" xml:space="preserve"><value>The WireGuard profile is invalid.</value></data>
+  <data name="Backend.PROFILE_INVALID_SAVED" xml:space="preserve"><value>The saved WireGuard profile is invalid. Import it again.</value></data>
+  <data name="Backend.CAPTCHA_CANCELLED" xml:space="preserve"><value>Operation cancelled.</value></data>
+  <data name="Backend.PROFILE_BAD_VALUE" xml:space="preserve"><value>A setting in this WireGuard file has an invalid value.</value></data>
+  <data name="Backend.PROFILE_CONTROL_CHARS" xml:space="preserve"><value>This WireGuard file contains unexpected control characters.</value></data>
+  <data name="Backend.PROFILE_DIRECTIVE" xml:space="preserve"><value>This WireGuard file contains WireSock directives that Brisa does not accept. Brisa sets the app filter itself. Remove them and import again.</value></data>
+  <data name="Backend.PROFILE_DUPLICATE_KEY" xml:space="preserve"><value>This WireGuard file repeats a setting. Keep one copy of each and import again.</value></data>
+  <data name="Backend.PROFILE_DUPLICATE_SECTION" xml:space="preserve"><value>This WireGuard file has more than one Interface or Peer section. Brisa accepts one of each.</value></data>
+  <data name="Backend.PROFILE_UNKNOWN_KEY" xml:space="preserve"><value>This WireGuard file has a setting Brisa does not support. Use a standard file with only the usual Interface and Peer settings.</value></data>
+  <data name="Backend.PROFILE_UNKNOWN_SECTION" xml:space="preserve"><value>This WireGuard file has a section Brisa does not support. Only one Interface and one Peer are accepted.</value></data>
+  <data name="Backend.START_EXTERNAL_ACTIVE" xml:space="preserve"><value>Another WireSock client is running, so Brisa did not start its own tunnel. Brisa did not touch it. Close it, then try again.</value></data>
+  <data name="Backend.START_EXTERNAL_PROCESS" xml:space="preserve"><value>Another WireSock client is running, so Brisa did not start its own tunnel. Brisa did not touch it. Close it, then try again.</value></data>
+  <data name="Backend.START_EXTERNAL_SERVICE" xml:space="preserve"><value>Another app's WireSock service is running, so Brisa did not start its own tunnel. Brisa did not touch it. Stop that tunnel, then try again.</value></data>
+  <data name="Backend.START_NOT_APPROVED" xml:space="preserve"><value>Windows did not approve the administrator step, or it did not finish in time. Approve the prompt and try again.</value></data>
+  <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>WireSock started, but Brisa could not confirm it is running with Brisa's own profile. Try again.</value></data>
+  <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>The Brisa tunnel could not be started. Check WireSock and your VPN profile, then try again.</value></data>
+  <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>Brisa could not read the WireSock state reliably, so it made no changes. Run Brisa as administrator and try again.</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>
   <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely.</value></data>

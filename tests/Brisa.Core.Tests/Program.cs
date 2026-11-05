@@ -292,15 +292,62 @@ var tests = new (string Name, Action Run)[]
         Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(5)) == "5:00");
         loc.Apply(before);
     }),
-    ("backend text follows the language and falls back to English", () =>
+    ("backend text never shows English prose to a Portuguese interface", () =>
     {
         var loc = Brisa.Localization.LocalizationManager.Current;
         var before = loc.Language;
         loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
         Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Outra operação do serviço nativo ainda está em andamento.");
-        Assert(Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.") == "English fallback.");
+        // A code the table does not know must not leak the backend's English sentence into pt-BR.
+        var unknown = Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.");
+        Assert(unknown != "English fallback.");
+        Assert(unknown == loc["BackendUnknown"]);
         loc.Apply(Brisa.Localization.LocalizationManager.English);
         Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Another native backend operation is still running.");
+        Assert(Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.") == "English fallback.");
+        loc.Apply(before);
+    }),
+    ("every code the backend can emit has a string in both languages", () =>
+    {
+        // O contrato é: um código novo no backend sem tradução vira uma mensagem genérica. Este
+        // teste falha em vez de deixar isso passar despercebido.
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "backend", "src", "backend.mjs")))
+            root = root.Parent;
+        Assert(root is not null);
+        var source = File.ReadAllText(Path.Combine(root!.FullName, "backend", "src", "backend.mjs"));
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (System.Text.RegularExpressions.Match table in System.Text.RegularExpressions.Regex.Matches(
+                     source, @"(?:APP_MESSAGES|START_MESSAGES|PROFILE_MESSAGES) = Object\.freeze\(\{(?<body>.*?)\n\}\);",
+                     System.Text.RegularExpressions.RegexOptions.Singleline))
+            foreach (System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(
+                         table.Groups["body"].Value, @"\n  (?<code>[A-Z][A-Z_0-9]+):"))
+                codes.Add(entry.Groups["code"].Value);
+        foreach (System.Text.RegularExpressions.Match literal in System.Text.RegularExpressions.Regex.Matches(
+                     source, @"code: ""(?<code>[A-Z][A-Z_0-9]+)"""))
+            codes.Add(literal.Groups["code"].Value);
+        Assert(codes.Count > 20);
+        var localization = Path.Combine(root!.FullName, "src", "Brisa", "Localization");
+        var missing = new List<string>();
+        foreach (var file in new[] { "Strings.resx", "Strings.pt-BR.resx" })
+        {
+            var text = File.ReadAllText(Path.Combine(localization, file));
+            foreach (var code in codes)
+                if (!text.Contains($"\"Backend.{code}\"", StringComparison.Ordinal)) missing.Add($"{file}: {code}");
+        }
+        if (missing.Count > 0) throw new Exception("missing translations: " + string.Join(", ", missing));
+    }),
+    ("the system language survives a language switch", () =>
+    {
+        // Apply rewrites the process culture, so reading CurrentUICulture after it would return the
+        // user's choice instead of the Windows language. The captured value must not move.
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var system = Brisa.Localization.LocalizationManager.SystemLanguage();
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        Assert(Brisa.Localization.LocalizationManager.SystemLanguage() == system);
+        Assert(loc.Apply("system") == true || loc.Language == system);
+        Assert(loc.Language == system);
         loc.Apply(before);
     }),
 };
