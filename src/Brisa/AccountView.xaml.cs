@@ -1,3 +1,4 @@
+using Brisa.Localization;
 using System.Windows;
 using System.Windows.Controls;
 using Brisa.Models;
@@ -68,10 +69,10 @@ public partial class AccountView : UserControl, IAsyncDisposable
                 finally { PasswordInput.Clear(); TwoFactorInput.Clear(); password = ""; twoFactor = ""; }
                 if (_closed) return;
                 if (!result.Success && result.Code is "TWO_FACTOR_REQUIRED" or "2FA_REQUIRED")
-                { TwoFactorPanel.Visibility = Visibility.Visible; Subtitle.Text = "Enter your password again with your two-factor code."; return; }
+                { TwoFactorPanel.Visibility = Visibility.Visible; Subtitle.Text = LocalizationManager.Current["TwoFactorPrompt"]; return; }
             }
             if (_closed) return;
-            if (!result.Success) { MessageBox.Show(_main, result.Message ?? "The account operation failed.", "Account", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            if (!result.Success) { MessageBox.Show(_main, result.Message ?? LocalizationManager.Current["AccountOperationFailed"], LocalizationManager.Current["Account"], MessageBoxButton.OK, MessageBoxImage.Warning); return; }
             // A successful sign-out can still carry a warning, for example that the native
             // tunnel profile was kept because ownership could not be verified.
             if (!string.IsNullOrWhiteSpace(result.Message)) _notice = result.Message;
@@ -81,7 +82,7 @@ public partial class AccountView : UserControl, IAsyncDisposable
             if (!_closed) Render();
         }
         catch (OperationCanceledException) { }
-        catch { if (!_closed) MessageBox.Show(_main, "The account service is unavailable.", "Account", MessageBoxButton.OK, MessageBoxImage.Error); }
+        catch { if (!_closed) MessageBox.Show(_main, LocalizationManager.Current["AccountServiceUnavailable"], LocalizationManager.Current["Account"], MessageBoxButton.OK, MessageBoxImage.Error); }
         finally { if (!_closed) Render(); }
     }
     public ValueTask DisposeAsync() => new(_leaveTask ??= LeaveAsync());

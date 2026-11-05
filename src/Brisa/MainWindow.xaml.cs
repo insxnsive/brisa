@@ -516,12 +516,12 @@ public partial class MainWindow : Window
                 var progress = await _backend.CommandAsync("progress", new { }, timeout.Token);
                 var detail = progress.Stage switch
                 {
-                    "preparing-profile" => "Preparing your VPN route…",
+                    "preparing-profile" => LocalizationManager.Current["StagePreparingRoute"],
                     "installing-wiresock" => LocalizationManager.Current["SdkPreparing"],
                     "closing-discord" => LocalizationManager.Current["DiscordClosing"],
-                    "starting-tunnel" => "Starting and settling the tunnel…",
+                    "starting-tunnel" => LocalizationManager.Current["StageStartingTunnel"],
                     "starting-discord" => LocalizationManager.Current["DiscordReopening"],
-                    "verifying-route" => "Checking Discord’s route…",
+                    "verifying-route" => LocalizationManager.Current["StageVerifyingRoute"],
                     "stopping-tunnel" => LocalizationManager.Current["RestoringConnection"],
                     _ => null
                 };
@@ -903,12 +903,12 @@ public partial class MainWindow : Window
 
     private string SafeMessage(Exception ex) => ex switch
     {
-        TimeoutException => BackendClient.TimeoutMessage,
-        InvalidDataException => "The native service returned an unreadable response.",
-        FileNotFoundException => "The native backend is not installed with this build.",
+        TimeoutException => LocalizationManager.Current["ServiceTimeout"],
+        InvalidDataException => LocalizationManager.Current["ServiceUnreadableResponse"],
+        FileNotFoundException => LocalizationManager.Current["BackendNotInstalled"],
         BackendUnavailableException => _nativeOperationMayBeActive
             ? LocalizationManager.Current["ServiceStoppedUnsafe"]
-            : "The native service stopped. You can exit Brisa and reopen it to retry.",
-        _ => "The native service could not complete this action. Check the connection status before retrying."
+            : LocalizationManager.Current["ServiceStoppedRetry"],
+        _ => LocalizationManager.Current["ServiceActionIncomplete"]
     };
 }

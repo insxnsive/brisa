@@ -115,6 +115,23 @@
   <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>
   <data name="RouteAccessibleName" xml:space="preserve"><value>{0}, server {1}</value></data>
   <data name="RouteAccessibleNameWithPing" xml:space="preserve"><value>{0}, server {1}, {2} ms</value></data>
+  <data name="StagePreparingRoute" xml:space="preserve"><value>Preparing your VPN route…</value></data>
+  <data name="StageStartingTunnel" xml:space="preserve"><value>Starting and settling the tunnel…</value></data>
+  <data name="StageVerifyingRoute" xml:space="preserve"><value>Checking Discord’s route…</value></data>
+  <data name="ServiceUnreadableResponse" xml:space="preserve"><value>The native service returned an unreadable response.</value></data>
+  <data name="BackendNotInstalled" xml:space="preserve"><value>The native backend is not installed with this build.</value></data>
+  <data name="ServiceStoppedRetry" xml:space="preserve"><value>The native service stopped. You can exit Brisa and reopen it to retry.</value></data>
+  <data name="ServiceActionIncomplete" xml:space="preserve"><value>The native service could not complete this action. Check the connection status before retrying.</value></data>
+  <data name="ServiceTimeout" xml:space="preserve"><value>The native service did not respond in time. Check the connection status before retrying.</value></data>
+  <data name="TwoFactorPrompt" xml:space="preserve"><value>Enter your password again with your two-factor code.</value></data>
+  <data name="AccountOperationFailed" xml:space="preserve"><value>The account operation failed.</value></data>
+  <data name="AccountServiceUnavailable" xml:space="preserve"><value>The account service is unavailable.</value></data>
+  <data name="Import" xml:space="preserve"><value>Import</value></data>
+  <data name="UpdatesUnavailableIsolated" xml:space="preserve"><value>Updates are unavailable in this isolated session.</value></data>
+  <data name="UpdatesCheckFailed" xml:space="preserve"><value>Updates could not be checked. Try again later.</value></data>
+  <data name="ConfigurationImported" xml:space="preserve"><value>Configuration imported.</value></data>
+  <data name="ConfigurationRejected" xml:space="preserve"><value>The configuration was rejected.</value></data>
+  <data name="NativeServiceUnavailable" xml:space="preserve"><value>The native service is unavailable.</value></data>
   <data name="DiscordTrafficHeader" xml:space="preserve"><value>Discord traffic</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>

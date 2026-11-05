@@ -45,7 +45,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         VersionText.Text = $"Brisa {AppVersion.Current}";
         if (_updates is null)
         {
-            UpdateStatusText.Text = "Updates are unavailable in this isolated session.";
+            UpdateStatusText.Text = LocalizationManager.Current["UpdatesUnavailableIsolated"];
             CheckUpdateButton.IsEnabled = false;
         }
         else
@@ -67,7 +67,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         if (_updates is null) return;
         CheckUpdateButton.IsEnabled = false;
         try { await _updates.CheckNowAsync(); }
-        catch { UpdateStatusText.Text = "Updates could not be checked. Try again later."; }
+        catch { UpdateStatusText.Text = LocalizationManager.Current["UpdatesCheckFailed"]; }
         finally { if (IsEnabled) CheckUpdateButton.IsEnabled = _updates.Status.Phase is not (UpdatePhase.Checking or UpdatePhase.Downloading); }
     }
 
@@ -122,9 +122,9 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
             var result = _import is null
                 ? await _backend.CommandAsync("importConfig", new { path })
                 : await _import(path);
-            _notice(result.Message ?? (result.Success ? "Configuration imported." : "The configuration was rejected."), "Import", result.Success);
+            _notice(result.Message ?? LocalizationManager.Current[result.Success ? "ConfigurationImported" : "ConfigurationRejected"], LocalizationManager.Current["Import"], result.Success);
         }
-        catch { _notice("The native service is unavailable.", "Import", false); }
+        catch { _notice(LocalizationManager.Current["NativeServiceUnavailable"], LocalizationManager.Current["Import"], false); }
         finally { ImportButton.IsEnabled = true; }
     }
 
