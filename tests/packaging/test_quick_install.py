@@ -29,53 +29,59 @@ class QuickInstallTests(unittest.TestCase):
             self.assertEqual(env[key], 'isolated-scratch')
         self.assertEqual(env.get('PATH'), os.environ.get('PATH'))
 
-    def test_readme_is_bilingual_with_clickable_section_indexes(self):
-        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-        self.assertIn('## Português (Brasil)', readme)
-        self.assertIn('## English', readme)
-        self.assertRegex(readme, r'\[[^]]+\]\(#instalar\)')
-        self.assertRegex(readme, r'\[[^]]+\]\(#quick-install\)')
-        self.assertIn('scripts/install.ps1', readme)
-        headings = re.findall(r'^#{1,6} (.+)$', readme, re.MULTILINE)
-        slugs = {re.sub(r'[^\w\- ]', '', heading.lower()).strip().replace(' ', '-') for heading in headings}
-        toc_links = re.findall(r'^- \[[^]]+\]\(#([^)]*)\)$', readme, re.MULTILINE)
-        self.assertTrue(toc_links)
-        for anchor in toc_links:
-            self.assertIn(anchor, slugs, f'broken README section link: #{anchor}')
+    def test_each_readme_is_one_language_with_working_jump_links(self):
+        # Uma página por idioma, cada uma com a sua linha de atalhos: o link de cada atalho precisa
+        # cair num título que existe naquele arquivo, senão o leitor clica e não chega a lugar nenhum.
+        for name, language_link in (('README.md', 'README.pt-BR.md'), ('README.pt-BR.md', 'README.md')):
+            readme = (ROOT / name).read_text(encoding='utf-8')
+            self.assertIn(f']({language_link})', readme, name)
+            self.assertEqual(readme.count('](README'), 1, name)
+            self.assertNotIn('## Português (Brasil)', readme, name)
+            self.assertNotIn('## English', readme, name)
+            self.assertGreaterEqual(readme.count('img.shields.io'), 3, name)
+            headings = re.findall(r'^#{1,6} (.+)$', readme, re.MULTILINE)
+            slugs = {re.sub(r'[^\w\- ]', '', heading.lower()).strip().replace(' ', '-') for heading in headings}
+            jumps = re.findall(r'\[([^]]+)\]\(#([^)]*)\)', readme)
+            self.assertGreaterEqual(len(jumps), 5, name)
+            for _, anchor in jumps:
+                self.assertIn(anchor, slugs, f'{name}: broken jump link #{anchor}')
+            self.assertIn('```powershell', readme, name)
 
     def test_readme_bootstraps_use_the_short_one_liner_and_link_the_pinned_guide(self):
-        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-        guide = (ROOT / 'docs/install.md').read_text(encoding='utf-8')
         snippet = 'irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex'
-        blocks = re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL)
-        self.assertEqual(blocks, [snippet, snippet])
-        sections = re.findall(r'^### (?:Instalar|Quick Install)\n(.*?)(?=^### |\Z)', readme, re.MULTILINE | re.DOTALL)
-        self.assertEqual(len(sections), 2)
-        for section in sections:
-            self.assertEqual(re.findall(r'```powershell\n(.*?)\n```', section, re.DOTALL), [snippet])
-            self.assertEqual(section.count('](docs/install.md)'), 1)
-            self.assertIn('Windows PowerShell', section)
-            self.assertRegex(section, r'not (?:Command Prompt|cmd[.]exe)')
-        self.assertEqual(readme.count('](docs/install.md)'), 2)
+        guide = (ROOT / 'docs/install.md').read_text(encoding='utf-8')
+        # O aviso de que o comando não é para o Prompt de Comando: cada idioma diz isso com as
+        # suas próprias palavras, então o padrão acompanha a página.
+        for name, not_command_prompt in (
+            ('README.md', r'not (?:Command Prompt|cmd[.]exe)'),
+            ('README.pt-BR.md', r'[nN][aã]o (?:no Prompt de Comando|no cmd[.]exe)'),
+        ):
+            readme = (ROOT / name).read_text(encoding='utf-8')
+            self.assertEqual(re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL), [snippet], name)
+            # O guia fixado precisa ser alcançável a partir da instalação; o índice de docs
+            # também aponta para ele, então a contagem é de pelo menos um.
+            self.assertGreaterEqual(readme.count('](docs/install.md)'), 1, name)
+            self.assertIn('Windows PowerShell', readme, name)
+            self.assertRegex(readme, not_command_prompt)
         pinned_blocks = re.findall(r'```powershell\n(.*?)\n```', guide, re.DOTALL)
         self.assertEqual(len(pinned_blocks), 1)
         pinned = pinned_blocks[0]
         pinned_url = r'https://raw[.]githubusercontent[.]com/insxnsive/brisa/[0-9a-f]{40}/scripts/install[.]ps1'
         self.assertRegex(pinned, pinned_url)
-        self.assertNotRegex(readme, pinned_url)
-        self.assertNotIn(pinned, readme)
-        self.assertIn('5dbb59c2a0c32c69217a4f7d3ff1e0f541f2a7361919b2c3e5c190fc6bf8c4af', pinned)
+        for name in ('README.md', 'README.pt-BR.md'):
+            readme = (ROOT / name).read_text(encoding='utf-8')
+            self.assertNotRegex(readme, pinned_url)
+            self.assertNotIn(pinned, readme)
 
-    def test_readme_lists_experimental_mac_builds_and_limits(self):
-        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-        pt, en = readme.split('## English', 1)
-        for section in (pt, en):
-            self.assertIn('https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10889601492', section)
-            self.assertIn('https://github.com/insxnsive/brisa/actions/runs/36194386622/artifacts/10890150525', section)
-            self.assertIn('macOS 13', section)
-        self.assertIn('não é uma VPN funcional', pt)
-        self.assertIn('Connect is disabled', en)
-        self.assertIn('not Developer ID signed or notarized', en)
+    def test_readme_download_path_stays_windows_only(self):
+        # A 1.0.0 distribui o app nativo do Windows. Um destaque de build para macOS na primeira
+        # página vende uma prévia que não conecta, então ela mora na documentação, não aqui.
+        for name in ('README.md', 'README.pt-BR.md'):
+            readme = (ROOT / name).read_text(encoding='utf-8')
+            self.assertNotIn('actions/runs/', readme, name)
+            self.assertNotIn('macos-v', readme, name)
+            self.assertIn('Brisa-win-Setup.exe', readme, name)
+            self.assertIn('Releases', readme, name)
 
     def test_legacy_one_liner_runs_real_installer_in_each_windows_shell(self):
         if os.name != 'nt':
@@ -239,9 +245,18 @@ class QuickInstallTests(unittest.TestCase):
         self.assertEqual(result['launches'], [])
 
     def test_readme_explains_prerequisite_prompts_and_windows_scope(self):
-        readme = (ROOT / 'README.md').read_text(encoding='utf-8')
-        for phrase in ('x64', 'SHA-256', 'WebView2', 'WireSock', 'license', 'licença'):
-            self.assertIn(phrase.lower(), readme.lower())
+        en = (ROOT / 'README.md').read_text(encoding='utf-8')
+        pt = (ROOT / 'README.pt-BR.md').read_text(encoding='utf-8')
+        for phrase in ('x64', 'SHA-256', 'WebView2', 'WireSock'):
+            self.assertIn(phrase.lower(), en.lower())
+        for phrase in ('x64', 'SHA-256', 'WebView2', 'WireSock'):
+            self.assertIn(phrase.lower(), pt.lower())
+        # O aviso de que o instalador não tem assinatura, e o pedido de administrador, são o que
+        # evita o usuário achar que o SmartScreen é um vírus.
+        for text, word in ((en, 'administrator'), (pt, 'administrador')):
+            self.assertIn(word, text.lower())
+            self.assertIn('SmartScreen', text)
+            self.assertIn('licen', text.lower())
 
 
 if __name__ == '__main__':
