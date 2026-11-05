@@ -1,4 +1,5 @@
 using System;
+using Brisa.Localization;
 using System.Windows;
 using System.Windows.Controls;
 using Brisa.Models;
@@ -131,7 +132,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
     private async void GenerateLog_Click(object sender, RoutedEventArgs e)
     {
         LogNotice.Text = "";
-        LogBox.Text = "Generating log…";
+        LogBox.Text = LocalizationManager.Current["GeneratingLog"];
         KeepLogReady(false);
         try
         {
@@ -163,16 +164,16 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         if (!_logReady) return;
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Save log",
+            Title = LocalizationManager.Current["SaveLogDialogTitle"],
             DefaultExt = ".txt",
-            Filter = "Text file (*.txt)|*.txt",
+            Filter = LocalizationManager.Current["SaveLogFilter"],
             FileName = SupportLogFileName(DateTime.UtcNow),
         };
         if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
         try
         {
             System.IO.File.WriteAllText(dialog.FileName, LogBox.Text, new System.Text.UTF8Encoding(false));
-            Announce("Log saved.");
+            Announce(LocalizationManager.Current["LogSaved"]);
         }
         catch { Announce("The log could not be saved."); }
     }
@@ -180,7 +181,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
     private void CopyLog_Click(object sender, RoutedEventArgs e)
     {
         if (!_logReady) return;
-        try { System.Windows.Clipboard.SetText(LogBox.Text); Announce("Log copied."); }
+        try { System.Windows.Clipboard.SetText(LogBox.Text); Announce(LocalizationManager.Current["LogCopied"]); }
         catch { Announce("The log could not be copied."); }
     }
 

@@ -52,6 +52,12 @@ public partial class App : System.Windows.Application
         if (!isolated) Security.VerificationProfileStore.Cleanup();
         if (isolated && e.Args.FirstOrDefault(a => a.StartsWith("--theme=", StringComparison.Ordinal)) is { } themeArg && Enum.TryParse<AppTheme>(themeArg[8..], true, out var theme))
             settings.Save(settings.Current with { Theme = theme });
+        // Fixture do idioma: o Windows desta máquina está em inglês, então "System" não mostra o
+        // português. Só existe em modo isolado.
+        if (isolated && e.Args.FirstOrDefault(a => a.StartsWith("--language=", StringComparison.Ordinal)) is { } languageArg)
+            settings.Save(settings.Current with { Language = languageArg[11..] });
+        if (isolated && e.Args.FirstOrDefault(a => a.StartsWith("--language=", StringComparison.Ordinal)) is { } languageApply)
+            Brisa.Localization.LocalizationManager.Current.Apply(languageApply[11..]);
         // Fixture da preferência do painel: item 9 acrescenta a caixa em Settings, aqui só o estado.
         if (isolated && e.Args.Contains("--no-details", StringComparer.OrdinalIgnoreCase))
             settings.Save(settings.Current with { ShowDetails = false });

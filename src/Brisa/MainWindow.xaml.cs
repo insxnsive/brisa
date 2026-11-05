@@ -1,4 +1,5 @@
 using System.Globalization;
+using Brisa.Localization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -147,6 +148,16 @@ public partial class MainWindow : Window
             if (_closing) return;
             SetState(_state);
             RenderDetails();
+            // O título da página aberta também é texto do produto: sem isto ele ficaria no idioma
+            // anterior até a próxima navegação.
+            var loc = Localization.LocalizationManager.Current;
+            PageTitle.Text = PageHost.Content switch
+            {
+                SettingsView => loc["SettingsTitle"],
+                AccountView => loc["Account"],
+                AdvancedView => loc["AdvancedTitle"],
+                _ => PageTitle.Text,
+            };
         };
         _statusTimer.Tick += RefreshStatus;
         _detailsTimer.Tick += (_, _) => RenderDetails();
@@ -224,13 +235,15 @@ public partial class MainWindow : Window
             }
             else
             {
-                RouteServerText.Text = route.PingMs is int ping ? $"Server {server}, {ping} ms" : $"Server {server}";
+                RouteServerText.Text = route.PingMs is int ping
+                    ? string.Format(Localization.LocalizationManager.Current["ServerWithPing"], server, ping)
+                    : string.Format(Localization.LocalizationManager.Current["ServerOnly"], server);
                 RouteServerText.Visibility = Visibility.Visible;
             }
         }
         else
         {
-            RouteText.Text = "Automatic";
+            RouteText.Text = Localization.LocalizationManager.Current["Automatic"];
             RouteServerText.Text = "";
             RouteServerText.Visibility = Visibility.Collapsed;
         }
@@ -316,7 +329,7 @@ public partial class MainWindow : Window
         StatusMotion.CrossFade(StatusText, StatusTextGhost, _allowMotion);
     }
 
-    // O anel só existe enquanto há trabalho a caminho. Com "Mostrar animações" desligado ele fica
+    // O anel só existe enquanto há trabalho a caminho. Com LocalizationManager.Current["ShowAnimations"] desligado ele fica
     // parado, mas continua visível: o estado ainda precisa ser lido sem movimento.
     private void SetStatusRing(bool busy)
     {
@@ -472,12 +485,12 @@ public partial class MainWindow : Window
                 var detail = progress.Stage switch
                 {
                     "preparing-profile" => "Preparing your VPN route…",
-                    "installing-wiresock" => "Preparing WireSock SDK. Complete or cancel the visible installer if it opens.",
-                    "closing-discord" => "Closing the old Discord session…",
+                    "installing-wiresock" => LocalizationManager.Current["SdkPreparing"],
+                    "closing-discord" => LocalizationManager.Current["DiscordClosing"],
                     "starting-tunnel" => "Starting and settling the tunnel…",
-                    "starting-discord" => "Reopening Discord…",
+                    "starting-discord" => LocalizationManager.Current["DiscordReopening"],
                     "verifying-route" => "Checking Discord’s route…",
-                    "stopping-tunnel" => "Restoring the normal connection…",
+                    "stopping-tunnel" => LocalizationManager.Current["RestoringConnection"],
                     _ => null
                 };
                 // Advisory only, and only while the operation that started it still owns the UI:
@@ -540,7 +553,7 @@ public partial class MainWindow : Window
                 var result = await _backend.CommandAsync(command, payloadFactory(token, method), timeout.Token);
                 if (result.Success || result.CaptchaUrl is null) return result;
                 if (!VerificationPolicy.TryParseChallenge(result.CaptchaUrl, out var challenge) || challenge is null)
-                    return result with { Message = "The verification address was rejected." };
+                    return result with { Message = LocalizationManager.Current["VerificationRejected"] };
                 VerificationAnswer? answer;
                 try
                 {
@@ -568,7 +581,7 @@ public partial class MainWindow : Window
             // happen while the installer is open, so it would block the message for 45 seconds.
             using var ack = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             try { await _backend.CommandAsync("cancel", new { }, ack.Token); } catch { }
-            return new(false, "SDK_INSTALLER_STILL_OPEN", "The WireSock installer is still open. Finish or cancel it in the Windows installer window, then try again.");
+            return new(false, "SDK_INSTALLER_STILL_OPEN", LocalizationManager.Current["SdkInstallerOpen"]);
         }
         catch (OperationCanceledException) when (deadlineExpired && connectExpired)
         {
@@ -601,14 +614,14 @@ public partial class MainWindow : Window
             if (_currentPage is SettingsView) SetState(_state);
             await ReturnHomeAsync();
         };
-        ShowPage(view, "Settings");
+        ShowPage(view, Localization.LocalizationManager.Current["SettingsTitle"]);
     }
     private void Account_Click(object sender, RoutedEventArgs e)
     {
         if (_currentPage is not null || _navigationBusy || _closing || UiMutationBusy || !AccountButton.IsEnabled) return;
         OpenAccount();
     }
-    private void OpenAccount() => ShowPage(new AccountView(_backend, this, _state.Snapshot), "Account");
+    private void OpenAccount() => ShowPage(new AccountView(_backend, this, _state.Snapshot), Localization.LocalizationManager.Current["Account"]);
     private void ShowPage(UserControl page, string title)
     {
         // Any page change invalidates snapshots issued for the previous surface.
@@ -737,7 +750,7 @@ public partial class MainWindow : Window
         // que já não corresponde ao estado.
         if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not SettingsView) return;
         _advancedFromSettings = true;
-        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), "Advanced");
+        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), Localization.LocalizationManager.Current["AdvancedTitle"]);
     }
 
     /// <summary>
@@ -786,7 +799,7 @@ public partial class MainWindow : Window
         {
             view.Owner = this; view.Show();
             await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-            if (view.ActualWidth < 200 || view.ActualHeight < 100) throw new InvalidOperationException("Secondary window failed to load.");
+            if (view.ActualWidth < 200 || view.ActualHeight < 100) throw new InvalidOperationException(LocalizationManager.Current["SecondaryWindowFailed"]);
             Capture(view, Path.Combine(directory ?? ".", Path.GetFileNameWithoutExtension(output) + "-" + view.GetType().Name + ".png"));
             view.Close();
         }
@@ -849,8 +862,8 @@ public partial class MainWindow : Window
             _closing = false; _explicitExit = false; _applyUpdateOnExit = false;
             _lifetime.Dispose(); _lifetime = new();
             _exitWarning(ex is BackendUnavailableException
-                ? "The native service stopped while a connection may still be active. Brisa cannot confirm a safe disconnect."
-                : ex is InvalidOperationException ? ex.Message : "The service has not finished stopping. Please try exiting again.");
+                ? LocalizationManager.Current["ServiceStoppedUnsafe"]
+                : ex is InvalidOperationException ? ex.Message : LocalizationManager.Current["ServiceStoppingRetry"]);
         }
         finally { if (acquired) _operation.Release(); }
     }
@@ -861,7 +874,7 @@ public partial class MainWindow : Window
         InvalidDataException => "The native service returned an unreadable response.",
         FileNotFoundException => "The native backend is not installed with this build.",
         BackendUnavailableException => _nativeOperationMayBeActive
-            ? "The native service stopped while a connection may still be active. Brisa cannot confirm a safe disconnect."
+            ? LocalizationManager.Current["ServiceStoppedUnsafe"]
             : "The native service stopped. You can exit Brisa and reopen it to retry.",
         _ => "The native service could not complete this action. Check the connection status before retrying."
     };

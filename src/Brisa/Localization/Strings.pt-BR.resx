@@ -57,4 +57,61 @@
   <data name="StatusDisconnected" xml:space="preserve"><value>Desconectado</value></data>
   <data name="ExitBrisa" xml:space="preserve"><value>Sair do Brisa</value></data>
   <data name="SignIn" xml:space="preserve"><value>Entrar</value></data>
+  <data name="Account" xml:space="preserve"><value>Conta</value></data>
+  <data name="Automatic" xml:space="preserve"><value>Automático</value></data>
+  <data name="Back (Alt+Left)" xml:space="preserve"><value>Voltar (Alt+Esquerda)</value></data>
+  <data name="Canada" xml:space="preserve"><value>Canadá</value></data>
+  <data name="Check for Updates" xml:space="preserve"><value>Verificar atualizações</value></data>
+  <data name="Choose a WireGuard configuration file" xml:space="preserve"><value>Escolha um arquivo de configuração do WireGuard</value></data>
+  <data name="ChooseRouteHelper" xml:space="preserve"><value>Escolha automaticamente ou selecione um país para otimizar dentro dele.</value></data>
+  <data name="ChooseRoute" xml:space="preserve"><value>Escolher rota</value></data>
+  <data name="ChooseRouteAction" xml:space="preserve"><value>Escolher rota</value></data>
+  <data name="VerificationHelper" xml:space="preserve"><value>Conclua a verificação da Proton abaixo. Este navegador temporário fica isolado do restante do aplicativo.</value></data>
+  <data name="ConnectedFor" xml:space="preserve"><value>Conectado por</value></data>
+  <data name="ConnectionInProgress" xml:space="preserve"><value>Conexão em andamento</value></data>
+  <data name="ConnectionStatus" xml:space="preserve"><value>Status da conexão</value></data>
+  <data name="CreateAccount" xml:space="preserve"><value>Criar uma conta Proton gratuita</value></data>
+  <data name="CredentialsHelper" xml:space="preserve"><value>Credenciais e sessões ficam apenas na pasta de dados isolada do aplicativo nativo.</value></data>
+  <data name="DisconnectToChangeRoute" xml:space="preserve"><value>Desconecte para trocar a rota</value></data>
+  <data name="DiscordTraffic" xml:space="preserve"><value>Tráfego do Discord</value></data>
+  <data name="DiscordTrafficChart" xml:space="preserve"><value>Gráfico de tráfego do Discord</value></data>
+  <data name="Download" xml:space="preserve"><value>Download</value></data>
+  <data name="DownloadRate" xml:space="preserve"><value>Taxa de download</value></data>
+  <data name="Germany" xml:space="preserve"><value>Alemanha</value></data>
+  <data name="Japan" xml:space="preserve"><value>Japão</value></data>
+  <data name="Netherlands" xml:space="preserve"><value>Países Baixos</value></data>
+  <data name="Password" xml:space="preserve"><value>Senha</value></data>
+  <data name="Protocol" xml:space="preserve"><value>Protocolo</value></data>
+  <data name="ProtonPassword" xml:space="preserve"><value>Senha da Proton</value></data>
+  <data name="ProtonUsername" xml:space="preserve"><value>Usuário da Proton</value></data>
+  <data name="Route" xml:space="preserve"><value>Rota</value></data>
+  <data name="RouteCountry" xml:space="preserve"><value>País da rota</value></data>
+  <data name="SignInHelper" xml:space="preserve"><value>Entre com sua conta Proton para conectar.</value></data>
+  <data name="SignedInAs" xml:space="preserve"><value>Conectado como</value></data>
+  <data name="LogBox" xml:space="preserve"><value>Prévia do log de suporte</value></data>
+  <data name="TotalTraffic" xml:space="preserve"><value>Tráfego total</value></data>
+  <data name="TwoFactorCode" xml:space="preserve"><value>Código de dois fatores</value></data>
+  <data name="UnitedStates" xml:space="preserve"><value>Estados Unidos</value></data>
+  <data name="UpdateStatus" xml:space="preserve"><value>Status da atualização</value></data>
+  <data name="Upload" xml:space="preserve"><value>Upload</value></data>
+  <data name="UploadRate" xml:space="preserve"><value>Taxa de upload</value></data>
+  <data name="UseRoute" xml:space="preserve"><value>Usar rota</value></data>
+  <data name="Username" xml:space="preserve"><value>Usuário</value></data>
+  <data name="VerificationRequired" xml:space="preserve"><value>Verificação necessária</value></data>
+  <data name="DiscordClosing" xml:space="preserve"><value>Fechando a sessão antiga do Discord…</value></data>
+  <data name="DiscordReopening" xml:space="preserve"><value>Reabrindo o Discord…</value></data>
+  <data name="RestoringConnection" xml:space="preserve"><value>Restaurando a conexão normal…</value></data>
+  <data name="GeneratingLog" xml:space="preserve"><value>Gerando log…</value></data>
+  <data name="SdkPreparing" xml:space="preserve"><value>Preparando o SDK do WireSock. Conclua ou cancele o instalador visível se ele abrir.</value></data>
+  <data name="SdkInstallerOpen" xml:space="preserve"><value>O instalador do WireSock ainda está aberto. Conclua ou cancele na janela do instalador do Windows e tente de novo.</value></data>
+  <data name="ServiceStoppedUnsafe" xml:space="preserve"><value>O serviço nativo parou enquanto uma conexão pode estar ativa. O Brisa não consegue confirmar uma desconexão segura.</value></data>
+  <data name="ServiceStoppingRetry" xml:space="preserve"><value>O serviço ainda não terminou de parar. Tente sair de novo.</value></data>
+  <data name="VerificationRejected" xml:space="preserve"><value>O endereço de verificação foi recusado.</value></data>
+  <data name="SecondaryWindowFailed" xml:space="preserve"><value>A janela secundária não carregou.</value></data>
+  <data name="ShowAnimations" xml:space="preserve"><value>Mostrar animações</value></data>
+  <data name="SaveLogFilter" xml:space="preserve"><value>Arquivo de texto (*.txt)|*.txt</value></data>
+  <data name="TrayOpen" xml:space="preserve"><value>Abrir</value></data>
+  <data name="ServerWithPing" xml:space="preserve"><value>Servidor {0}, {1} ms</value></data>
+  <data name="ServerOnly" xml:space="preserve"><value>Servidor {0}</value></data>
+  <data name="DiscordTrafficHeader" xml:space="preserve"><value>Tráfego do Discord</value></data>
 </root>
