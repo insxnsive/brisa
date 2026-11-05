@@ -22,6 +22,7 @@ internal static class Program
         var root = Path.Combine(Environment.GetEnvironmentVariable("TMPDIR") ?? Path.GetTempPath(), "native-appearance-" + Guid.NewGuid().ToString("N"));
         var store = new SettingsStore(root, false);
         var assertions = 0;
+        var failures = new List<string>();
         // WPF can clone templates when switching theme dictionaries. Verify
         // inheritance instead of comparing reference identity across themes.
         bool MatchesTemplate(Control control, string key)
@@ -294,9 +295,13 @@ internal static class Program
                 var routeCountry = (TextBlock)routed.FindName("RouteText");
                 var routeServer = (TextBlock)routed.FindName("RouteServerText");
                 Check(routeServer.Visibility == Visibility.Visible, "a connected route shows the server on the same line");
-                Check(Math.Abs(routeCountry.TranslatePoint(new Point(), routed).Y
-                    - routeServer.TranslatePoint(new Point(), routed).Y) < 1,
-                    "country and server share one baseline");
+                // Dois tamanhos de fonte centrados na mesma linha têm topos diferentes por
+                // poucos pixels, e a diferença muda com a fonte do sistema: comparar topo media a
+                // métrica da fonte, não o layout. O centro vertical é o que a linha promete.
+                var countryCenter = routeCountry.TranslatePoint(new Point(0, routeCountry.ActualHeight / 2), routed).Y;
+                var serverCenter = routeServer.TranslatePoint(new Point(0, routeServer.ActualHeight / 2), routed).Y;
+                Check(Math.Abs(countryCenter - serverCenter) < 1,
+                    $"country and server share one line: country={countryCenter:0.#} server={serverCenter:0.#}");
                 Check(routeServer.TranslatePoint(new Point(), routed).X > routeCountry.TranslatePoint(new Point(), routed).X,
                     "the server follows the country instead of sitting at the far edge");
                 var routeName = System.Windows.Automation.AutomationProperties.GetName((Button)routed.FindName("RouteButton")) ?? "";
@@ -411,13 +416,24 @@ internal static class Program
             Check(subtitle.Text == loc["TwoFactorPrompt"], "the two-factor prompt returns with the language");
             twoFactorWindow.RequestExit();
             Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            // Uma execução revela todas as falhas de uma vez: em runner com a fonte clássica cada
+            // diferença de métrica derrubava só a primeira, e a próxima só aparecia no run seguinte.
+            if (failures.Count > 0)
+                throw new InvalidOperationException($"{failures.Count} of {assertions} assertions failed: "
+                    + string.Join(" | ", failures));
             Console.WriteLine($"{assertions} loaded-window assertions passed");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
         finally { app.Shutdown(); if (Directory.Exists(root)) Directory.Delete(root, true); }
 
-        void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); assertions++; }
+        void Check(bool ok, string message)
+        {
+            assertions++;
+            if (ok) return;
+            failures.Add(message);
+            Console.Error.WriteLine("FAIL " + message);
+        }
     }
 
     // Storyboards de duração zero só pintam no próximo ciclo de render: sem esse flush, a
