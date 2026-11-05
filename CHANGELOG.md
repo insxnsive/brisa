@@ -1,5 +1,19 @@
 # Changes
 
+## 0.1.0-beta.10
+
+- Rebuild Home around one surface: status, route and traffic sit in a single card, with the primary action below it and the traffic card keeping a fixed height so the layout does not jump between states.
+- Apply one colour rule. Coral marks an action, teal marks a connected or protected state, and every other state is neutral grey. The same rule covers both themes.
+- Rebuild Settings as a General section with theme, start with Windows, connection details and language, plus the tray note. The page no longer scrolls at the default window size.
+- Rework Advanced so the support log explains what it contains before you generate it, and an imported configuration that Brisa rejects says why in plain language.
+- Put the server and its ping on the country's line, with the long country name trimming first so the server and the ping stay whole, and explain through a tooltip why the route is locked while connected.
+- Translate the whole interface into Brazilian Portuguese. Language sits in Settings with System, English and Portuguese (Brazil); System follows Windows, and a change repaints the open window without closing it.
+- Turn every backend failure into a code the interface translates, so a Portuguese user reads a Portuguese reason and never the backend's English sentence.
+- Format numbers and dates with the chosen language. Durations and log timestamps stay invariant, so a log reads the same on any machine.
+- Leave product names, the GPL text, the vendor installer and the generated log in English by design, and take country names from one bundled CLDR table instead of translating them one by one.
+- Name the route, the traffic chart and the direction glyphs for screen readers, keep focus rings visible in both themes, and meet WCAG AA contrast throughout.
+- Animate only a change of state, over 150 to 200 ms, and honour the Windows animation setting.
+
 ## 0.1.0-beta.9
 
 - Refuse to run a WireSock binary that is not signed by the vendor or that sits in a folder a normal user can write to. Discovery reads the machine-wide install only, checks the executable and its booster, compares the certificate subject exactly, and re-checks both immediately before every elevated use.
