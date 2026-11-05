@@ -7,7 +7,7 @@
 - [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) for Proton's verification page.
 - A Proton account or your own WireGuard `.conf` profile.
 
-Download prerequisites from their publishers. The WireSock SDK Free tier is described as non-commercial evaluation or internal proof-of-concept use, not production. Brisa's non-commercial status and direct vendor download do not by themselves establish permission for a public production release; written clarification remains a stable-release gate. Brisa does not bundle the SDK. Its first-connection flow opens the pinned official installer so the user can review the vendor's terms and Windows elevation prompt.
+Download prerequisites from their publishers. The WireSock SDK Free tier is described by its vendor as non-commercial evaluation or internal proof-of-concept use, not production. Brisa does not bundle the SDK, is not affiliated with WireSock, and written clarification for production use has not been obtained. Its first-connection flow opens the pinned official installer so each user reviews and accepts the vendor's terms and Windows elevation prompt; that acceptance governs their own use.
 
 You don't need the .NET SDK, Node or Go to use a release build.
 
@@ -15,7 +15,7 @@ You don't need the .NET SDK, Node or Go to use a release build.
 
 Download `Brisa-win-Setup.exe` from [Brisa Releases](https://github.com/insxnsive/brisa/releases) and run it. It installs for your Windows account and adds a Start menu shortcut. Open that shortcut with **Run as administrator** to manage WireSock. You can browse the interface without elevation, but connection changes are blocked when ownership cannot be inspected reliably.
 
-The initial builds are not Authenticode-signed. Windows may show an unknown-publisher warning. Check that the download came from this repository; release checksums are in `SHA256SUMS`.
+Brisa is not Authenticode-signed. Windows may show an unknown-publisher warning. Check that the download came from this repository; release checksums are in `SHA256SUMS`.
 
 ## Portable version
 
@@ -30,13 +30,15 @@ Extract the entire `Brisa-win-Portable.zip` into a folder you can write to. Keep
 
 The main interface is native WPF. WebView2 is used only for Proton verification, not for the application UI.
 
-The window’s X button normally hides Brisa in the tray without disconnecting or restarting Discord. Double-click its tray icon or choose Open to return. Choose Exit from the tray menu when you want to disconnect and quit. If the native service failed before the first status loaded and no native connection may be active, **Exit Brisa** and X close the failed window instead. That fallback never applies an update without a verified shutdown.
+## Window and tray
+
+The window's X button normally hides Brisa in the tray without disconnecting or restarting Discord. Double-click its tray icon or choose Open to return. Choose Exit from the tray menu when you want to disconnect and quit. If the native service failed before the first status loaded and no native connection may be active, **Exit Brisa** and X close the failed window instead. That fallback never applies an update without a verified shutdown.
 
 ## Updates and saved data
 
 Brisa checks at startup and periodically while open. It downloads newer published versions and waits until the application can close safely before applying them. Closing to the tray isn't an exit. You can also check in Settings → About and Updates. A normal Exit installs the staged update without reopening the app. Restart to Update closes safely and opens the updated version.
 
-Preview builds accept newer preview releases as well as stable ones. Updates never come from the original GoLiveBypass repository.
+The update feed also carries earlier preview builds, so a future preview cannot replace a stable install by itself. Updates never come from the original GoLiveBypass repository.
 
 Preferences remain in `%LOCALAPPDATA%\Brisa\settings.json`; native account state and profiles use the private `%LOCALAPPDATA%\Brisa\native-data` child directory. The parent is also the installer base, so Brisa does not treat installed application files as account data or recursively rewrite their permissions. Updating replaces the program, not those settings. Do not include either data location in bug reports. Proton sessions use Windows current-user DPAPI protection; runtime WireGuard profiles remain plaintext and require private NTFS permissions.
 

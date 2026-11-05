@@ -1,5 +1,23 @@
 # Changes
 
+## 1.0.0
+
+First stable release. The beta line ends here; the Windows interface, the connection path and the update flow are the ones that shipped through 0.1.0-beta.10.
+
+- One card on Home: status, route and traffic in a single surface, with the primary action below it and the traffic panel keeping a fixed height so the layout does not jump between states.
+- Two colours do the work. Coral marks an action, teal marks a connected or protected state, and every other state is neutral grey in both themes.
+- Settings is one General page: theme, start with Windows, connection details and language, with the tray note. No scrollbar at the default window size.
+- Advanced explains what the support log contains before generating it, and a rejected configuration says why in plain language.
+- Every visible string exists in English and Brazilian Portuguese. Language sits in Settings, System follows Windows, and a change repaints the open window without a restart.
+- Backend failures arrive as codes the interface translates, so a Portuguese user reads a Portuguese reason instead of the backend's English sentence.
+- The generated support log now states whether the packaged Proton helper is present, which is the first thing support needs when a sign-in fails.
+- Route row shows server and ping, trims the long country name first, and says through a tooltip why the route is locked while connected.
+- Numbers and dates follow the chosen language; durations and log timestamps stay invariant so a log reads the same on any machine.
+- Accessible names on the route, the traffic chart and the direction glyphs, visible focus rings, and WCAG AA contrast in both themes.
+- Motion is limited to a change of state, over 150 to 200 ms, and honours the Windows animation setting.
+
+Brisa is not Authenticode-signed. Checksums in `SHA256SUMS` prove integrity, not publisher identity. WireSock's SDK Free tier carries the vendor's own terms; Brisa does not bundle the SDK.
+
 ## 0.1.0-beta.10
 
 - Rebuild Home around one surface: status, route and traffic sit in a single card, with the primary action below it and the traffic card keeping a fixed height so the layout does not jump between states.
