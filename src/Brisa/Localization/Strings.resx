@@ -182,6 +182,8 @@
   <data name="Backend.START_CANCELLED" xml:space="preserve"><value>The start was cancelled.</value></data>
   <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>WireSock setup did not finish. Brisa will guide you through it again.</value></data>
   <data name="Backend.DISCORD_CHECK_FAILED" xml:space="preserve"><value>Brisa could not verify the installed Discord client. Finish any Discord update, restart Discord, then try again.</value></data>
+  <data name="Backend.DISCORD_UNAVAILABLE" xml:space="preserve"><value>Brisa could not find a usable Discord installation. Install or update Discord, open it once to finish setup, then try again.</value></data>
+  <data name="Backend.DISCORD_CHANGED" xml:space="preserve"><value>The selected Discord installation changed or is still updating. Finish updating Discord, open it once, then try again.</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>
   <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>Brisa's tunnel is still running alongside another WireSock tunnel. Close the other tunnel, then disconnect Brisa. Brisa will stay open until its tunnel can be stopped safely.</value></data>

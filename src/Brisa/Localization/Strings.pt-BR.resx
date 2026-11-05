@@ -182,6 +182,8 @@
   <data name="Backend.START_CANCELLED" xml:space="preserve"><value>A inicialização foi cancelada.</value></data>
   <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>A instalação do WireSock não terminou. O Brisa vai orientar você de novo.</value></data>
   <data name="Backend.DISCORD_CHECK_FAILED" xml:space="preserve"><value>O Brisa não conseguiu verificar o Discord instalado. Termine qualquer atualização do Discord, reabra o Discord e tente de novo.</value></data>
+  <data name="Backend.DISCORD_UNAVAILABLE" xml:space="preserve"><value>O Brisa não encontrou uma instalação do Discord que possa usar. Instale ou atualize o Discord, abra o Discord uma vez para terminar a configuração e tente de novo.</value></data>
+  <data name="Backend.DISCORD_CHANGED" xml:space="preserve"><value>A instalação do Discord escolhida mudou ou ainda está sendo atualizada. Termine a atualização do Discord, abra o Discord uma vez e tente de novo.</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Algo deu errado. Tente de novo.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>Não foi possível ler o estado do WireSock com confiança; nada foi alterado.</value></data>
   <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>O túnel do Brisa continua ativo junto com outro túnel do WireSock. Feche o outro túnel e desconecte o Brisa. O Brisa fica aberto até o túnel dele poder ser parado com segurança.</value></data>

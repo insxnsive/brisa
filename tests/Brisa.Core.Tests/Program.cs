@@ -318,8 +318,12 @@ var tests = new (string Name, Action Run)[]
         Assert(root is not null);
         var backend = Path.Combine(root!.FullName, "backend", "src");
         var codes = new HashSet<string>(StringComparer.Ordinal);
-        var tables = @"(?:APP_MESSAGES|START_MESSAGES|PROFILE_MESSAGES|FAILURE_MESSAGES) = Object\.freeze\(\{(?<body>.*?)\n\}\);";
+        // Toda tabela congelada de mensagens conta, com ou sem nome: a de compatibilidade do Discord
+        // é `const messages` e passou por fora da varredura por nome.
+        var tables = @"Object\.freeze\(\{(?<body>.*?)\n\}\);";
         var literals = @"code\s*[:=]\s*""(?<code>[A-Z][A-Z_0-9]{2,})""";
+        // Códigos que viajam como argumento de construtor, e não como campo.
+        var thrown = @"new\s+\w*Error\(\s*""(?<code>[A-Z][A-Z_0-9]{2,})""\s*\)";
         foreach (var file in Directory.EnumerateFiles(backend, "*.mjs", SearchOption.AllDirectories)
                      .Concat(Directory.EnumerateFiles(backend, "*.ts", SearchOption.AllDirectories)))
         {
@@ -331,10 +335,16 @@ var tests = new (string Name, Action Run)[]
                     codes.Add(entry.Groups["code"].Value);
             foreach (System.Text.RegularExpressions.Match literal in System.Text.RegularExpressions.Regex.Matches(source, literals))
                 codes.Add(literal.Groups["code"].Value);
+            foreach (System.Text.RegularExpressions.Match error in System.Text.RegularExpressions.Regex.Matches(source, thrown))
+                codes.Add(error.Groups["code"].Value);
         }
         // Códigos de plataforma que nunca chegam a uma mensagem do produto.
         codes.Remove("ABORT_ERR");
         Assert(codes.Count > 50);
+        // Os dois códigos que a varredura anterior perdia: eles existem só na tabela sem nome e no
+        // construtor do erro de compatibilidade, então a cobertura precisa provar que os achou.
+        foreach (var required in new[] { "DISCORD_UNAVAILABLE", "DISCORD_CHANGED", "DISCORD_CHECK_FAILED" })
+            if (!codes.Contains(required)) throw new Exception("the scan must discover " + required);
         var localization = Path.Combine(root!.FullName, "src", "Brisa", "Localization");
         var missing = new List<string>();
         foreach (var file in new[] { "Strings.resx", "Strings.pt-BR.resx" })
