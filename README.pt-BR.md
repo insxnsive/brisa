@@ -1,9 +1,15 @@
-# Brisa
+<p align="center">
+  <img src="src/Brisa/Assets/Brisa.png" width="112" alt="Brisa">
+</p>
 
-[![versão](https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square&label=vers%C3%A3o)](https://github.com/insxnsive/brisa/releases)
-[![licença](https://img.shields.io/github/license/insxnsive/brisa?style=flat-square&label=licen%C3%A7a)](LICENSE)
-[![plataforma](https://img.shields.io/badge/plataforma-Windows%20x64-blue?style=flat-square)](#requisitos)
-[![feito com](https://img.shields.io/badge/feito%20com-.NET%2010-512BD4?style=flat-square)](docs/development.md)
+<h1 align="center">Brisa</h1>
+
+<p align="center">
+  <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square&label=vers%C3%A3o" alt="versão"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square&label=licen%C3%A7a" alt="licença"></a>
+  <a href="#requisitos"><img src="https://img.shields.io/badge/plataforma-Windows%20x64-blue?style=flat-square" alt="plataforma"></a>
+  <a href="docs/development.md"><img src="https://img.shields.io/badge/feito%20com-.NET%2010-512BD4?style=flat-square" alt="feito com"></a>
+</p>
 
 **O Discord passa pelo WireGuard. O resto continua na sua conexão normal.** Sem VPN no navegador, nos jogos ou no resto do PC, e sem Electron por cima. Feito em .NET e WPF, interface em inglês e português do Brasil.
 

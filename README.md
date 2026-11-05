@@ -1,9 +1,15 @@
-# Brisa
+<p align="center">
+  <img src="src/Brisa/Assets/Brisa.png" width="112" alt="Brisa">
+</p>
 
-[![release](https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square)](https://github.com/insxnsive/brisa/releases)
-[![license](https://img.shields.io/github/license/insxnsive/brisa?style=flat-square)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-Windows%20x64-blue?style=flat-square)](#requirements)
-[![built with](https://img.shields.io/badge/built%20with-.NET%2010-512BD4?style=flat-square)](docs/development.md)
+<h1 align="center">Brisa</h1>
+
+<p align="center">
+  <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square" alt="license"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/platform-Windows%20x64-blue?style=flat-square" alt="platform"></a>
+  <a href="docs/development.md"><img src="https://img.shields.io/badge/built%20with-.NET%2010-512BD4?style=flat-square" alt="built with"></a>
+</p>
 
 **Discord goes through WireGuard. Everything else stays on your normal connection.** No VPN for your browser, your games or the rest of the PC, and no Electron wrapper. Built with .NET and WPF, interface in English and Portuguese (Brazil).
 
