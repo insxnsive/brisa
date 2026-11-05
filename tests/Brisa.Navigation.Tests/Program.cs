@@ -230,6 +230,10 @@ internal static class Program
             // trabalho a caminho e para quando o estado assenta.
             var indicator = connecting.FindName("StatusRing") as System.Windows.Shapes.Ellipse;
             var rotation = connecting.FindName("StatusRingRotation") as System.Windows.Media.RotateTransform;
+            // O anel começa a animar no ciclo de composição seguinte. Num runner lento ler logo
+            // depois do UpdateLayout pega o transform antes da animação, e o teste falha por
+            // timing, não por comportamento. Espera o quadro, e o limite do Pump ainda acusa.
+            if (rotation is not null) Pump(() => rotation.HasAnimatedProperties);
             var progressVisible = indicator is { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 } && rotation is { HasAnimatedProperties: true };
             var wasDisabled = !((Button)connecting.FindName("PrimaryButton")).IsEnabled;
             connecting.Close(); Pump(() => !connecting.IsVisible);
