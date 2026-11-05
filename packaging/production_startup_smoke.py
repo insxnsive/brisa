@@ -34,7 +34,7 @@ def verify_responses(stdout):
     if state.get('signedIn') is not False or state.get('connected') is not False or state.get('tunnelActive') is not False:
         raise AssertionError('Disposable startup must not contain an account or owned tunnel')
     diagnostics = by_id['startup-diagnostics']
-    if diagnostics.get('ok') is not True or 'Packaged Proton helper: available.' not in diagnostics.get('result', {}).get('text', ''):
+    if diagnostics.get('ok') is not True or 'Packaged Proton helper: available' not in diagnostics.get('result', {}).get('text', ''):
         raise AssertionError('Packaged account helper is unavailable')
     rejected = by_id['startup-account-schema']
     if rejected.get('ok') is not False or rejected.get('error') != 'Payload schema is invalid.':

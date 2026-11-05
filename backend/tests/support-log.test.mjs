@@ -77,3 +77,13 @@ test("a log with no facts still reads as a log", () => {
   assert.doesNotMatch(text, /^Mode: /m);
   assert.doesNotMatch(text, /undefined|null/, "a missing fact is omitted, never printed");
 });
+
+test("the log says whether the packaged helper is present", () => {
+  const available = renderSupportLog({ generatedAt: new Date(0), facts: { helper: "available" } });
+  assert.match(available, /^Packaged Proton helper: available$/m);
+  const missing = renderSupportLog({ generatedAt: new Date(0), facts: { helper: "missing" } });
+  assert.match(missing, /^Packaged Proton helper: missing$/m);
+  // Qualquer outro valor é descartado inteiro: só os dois códigos do app entram.
+  const dropped = renderSupportLog({ generatedAt: new Date(0), facts: { helper: "C:/Program Files/x" } });
+  assert.doesNotMatch(dropped, /Packaged Proton helper/);
+});

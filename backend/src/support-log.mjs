@@ -11,6 +11,7 @@ const CODES = Object.freeze({
     trustVerdict: new Set(["TRUSTED", "UNTRUSTED"]),
     mode: new Set(["PROTON", "CUSTOM", "NONE"]),
     protocol: new Set(["WIREGUARD_UDP"]),
+    helper: new Set(["available", "missing"]),
     phase: new Set(["DISCONNECTED", "CONNECTING", "CONNECTED", "DISCONNECTING", "LIMITED", "BLOCKED", "ERROR"]),
 });
 
@@ -34,6 +35,9 @@ export function renderSupportLog({ generatedAt, facts = {}, events = [] }) {
     const add = (label, value) => { if (value !== null && value !== undefined) lines.push(`${label}: ${value}`); };
 
     add("Elevated", flag(facts.elevated));
+    // O helper que vem no pacote é a primeira coisa que o suporte precisa saber: sem ele nenhum login
+    // funciona. É um código do app, não prosa do fornecedor.
+    add("Packaged Proton helper", code("helper", facts.helper));
     add("Discord client", code("discordFlavour", facts.discordFlavour));
 
     // Versão em quatro inteiros: um texto pontuado seria justamente o tipo de string que este

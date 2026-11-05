@@ -525,6 +525,7 @@ export function createBackend(deps, paths) {
             generatedAt: new Date(now()),
             facts: {
               elevated: facts.elevated,
+              helper: deps.helperAvailable?.() === true ? "available" : "missing",
               discordFlavour: facts.discordFlavour,
               sdkMajor: facts.sdkMajor,
               sdkMinor: facts.sdkMinor,
