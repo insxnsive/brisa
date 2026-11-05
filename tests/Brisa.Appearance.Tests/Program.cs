@@ -279,6 +279,24 @@ internal static class Program
                 Check(((TextBlock)connected.FindName("RouteChevron")).Text == "\uE72E", "connected route row shows the lock glyph");
                 Check(((Button)connected.FindName("RouteButton")).ToolTip as string == "Disconnect to change the route",
                     "the locked route explains itself on hover instead of taking a row");
+                // País e servidor dividem uma linha: mesma altura de topo, servidor depois do país, e o
+                // cartão de tráfego com altura fixa para os contadores não moverem o layout.
+                Check(Math.Abs(((FrameworkElement)connected.FindName("TrafficCard")).ActualHeight - 108) < 1,
+                    "the traffic card keeps one height while the counters change");
+                var routed = new MainWindow(new UiTestBackendClient(new(true, false, true, true, "", new("HT#28", "Country", 34))), store);
+                routed.Show(); routed.InitializeAsync().GetAwaiter().GetResult(); routed.UpdateLayout(); Spin(120);
+                var routeCountry = (TextBlock)routed.FindName("RouteText");
+                var routeServer = (TextBlock)routed.FindName("RouteServerText");
+                Check(routeServer.Visibility == Visibility.Visible, "a connected route shows the server on the same line");
+                Check(Math.Abs(routeCountry.TranslatePoint(new Point(), routed).Y
+                    - routeServer.TranslatePoint(new Point(), routed).Y) < 1,
+                    "country and server share one baseline");
+                Check(routeServer.TranslatePoint(new Point(), routed).X > routeCountry.TranslatePoint(new Point(), routed).X,
+                    "the server follows the country instead of sitting at the far edge");
+                var routeName = System.Windows.Automation.AutomationProperties.GetName((Button)routed.FindName("RouteButton")) ?? "";
+                Check(routeName.Contains("COUNTRY", StringComparison.OrdinalIgnoreCase) && routeName.Contains("HT#28"),
+                    "the locked route names country and server together for screen readers (got '" + routeName + "')");
+                routed.RequestExit();
                 Check(((TextBlock)connected.FindName("RouteServerText")).Visibility == Visibility.Collapsed,
                     "a placeholder server label is never shown as a value");
                 Check(((Button)connected.FindName("RouteButton")).IsTabStop == false || !((Button)connected.FindName("RouteButton")).IsEnabled,

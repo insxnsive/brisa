@@ -13,7 +13,7 @@
     </Grid>
     <Grid x:Name="HomeContent" Grid.Row="1" Focusable="True" FocusVisualStyle="{x:Null}">
       <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,20" Padding="20">
+    <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,0" Padding="20">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid>
@@ -39,7 +39,7 @@
         <!-- Conectado: o status encolhe para uma linha de cabeçalho alinhada à esquerda e o painel
              de detalhes ocupa o espaço que o bloco centralizado usava. Desconectado não mostra
              painel nenhum: zero e travessão são piores que a ausência do dado. -->
-        <StackPanel x:Name="DetailsHost" Visibility="Collapsed" VerticalAlignment="Top" Margin="0,0,0,16">
+        <StackPanel x:Name="DetailsHost" Visibility="Collapsed" VerticalAlignment="Bottom">
           <StackPanel Orientation="Horizontal">
             <Border x:Name="CompactBadge" Width="40" Height="40" CornerRadius="20" Background="{DynamicResource NativeStatusConnectedSurface}">
               <TextBlock x:Name="CompactIcon" FontFamily="Segoe Fluent Icons" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE73E;"/>
@@ -52,7 +52,7 @@
             <StackPanel Grid.Column="1"><TextBlock FontSize="11" Opacity=".75" Text="{loc:Loc TotalTraffic}"/><TextBlock x:Name="TrafficValue" Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" AutomationProperties.Name="{loc:Loc TotalTraffic}" Text="0 B"/></StackPanel>
             <StackPanel Grid.Column="2"><TextBlock FontSize="11" Opacity=".75" Text="{loc:Loc Protocol}"/><TextBlock Margin="0,2,0,0" FontSize="14" FontWeight="SemiBold" Text="WireGuard (UDP)"/></StackPanel>
           </Grid>
-          <Border Margin="0,12,0,0" Style="{StaticResource SettingsSurface}" Padding="12">
+          <Border x:Name="TrafficCard" Margin="0,12,0,0" Style="{StaticResource SettingsSurface}" Padding="12">
             <StackPanel>
               <Grid>
                 <TextBlock FontSize="12" Opacity=".75" VerticalAlignment="Center" Text="{loc:Loc DiscordTraffic}"/>
@@ -78,11 +78,18 @@
           </Border>
         </StackPanel>
         </Grid>
-        <Border x:Name="RouteCard" Grid.Row="1" Background="Transparent" ToolTipService.InitialShowDelay="300">
+        <Border x:Name="RouteCard" Grid.Row="1" Margin="0,20,0,0" Background="Transparent" ToolTipService.InitialShowDelay="300">
         <Button x:Name="RouteButton" AutomationProperties.Name="{loc:Loc ChooseRoute}" Click="Route_Click" Padding="14,10" HorizontalContentAlignment="Stretch">
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel x:Name="RouteDetails"><TextBlock FontSize="12" Opacity=".75" Text="{loc:Loc Route}"/><TextBlock x:Name="RouteText" Margin="0,2,12,0" FontSize="14" Text="{loc:Loc Automatic}" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="RouteServerText" Margin="0,3,12,0" FontSize="12" Style="{StaticResource SecondaryText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/></StackPanel>
+            <StackPanel x:Name="RouteDetails">
+              <TextBlock FontSize="12" Opacity=".75" Text="{loc:Loc Route}"/>
+              <Grid x:Name="RouteValueRow" Margin="0,2,12,0" HorizontalAlignment="Left">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="RouteText" FontSize="14" Text="{loc:Loc Automatic}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center"/>
+                <TextBlock x:Name="RouteServerText" Grid.Column="1" Margin="8,0,0,0" FontSize="12" Style="{StaticResource SecondaryText}" TextWrapping="NoWrap" VerticalAlignment="Center" Visibility="Collapsed"/>
+              </Grid>
+            </StackPanel>
             <TextBlock x:Name="RouteChevron" Grid.Column="1" FontFamily="Segoe Fluent Icons" FontSize="12" VerticalAlignment="Center" Text="&#xE76C;"/>
           </Grid>
         </Button>

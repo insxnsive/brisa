@@ -69,7 +69,7 @@ public partial class App : System.Windows.Application
         // photographed in a real state instead of "Automatic".
         var routeArg = isolated ? e.Args.FirstOrDefault(a => a.StartsWith("--route=", StringComparison.Ordinal)) : null;
         var fixtureRoute = routeArg is { Length: > 8 }
-            ? new RouteInfo($"{routeArg[8..].ToUpperInvariant()}#28", routeArg[8..].ToUpperInvariant()) : null;
+            ? new RouteInfo($"{routeArg[8..].ToUpperInvariant()}#28", routeArg[8..].ToUpperInvariant(), 34) : null;
         IBackendClient backend;
         if (isolated && e.Args.Contains("--backend-unavailable", StringComparer.OrdinalIgnoreCase)) backend = new UnavailableBackendClient();
         else if (testMode || smokeOutput is not null) backend = new UiTestBackendClient(

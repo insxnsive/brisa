@@ -46,6 +46,21 @@ public partial class MainWindow : Window
     // Painel de detalhes: um único timer de 1 s, que só roda com o painel na tela e a janela
     // visível. Sessenta amostras dão uma janela de um minuto, que é o que cabe no gráfico.
     private const int ChartSamples = 60;
+    // O país recebe o espaço que sobra depois do servidor e do ping, e só ele trima. Lido da coluna
+    // que contém a linha, não da própria linha, senão o cálculo se alimenta do próprio resultado.
+    private void FitRouteText()
+    {
+        var serverWidth = RouteServerText.Visibility == Visibility.Visible
+            ? RouteServerText.ActualWidth + RouteServerText.Margin.Left
+            : 0;
+        var available = Math.Max(0, RouteDetails.ActualWidth - serverWidth - 12);
+        if (Math.Abs(RouteText.MaxWidth - available) > 0.5) RouteText.MaxWidth = available;
+    }
+
+    // Altura fixa do cartão de tráfego: cabeçalho mais gráfico. Nenhum número novo, e nada que dependa
+    // dos valores, para o cartão não pular enquanto os contadores sobem.
+    private const double TrafficCardHeight = 108;
+
     private readonly System.Windows.Threading.DispatcherTimer _detailsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly double[] _downSamples = new double[ChartSamples];
     private readonly double[] _upSamples = new double[ChartSamples];
@@ -133,7 +148,10 @@ public partial class MainWindow : Window
 
     public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null)
     {
-        InitializeComponent(); _backend = backend; _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
+        InitializeComponent(); TrafficCard.Height = TrafficCardHeight; _backend = backend;
+        // O servidor encosta no país; quando o nome do país não cabe, ele trima e o servidor não.
+        RouteValueRow.SizeChanged += (_, _) => FitRouteText();
+        RouteDetails.SizeChanged += (_, _) => FitRouteText(); _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
         _traffic = traffic ?? new InterfaceTrafficSource();
         _exitWarning = exitWarning ?? (message => { MessageBox.Show(this, message, "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); });
         // Leaving with an unknown installer state is allowed, but only after the user says so:
@@ -223,29 +241,37 @@ public partial class MainWindow : Window
         SetStatusRing(busy);
         UpdateActionAvailability();
 
+        var loc = Localization.LocalizationManager.Current;
         if (state.Snapshot?.Route is { } route)
         {
-            RouteText.Text = CountryName(route.Country);
-            // Sem rótulo de servidor não existe linha: "Server " vazio seria lixo na tela.
+            var country = CountryName(route.Country);
+            RouteText.Text = country;
+            // País e servidor dividem uma linha: o país trima, o servidor e o ping nunca. O peso do
+            // texto separa os dois, então não entra pontuação nenhuma na tela.
             var server = route.Server?.Trim() ?? "";
             if (server.Length == 0)
             {
                 RouteServerText.Text = "";
                 RouteServerText.Visibility = Visibility.Collapsed;
+                System.Windows.Automation.AutomationProperties.SetName(RouteButton, country);
             }
             else
             {
                 RouteServerText.Text = route.PingMs is int ping
-                    ? string.Format(Localization.LocalizationManager.Current["ServerWithPing"], server, ping)
-                    : string.Format(Localization.LocalizationManager.Current["ServerOnly"], server);
+                    ? string.Format(loc["ServerWithPing"], server, ping)
+                    : string.Format(loc["ServerOnly"], server);
                 RouteServerText.Visibility = Visibility.Visible;
+                System.Windows.Automation.AutomationProperties.SetName(RouteButton, route.PingMs is int spokenPing
+                    ? string.Format(loc["RouteAccessibleNameWithPing"], country, server, spokenPing)
+                    : string.Format(loc["RouteAccessibleName"], country, server));
             }
         }
         else
         {
-            RouteText.Text = Localization.LocalizationManager.Current["Automatic"];
+            RouteText.Text = loc["Automatic"];
             RouteServerText.Text = "";
             RouteServerText.Visibility = Visibility.Collapsed;
+            System.Windows.Automation.AutomationProperties.SetName(RouteButton, loc["ChooseRoute"]);
         }
         // Enquanto existe um túnel a rota não pode mudar, e o botão desabilitado sozinho não diz por
         // quê: o chevron vira cadeado, o texto esmaece e a linha explica o que fazer.

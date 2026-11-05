@@ -111,8 +111,10 @@
   <data name="ShowAnimations" xml:space="preserve"><value>Mostrar animações</value></data>
   <data name="SaveLogFilter" xml:space="preserve"><value>Text file (*.txt)|*.txt</value></data>
   <data name="TrayOpen" xml:space="preserve"><value>Open</value></data>
-  <data name="ServerWithPing" xml:space="preserve"><value>Server {0}, {1} ms</value></data>
-  <data name="ServerOnly" xml:space="preserve"><value>Server {0}</value></data>
+  <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
+  <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>
+  <data name="RouteAccessibleName" xml:space="preserve"><value>{0}, server {1}</value></data>
+  <data name="RouteAccessibleNameWithPing" xml:space="preserve"><value>{0}, server {1}, {2} ms</value></data>
   <data name="DiscordTrafficHeader" xml:space="preserve"><value>Discord traffic</value></data>
   <data name="BackendUnknown" xml:space="preserve"><value>Something went wrong. Try again.</value></data>
   <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>WireSock state could not be inspected reliably; no changes were made.</value></data>
