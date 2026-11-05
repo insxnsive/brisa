@@ -1,19 +1,3 @@
-/*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
-/*
- * Contratos e regras sem efeitos colaterais do transporte VPN do plugin.
- *
- * Este arquivo deliberadamente não importa Electron, Vencord ou Node. Além de
- * deixar a parte mais sensível testável, isso evita que o estado do plugin seja
- * confundido com o estado da GUI ou do standalone.
- */
-
-export const VPN_SCHEMA_VERSION = 1;
-export const VPN_OWNER_KIND = "golivebypass-plugin-vpn";
 export const VPN_SERVICE_NAMES = ["wiresock-client-service", "wiresock-pro-client-service"] as const;
 
 export type VpnMode = "proton" | "custom";
@@ -35,14 +19,6 @@ export type VpnState =
     | "blocked_external"
     | "dependency_missing"
     | "recovery_required";
-
-export function normalizeProtonUsername(value: string): string {
-    return value.trim().replace(/@(protonmail\.com|proton\.me|pm\.me)$/i, "");
-}
-
-export function protonUsernamesMatch(expected: string, actual: string): boolean {
-    return normalizeProtonUsername(expected).toLowerCase() === normalizeProtonUsername(actual).toLowerCase();
-}
 
 export interface VpnSettings {
     mode: VpnMode;
@@ -134,38 +110,10 @@ export interface VpnOperationResult {
 export interface WireGuardConfigValidation {
     valid: boolean;
     error?: string;
-}
-
-export const DEFAULT_VPN_SETTINGS: Readonly<VpnSettings> = Object.freeze({
-    mode: "proton",
-    customConfigPath: "",
-    protonUsername: "",
-    protonCountry: "",
-    protonFreeOnly: true,
-    protonAutoPing: true,
-});
-
-export function normalizeVpnSettings(raw: unknown): VpnSettings {
-    const value = raw !== null && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const mode = value.mode === "custom" ? "custom" : "proton";
-    const text = (key: string, max: number) => {
-        const candidate = typeof value[key] === "string" ? value[key].trim() : "";
-        return candidate.slice(0, max);
-    };
-    const country = text("protonCountry", 128)
-        .split(",")
-        .map(part => part.trim().toUpperCase())
-        .filter(part => /^[A-Z]{2}$/.test(part))
-        .join(",");
-
-    return {
-        mode,
-        customConfigPath: text("customConfigPath", 2048),
-        protonUsername: text("protonUsername", 320),
-        protonCountry: country,
-        protonFreeOnly: value.protonFreeOnly !== false,
-        protonAutoPing: value.protonAutoPing !== false,
-    };
+    /** Código estável e de propriedade do Brisa; nunca texto do arquivo do usuário. */
+    code?: string;
+    /** Nome canônico de uma chave recusada, de uma tabela fixa. */
+    key?: string;
 }
 
 export function formatAllowedApps(paths: string[]): string {
@@ -183,18 +131,126 @@ export function formatAllowedApps(paths: string[]): string {
     return [...unique.values()].join(", ");
 }
 
+const HOOK_SPELLINGS: Record<string, string> = Object.freeze({
+    preup: "PreUp", postup: "PostUp", predown: "PreDown", postdown: "PostDown",
+    saveconfig: "SaveConfig", table: "Table",
+});
+const SECTION_KEYS: Record<string, readonly string[]> = Object.freeze({
+    interface: ["privatekey", "address", "dns", "mtu", "listenport"],
+    peer: ["publickey", "presharedkey", "allowedips", "endpoint", "persistentkeepalive"],
+});
+const BRISA_ALLOWED_APPS = /^#\s*@\s*ws\s*:\s*allowedapps\s*=/i;
+const ANY_DIRECTIVE = /^#\s*@/;
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u0085\u2028\u2029]/;
+const UNSAFE_VALUE = /[#;"'`$|&<>]/;
+const CIDR_VALUE = /^[0-9A-Fa-f:.]+\/\d{1,3}$/;
+const ENDPOINT_VALUE = /^(?:[^\s:[\]]+|\[[^\]]+\]):(\d{1,5})$/;
+
+type ParsedConfig = { ok: true; iface: Record<string, string>; peer: Record<string, string> } |
+    { ok: false; code: string; key?: string; error?: string };
+
+function valueIsValid(key: string, value: string): boolean {
+    const items = () => value.split(",").map(item => item.trim()).filter(Boolean);
+    switch (key) {
+        case "privatekey":
+        case "publickey":
+        case "presharedkey":
+            return isValidWireGuardKey(value);
+        case "address":
+        case "allowedips": {
+            const list = items();
+            return list.length > 0 && list.every(item => CIDR_VALUE.test(item));
+        }
+        case "dns": {
+            // Stripped on output; accepted as IPs or hostnames so a normal import is not refused.
+            const list = items();
+            return list.length > 0 && list.every(item => /^[A-Za-z0-9.:_-]+$/.test(item));
+        }
+        case "mtu":
+            return /^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535;
+        case "listenport":
+            return /^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535;
+        case "persistentkeepalive":
+            return value.toLowerCase() === "off" || (/^\d{1,5}$/.test(value) && Number(value) <= 65535);
+        case "endpoint": {
+            const match = ENDPOINT_VALUE.exec(value);
+            if (!match) return false;
+            const port = Number(match[1]);
+            if (port < 1 || port > 65535) return false;
+            const host = value.slice(0, value.lastIndexOf(":"));
+            return host.startsWith("[") || /^[A-Za-z0-9.-]+$/.test(host);
+        }
+        default:
+            return false;
+    }
+}
+
+/**
+ * One parser for both validation and sanitization, so the file Brisa validates is the file
+ * Brisa writes. Anything the elevated WireSock client could act on but Brisa does not
+ * understand is rejected instead of passed through.
+ */
+function parseWireGuardConfig(raw: string): ParsedConfig {
+    if (typeof raw !== "string" || !raw.trim()) return { ok: false, code: "PROFILE_EMPTY", error: "This WireGuard file is empty." };
+    // A bare CR or a Unicode line separator is a line break for some parsers and not for
+    // this one; reject the file instead of letting the two disagree about what it says.
+    if (CONTROL_CHARS.test(raw) || /\r(?!\n)/.test(raw)) return { ok: false, code: "PROFILE_CONTROL_CHARS" };
+    const sections: Record<string, Record<string, string>> = {};
+    let current: string | null = null;
+    for (const rawLine of raw.split(/\r?\n/)) {
+        const line = rawLine.replace(/^\uFEFF/, "").trim();
+        if (!line) continue;
+        if (line.startsWith("#")) {
+            if (BRISA_ALLOWED_APPS.test(line)) continue;
+            if (ANY_DIRECTIVE.test(line)) return { ok: false, code: "PROFILE_DIRECTIVE" };
+            continue;
+        }
+        const header = /^\[([^\]]*)\]$/.exec(line);
+        if (header) {
+            const name = header[1].trim().toLowerCase();
+            if (!Object.hasOwn(SECTION_KEYS, name)) return { ok: false, code: "PROFILE_UNKNOWN_SECTION" };
+            if (sections[name]) return { ok: false, code: "PROFILE_DUPLICATE_SECTION" };
+            sections[name] = {};
+            current = name;
+            continue;
+        }
+        const separator = line.indexOf("=");
+        if (separator < 0) return { ok: false, code: "PROFILE_UNKNOWN_KEY" };
+        const key = line.slice(0, separator).trim().toLowerCase();
+        const value = line.slice(separator + 1).trim();
+        // Brisa owns the app filter: the line is replaced, never merged, wherever it appears.
+        if (key === "allowedapps") continue;
+        if (!current) return { ok: false, code: "PROFILE_UNKNOWN_KEY" };
+        if (Object.hasOwn(HOOK_SPELLINGS, key)) return { ok: false, code: "PROFILE_HOOKS", key: HOOK_SPELLINGS[key] };
+        if (!SECTION_KEYS[current].includes(key)) return { ok: false, code: "PROFILE_UNKNOWN_KEY" };
+        if (Object.hasOwn(sections[current], key)) return { ok: false, code: "PROFILE_DUPLICATE_KEY" };
+        if (UNSAFE_VALUE.test(value) || !valueIsValid(key, value)) return { ok: false, code: "PROFILE_BAD_VALUE" };
+        sections[current][key] = value;
+    }
+    if (!sections.interface) return { ok: false, code: "PROFILE_UNKNOWN_SECTION", error: "A configuração não contém a seção [Interface]." };
+    if (!sections.peer) return { ok: false, code: "PROFILE_UNKNOWN_SECTION", error: "A configuração não contém a seção [Peer]." };
+    return { ok: true, iface: sections.interface, peer: sections.peer };
+}
+
 export function sanitizeWireGuardConfig(raw: string, allowedApps: string): string {
     if (!raw.trim()) throw new Error("A configuração WireGuard está vazia.");
     if (!allowedApps.trim()) throw new Error("AllowedApps não pode ficar vazio.");
-
-    const lines = raw.split(/\r?\n/).map(line => {
-        if (/^\s*DNS\s*=/i.test(line)) return "";
-        if (/^\s*(?:#@ws:)?AllowedApps\s*=/i.test(line)) return `#@ws:AllowedApps = ${allowedApps}`;
-        return line;
-    });
-    if (!lines.some(line => /^\s*#@ws:AllowedApps\s*=/i.test(line)))
-        lines.push(`#@ws:AllowedApps = ${allowedApps}`);
-    return lines.join("\r\n");
+    if (/[\r\n\0]/.test(allowedApps)) throw new Error("AllowedApps não pode conter quebras de linha.");
+    const parsed = parseWireGuardConfig(raw);
+    if (!parsed.ok) throw new Error(parsed.code);
+    // Rebuild instead of filtering lines: only Brisa's own keys and its single app filter
+    // reach the elevated client, and DNS is dropped here rather than by the client.
+    const lines = ["[Interface]",
+        `PrivateKey = ${parsed.iface.privatekey}`,
+        `Address = ${parsed.iface.address}`];
+    if (parsed.iface.mtu) lines.push(`MTU = ${parsed.iface.mtu}`);
+    if (parsed.iface.listenport) lines.push(`ListenPort = ${parsed.iface.listenport}`);
+    lines.push("", "[Peer]", `PublicKey = ${parsed.peer.publickey}`);
+    if (parsed.peer.presharedkey) lines.push(`PresharedKey = ${parsed.peer.presharedkey}`);
+    lines.push(`AllowedIPs = ${parsed.peer.allowedips}`, `Endpoint = ${parsed.peer.endpoint}`);
+    if (parsed.peer.persistentkeepalive) lines.push(`PersistentKeepalive = ${parsed.peer.persistentkeepalive}`);
+    lines.push(`#@ws:AllowedApps = ${allowedApps}`);
+    return `${lines.join("\r\n")}\r\n`;
 }
 
 export function isValidWireGuardKey(value: string): boolean {
@@ -202,38 +258,23 @@ export function isValidWireGuardKey(value: string): boolean {
     return /^[A-Za-z0-9+/]{43}=$/.test(key);
 }
 
-function configValue(raw: string, section: string, key: string): string {
-    let current = "";
-    for (const line of raw.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        const header = /^\[([^\]]+)\]$/.exec(trimmed);
-        if (header) { current = header[1].trim().toLowerCase(); continue; }
-        if (current !== section.toLowerCase()) continue;
-        const match = new RegExp(`^${key}\\s*=\\s*(.+)$`, "i").exec(trimmed);
-        if (match) return match[1].trim();
-    }
-    return "";
-}
-
 export function validateWireGuardConfig(raw: string): WireGuardConfigValidation {
-    const text = raw.trim();
-    if (!text) return { valid: false, error: "A configuração WireGuard está vazia." };
-    if (!/^\s*\[Interface\]\s*$/im.test(text)) return { valid: false, error: "A configuração não contém a seção [Interface]." };
-    if (!/^\s*\[Peer\]\s*$/im.test(text)) return { valid: false, error: "A configuração não contém a seção [Peer]." };
-    const privateKey = configValue(text, "interface", "PrivateKey");
-    if (!privateKey) return { valid: false, error: "A configuração não contém PrivateKey." };
-    if (!isValidWireGuardKey(privateKey)) return { valid: false, error: "PrivateKey inválida: esperada uma chave WireGuard Base64 de 32 bytes." };
-    if (!configValue(text, "interface", "Address")) return { valid: false, error: "A configuração não contém Address." };
-    const publicKey = configValue(text, "peer", "PublicKey");
-    if (!publicKey) return { valid: false, error: "A configuração não contém PublicKey." };
-    if (!isValidWireGuardKey(publicKey)) return { valid: false, error: "PublicKey inválida: esperada uma chave WireGuard Base64 de 32 bytes." };
-    const allowedIps = configValue(text, "peer", "AllowedIPs").split(",").map(value => value.trim());
+    const parsed = parseWireGuardConfig(raw);
+    if (!parsed.ok) return {
+        valid: false, code: parsed.code,
+        error: parsed.error ?? "A configuração WireGuard não é aceita.",
+        ...(parsed.key ? { key: parsed.key } : {}),
+    };
+    const { iface, peer } = parsed;
+    if (!iface.privatekey) return { valid: false, error: "A configuração não contém PrivateKey." };
+    if (!isValidWireGuardKey(iface.privatekey)) return { valid: false, error: "PrivateKey inválida: esperada uma chave WireGuard Base64 de 32 bytes." };
+    if (!iface.address) return { valid: false, error: "A configuração não contém Address." };
+    if (!peer.publickey) return { valid: false, error: "A configuração não contém PublicKey." };
+    if (!isValidWireGuardKey(peer.publickey)) return { valid: false, error: "PublicKey inválida: esperada uma chave WireGuard Base64 de 32 bytes." };
+    const allowedIps = (peer.allowedips ?? "").split(",").map(value => value.trim());
     if (!allowedIps.includes("0.0.0.0/0") && !allowedIps.includes("::/0"))
         return { valid: false, error: "A configuração precisa anunciar uma rota padrão em AllowedIPs." };
-    const endpoint = configValue(text, "peer", "Endpoint");
-    const endpointMatch = /^(?:[^\s:[\]]+|\[[^\]]+\]):(\d{1,5})$/.exec(endpoint);
-    if (!endpointMatch || Number(endpointMatch[1]) < 1 || Number(endpointMatch[1]) > 65535)
-        return { valid: false, error: "A configuração não contém um Endpoint válido." };
+    if (!peer.endpoint) return { valid: false, error: "A configuração não contém um Endpoint válido." };
     return { valid: true };
 }
 
@@ -259,47 +300,9 @@ export function safeDiagnosticDetail(value: unknown, max = 300): string {
 
 /** Lê `Endpoint = host:porta` do perfil WireGuard, sem interpretar o resto do arquivo. */
 export function readWireGuardEndpoint(raw: string): string | null {
-    const endpoint = configValue(raw, "peer", "Endpoint");
+    const parsed = parseWireGuardConfig(raw);
+    const endpoint = parsed.ok ? parsed.peer.endpoint ?? "" : "";
     if (!endpoint) return null;
     const cleaned = endpoint.replace(/[^\x20-\x7E]/g, "").trim().slice(0, 120);
     return cleaned || null;
-}
-
-/**
- * Texto curto da rota para a UI. Não promete localização geográfica: mostra o servidor
- * quando ele foi registrado e sempre o endpoint que está no perfil ativo.
- */
-export function formatVpnRouteSummary(route: VpnRouteInfo | null | undefined): string | null {
-    if (!route) return null;
-    const parts: string[] = [];
-    if (route.server) parts.push(route.server);
-    else parts.push(route.mode === "custom" ? "arquivo .conf personalizado" : "perfil Proton");
-    if (route.endpoint) parts.push(route.endpoint);
-    return parts.join(" · ");
-}
-
-/**
- * Rótulo de "Estado da rota" a partir do estado real do túnel — antes ele vinha só do
- * fluxo de otimização e dizia "pronta para otimizar" com o túnel já ativo.
- */
-export function vpnRouteStateLabel(input: {
-    status: { state?: VpnState | string | null; active?: boolean } | null | undefined;
-    optimizing: boolean;
-    optimizationNotice: string;
-}): string {
-    if (input.optimizing) return "otimizando a rota automaticamente";
-    const status = input.status;
-    if (!status) return input.optimizationNotice;
-    if (status.active || status.state === "active") return "ativa";
-    switch (status.state) {
-        case "authorizing": return "aguardando autorização";
-        case "preparing": return "preparando o túnel";
-        case "starting": return "iniciando o túnel";
-        case "restart_pending": return "reinicie o Discord para concluir";
-        case "stopping": return "desativando";
-        case "blocked_external": return "bloqueada por outro WireSock ativo";
-        case "dependency_missing": return "dependências do sistema ausentes";
-        case "recovery_required": return "recuperação necessária";
-        default: return input.optimizationNotice;
-    }
 }

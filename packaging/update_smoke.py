@@ -37,7 +37,8 @@ def main(release_dir=None, evidence_path=None):
         screenshots = scratch / 'screenshots'
         screenshots.mkdir()
         old_version = '0.0.1'
-        run([sys.executable, ROOT / 'packaging/package.py', '--version', old_version, '--output', older])
+        # A disposable build is never published, so it may come from a tree that differs from HEAD.
+        run([sys.executable, ROOT / 'packaging/package.py', '--version', old_version, '--output', older, '--allow-dirty'])
         with zipfile.ZipFile(older / 'releases/Brisa-win-Portable.zip') as archive:
             archive.extractall(portable)
         if not (portable / '.portable').is_file() or info(portable)['version'] != old_version:

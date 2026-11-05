@@ -6,6 +6,7 @@ using System.Windows.Input;
 using Brisa.Models;
 using System.Windows.Threading;
 using Brisa;
+using Brisa.Security;
 using Brisa.Services;
 
 internal static class Program
@@ -41,6 +42,7 @@ internal static class Program
             Directory.CreateDirectory(root);
             File.WriteAllText(Path.Combine(root, "settings.json"), "{\"Theme\":2,\"CloseToTray\":false}");
             var store = new SettingsStore(root, false);
+            LanguageSwitchWhileConnected(store, Check);
             var unavailableOrder = new List<string>();
             var unavailable = new MainWindow(new UnavailableBackendClient(), store,
                 updates: new OrderedUpdateService(unavailableOrder));
@@ -160,11 +162,7 @@ internal static class Program
                 Check(host.RenderTransform is System.Windows.Media.TranslateTransform or System.Windows.Media.MatrixTransform,
                     "inline page entrance uses a render transform without layout motion");
                 if (name == "Settings")
-                {
                     ((RadioButton)page.FindName("LightTheme")).IsChecked = true;
-                    Check(((TextBlock)page.FindName("VersionText")).Text.Contains(AppVersion.Current), "Settings shows the packaged Brisa version");
-                    Check(!((Button)page.FindName("CheckUpdateButton")).IsEnabled, "isolated navigation never enables network update checks");
-                }
                 Click(back); Click(back); Pump(() => host.Content is null);
                 Check(home.IsVisible && !back.IsVisible, "Back restores Connection");
                 Check(host.Opacity == 1 && host.RenderTransform is System.Windows.Media.MatrixTransform,
@@ -176,6 +174,29 @@ internal static class Program
             ((RadioButton)settings.FindName("LightTheme")).IsChecked = true;
             Click((Button)settings.FindName("SaveButton")); Pump(() => host.Content is null);
             Check(store.Current.Theme == AppTheme.Light && home.IsVisible, "Save applies settings and returns Home");
+            Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
+            // Advanced é página agora, não diálogo: abre na mesma janela e o Voltar retorna a Settings.
+            var settingsPage = (UserControl)host.Content;
+            Click((Button)settingsPage.FindName("AdvancedButton"));
+            Pump(() => host.Content is AdvancedView);
+            Check(!((Button)main.FindName("BackButton")).IsKeyboardFocused, "opening a page does not focus Back");
+            Check(host.Content is AdvancedView, "Advanced opens as a page from the Settings page");
+            Check(Application.Current.Windows.Count == 1, "Advanced opens in the same window");
+            // O foco de entrada vai para a página, não para um controle: ela não pode desenhar
+            // retângulo de foco, senão a região inteira aparece emoldurada na navegação por mouse.
+            var advancedPage = (AdvancedView)host.Content;
+            Check(advancedPage.FocusVisualStyle is null, "the page that takes entry focus paints no focus rectangle");
+            Check(((TextBlock)advancedPage.FindName("VersionText")).Text.Contains(AppVersion.Current), "Advanced shows the packaged Brisa version");
+            Check(!((Button)advancedPage.FindName("CheckUpdateButton")).IsEnabled, "isolated navigation never enables network update checks");
+            var credits = (Expander)advancedPage.FindName("CreditsExpander");
+            Check(credits.Header as string == "License and credits", "the licence sits behind one link");
+            credits.IsExpanded = true; advancedPage.UpdateLayout();
+            var creditText = Flatten(credits).OfType<TextBlock>().Select(t => t.Text).ToList();
+            Check(creditText.Any(t => t.Contains("GPL-3.0")), "the GPL notice is still displayed");
+            Check(creditText.Any(t => t.Contains("GoLiveBypass")), "the upstream attribution is still displayed");
+            Click((Button)main.FindName("BackButton"));
+            Pump(() => host.Content is SettingsView);
+            Check(host.Content is SettingsView, "going back from Advanced returns to Settings");
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
             var cancelled = (UserControl)host.Content;
             ((RadioButton)cancelled.FindName("DarkTheme")).IsChecked = true;
@@ -205,15 +226,25 @@ internal static class Program
             var connecting = new MainWindow(connectBackend, store); connecting.Show(); connecting.InitializeAsync().GetAwaiter().GetResult();
             Click((Button)connecting.FindName("PrimaryButton")); Pump(() => connectBackend.Started);
             connecting.UpdateLayout();
-            var indicator = connecting.FindName("ConnectionProgress") as ProgressBar;
-            var progressVisible = indicator is { IsVisible: true, IsIndeterminate: true, ActualWidth: > 0, ActualHeight: > 0 };
+            // 8b: o traço salmão virou um anel neutro em volta do selo, que gira enquanto há
+            // trabalho a caminho e para quando o estado assenta.
+            var indicator = connecting.FindName("StatusRing") as System.Windows.Shapes.Ellipse;
+            var rotation = connecting.FindName("StatusRingRotation") as System.Windows.Media.RotateTransform;
+            // O anel só gira onde o Windows permite animação. O runner de CI roda com as animações
+            // desligadas, então exigir o giro ali mediria a configuração do sistema, não o app: o
+            // que o teste cobra é o anel visível durante o trabalho e parado depois, e o giro
+            // quando o sistema o permite.
+            var motionAllowed = StatusMotion.Allowed(null);
+            if (motionAllowed && rotation is not null) Pump(() => rotation.HasAnimatedProperties);
+            var ringShown = indicator is { IsVisible: true, ActualWidth: > 0, ActualHeight: > 0 };
+            var progressVisible = ringShown && (!motionAllowed || rotation is { HasAnimatedProperties: true });
             var wasDisabled = !((Button)connecting.FindName("PrimaryButton")).IsEnabled;
             connecting.Close(); Pump(() => !connecting.IsVisible);
             Check(!connectBackend.Release.Task.IsCompleted && app.Windows.Cast<Window>().Contains(connecting),
                 "X during Connect hides the window without cancelling the operation");
             connectBackend.Release.TrySetResult(); Pump(() => ((Button)connecting.FindName("PrimaryButton")).IsEnabled);
             connecting.Show();
-            var stoppedAnimating = indicator is { IsIndeterminate: false, Visibility: Visibility.Hidden };
+            var stoppedAnimating = indicator is { Visibility: Visibility.Collapsed } && (!motionAllowed || rotation is { HasAnimatedProperties: false });
             connecting.RequestExit(); Pump(() => app.Windows.Count == 0);
             Check(progressVisible && wasDisabled, "connecting shows visible animated progress and prevents double submission");
             Check(stoppedAnimating, "progress stops after completion");
@@ -273,6 +304,97 @@ internal static class Program
             Check(trayOrder.Contains("update-apply"), "ordinary explicit exit applies a staged update after safe shutdown");
             Check(!trayOrder.Contains("update-restart"), "ordinary Exit never relaunches the app");
             Check(waitedForPendingNavigation, "Close-to-Tray joins an already-running Back before hiding");
+            // Item 3: an unelevated launch is a usable limited-access screen, not a dead end.
+            var limited = new NativeSnapshot(false, false, false, true, "fixture", null, RequiresElevation: true);
+            var limitedBackend = new SnapshotBackend(limited);
+            var limitedMain = new MainWindow(limitedBackend, store);
+            limitedMain.Show(); limitedMain.InitializeAsync().GetAwaiter().GetResult();
+            var limitedPrimary = (Button)limitedMain.FindName("PrimaryButton");
+            Check(!limitedPrimary.IsEnabled && (string)limitedPrimary.Content == "Connect", "limited access keeps Connect disabled");
+            Check(((TextBlock)limitedMain.FindName("DetailText")).Text.Contains("administrator"), "limited access explains the administrator requirement");
+            var limitedAccount = new AccountView(limitedBackend, limitedMain, limited);
+            Check(((Button)limitedAccount.FindName("ActionButton")).IsEnabled, "signing out stays available while unelevated");
+            var limitedAdvanced = new AdvancedView(limitedBackend, limited);
+            Check(((Button)limitedAdvanced.FindName("ImportButton")).IsEnabled, "importing a profile stays available while unelevated");
+            limitedMain.Close(); Pump(() => !limitedMain.IsVisible);
+
+            // A logon launch stays on Home even when the account is signed out.
+            var signedOut = new NativeSnapshot(false, false, true, false, "", null);
+            var startupHome = new MainWindow(new SnapshotBackend(signedOut), store);
+            startupHome.Show(); startupHome.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Check(((ContentControl)startupHome.FindName("PageHost")).Content is null, "--startup does not jump into Account");
+            var startupAccount = new MainWindow(new SnapshotBackend(signedOut), store);
+            startupAccount.Show(); startupAccount.InitializeAsync().GetAwaiter().GetResult();
+            Check(((ContentControl)startupAccount.FindName("PageHost")).Content is AccountView, "an interactive launch still opens Account when signed out");
+            startupHome.Close(); startupAccount.Close();
+            Pump(() => !startupHome.IsVisible && !startupAccount.IsVisible);
+
+            // A1: one snapshot commit path. A response issued before an operation must not
+            // repaint it, and handlers raised directly must refuse while it runs.
+            var deferred = new DeferredMutationBackend();
+            var a1Main = new MainWindow(deferred, store);
+            a1Main.Show(); a1Main.InitializeAsync().GetAwaiter().GetResult();
+            Check(((Button)a1Main.FindName("PrimaryButton")).IsEnabled, "an idle Home can start a connection");
+            var refreshStatus = typeof(MainWindow).GetMethod("RefreshStatus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            deferred.HoldNextSnapshot();
+            refreshStatus.Invoke(a1Main, [null, EventArgs.Empty]);
+            Pump(() => deferred.HeldSnapshot is not null);
+            Click((Button)a1Main.FindName("PrimaryButton"));
+            Pump(() => ((TextBlock)a1Main.FindName("StatusText")).Text == "Connecting…");
+            Check(!((Button)a1Main.FindName("PrimaryButton")).IsEnabled, "primary is disabled while connecting");
+            Check(!((Button)a1Main.FindName("SettingsButton")).IsEnabled, "Settings is disabled while connecting");
+            // A snapshot requested before the connect must not overwrite the connecting state.
+            deferred.CompleteHeld(new NativeSnapshot(false, false, true, true, "fixture", null));
+            Spin(300);
+            Check(((TextBlock)a1Main.FindName("StatusText")).Text == "Connecting…", "a stale snapshot cannot overwrite Connecting");
+            // Handlers raised directly, not through a disabled control, must also refuse.
+            Click((Button)a1Main.FindName("SettingsButton"));
+            Click((Button)a1Main.FindName("AccountButton"));
+            Click((Button)a1Main.FindName("RouteButton"));
+            Spin(200);
+            Check(((ContentControl)a1Main.FindName("PageHost")).Content is null, "no page opens while an operation runs");
+            Check(deferred.Commands.Count(command => command is "login" or "optimize" or "importConfig") == 0, "no extra command is issued while an operation runs");
+            // Import through the shared gate: refused while busy, allowed when idle.
+            var busyImport = a1Main.ImportConfigAsync(@"C:\picked\route.conf").GetAwaiter().GetResult();
+            Check(!busyImport.Success && busyImport.Code == "UI_BUSY" && busyImport.Message!.Contains("Another operation is still running"), "import is refused while another operation runs");
+            deferred.Current = new(true, false, true, true, "fixture", null);
+            deferred.ConnectGate.TrySetResult(new CommandResult(true));
+            Pump(() => ((TextBlock)a1Main.FindName("StatusText")).Text == "Connected");
+            Check(((Button)a1Main.FindName("PrimaryButton")).IsEnabled && ((Button)a1Main.FindName("SettingsButton")).IsEnabled, "controls come back after the operation releases the gate");
+            var idleImport = a1Main.ImportConfigAsync(@"C:\picked\route.conf").GetAwaiter().GetResult();
+            Check(idleImport.Success && deferred.Commands.Contains("importConfig"), "import runs through the gate when the app is idle");
+            a1Main.Close(); Pump(() => !a1Main.IsVisible);
+
+            // A3: the already-fixed null selection. Clearing the list and confirming must not
+            // throw, and Automatic must stay null rather than becoming an invalid country.
+            var routeWindow = new RouteWindow(a1Main) { Owner = a1Main };
+            routeWindow.Loaded += (_, _) =>
+            {
+                ((ListBox)routeWindow.FindName("CountryList")).SelectedIndex = -1;
+                ((Button)routeWindow.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            };
+            var confirmed = routeWindow.ShowDialog();
+            Check(confirmed == true && routeWindow.SelectedCountry is null, "clearing the country list selects Automatic without throwing");
+
+            // A4: a verification window that cannot start is reported, not silently cancelled.
+            var verification = new MainWindow(new CaptchaBackend(), store)
+            { VerificationDialogFactory = (_, _) => Task.FromException<VerificationAnswer?>(new VerificationUnavailableException()) };
+            verification.Show();
+            var unavailableResult = verification.ExecuteWithVerificationAsync("login", (_, _) => new { }).GetAwaiter().GetResult();
+            Check(!unavailableResult.Success && unavailableResult.Code == "VERIFICATION_UNAVAILABLE" && unavailableResult.Message!.Contains("WebView2"),
+                "a verification window that cannot start is reported to the user");
+            verification.Close(); Pump(() => !verification.IsVisible);
+
+            // A user cancel stays a silent cancellation, never a runtime-install message.
+            var cancelledMain = new MainWindow(new CaptchaBackend(), store)
+            { VerificationDialogFactory = (_, _) => Task.FromResult<VerificationAnswer?>(null) };
+            cancelledMain.Show();
+            var cancelledSilently = false;
+            try { cancelledMain.ExecuteWithVerificationAsync("login", (_, _) => new { }).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { cancelledSilently = true; }
+            Check(cancelledSilently, "a cancelled verification stays a cancellation");
+            cancelledMain.Close(); Pump(() => !cancelledMain.IsVisible);
+
             Console.WriteLine($"{count} inline-navigation assertions passed");
             return 0;
         }
@@ -280,6 +402,53 @@ internal static class Program
         finally { app.Shutdown(); if (Directory.Exists(root)) Directory.Delete(root, true); }
         void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); count++; }
     }
+    private static void LanguageSwitchWhileConnected(SettingsStore store, Action<bool, string> check)
+    {
+        // Trocar o idioma não pode tocar no túnel: a mesma janela continua aberta e nenhum comando
+        // de desconectar ou cancelar sai por causa da troca.
+        var backend = new CountingBackend();
+        var window = new MainWindow(backend, store);
+        window.Show();
+        window.InitializeAsync().GetAwaiter().GetResult();
+        Click((Button)window.FindName("PrimaryButton"));
+        Pump(() => backend.Commands.Contains("connect"));
+        var commandsBefore = backend.Commands.ToArray();
+        var cancelsBefore = backend.Cancels;
+        var languageBefore = Brisa.Localization.LocalizationManager.Current.Language;
+
+        Brisa.Localization.LocalizationManager.Current.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+
+        check(Brisa.Localization.LocalizationManager.Current.Language == "pt-BR", "language applies in place");
+        check(ReferenceEquals(window, window) && window.IsVisible, "switching language keeps the window open");
+        check(backend.Cancels == cancelsBefore, "switching language sends no cancel command");
+        var added = backend.Commands.Skip(commandsBefore.Length).ToArray();
+        check(!added.Any(c => c is "disconnect" or "cancel"), "switching language sends no disconnect or cancel command");
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var label = ((Button)window.FindName("PrimaryButton")).Content as string;
+        check(label == loc["Connect"] || label == loc["Disconnect"] || label == loc["SignIn"],
+            "the primary action is repainted in Portuguese without rebuilding the window");
+
+        Brisa.Localization.LocalizationManager.Current.Apply(languageBefore);
+        window.RequestExit();
+        Pump(() => !window.IsVisible);
+    }
+
+    private sealed class CountingBackend : IBackendClient
+    {
+        public List<string> Commands { get; } = new();
+        public int Cancels { get; private set; }
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) =>
+            Task.FromResult(new NativeSnapshot(false, false, true, true, "fixture", null));
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            lock (Commands) Commands.Add(command);
+            return Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync() { Cancels++; return Task.CompletedTask; }
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     private sealed class StartupProbeBackend : IBackendClient
     {
         private int reads;
@@ -386,7 +555,71 @@ internal static class Program
         public void Dispose() { }
         public ValueTask DisposeAsync() { order.Add("update-stopped"); return ValueTask.CompletedTask; }
     }
+    private static IEnumerable<DependencyObject> Flatten(DependencyObject root)
+    {
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var nested in Flatten(child)) yield return nested;
+        }
+    }
+
     private static void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    private static void Spin(int milliseconds)
+    {
+        var end = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < end)
+        {
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(20) };
+            timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+            timer.Start(); Dispatcher.PushFrame(frame);
+        }
+        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+    }
+    private sealed class DeferredMutationBackend : IBackendClient
+    {
+        private readonly object _sync = new();
+        private TaskCompletionSource<NativeSnapshot>? _held;
+        public NativeSnapshot Current { get; set; } = new(false, false, true, true, "fixture", null);
+        public List<string> Commands { get; } = [];
+        public TaskCompletionSource<CommandResult> ConnectGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<NativeSnapshot>? HeldSnapshot { get { lock (_sync) return _held; } }
+        public void HoldNextSnapshot() { lock (_sync) _held = new(TaskCreationOptions.RunContinuationsAsynchronously); }
+        public void CompleteHeld(NativeSnapshot snapshot) { lock (_sync) { _held?.TrySetResult(snapshot); _held = null; } }
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default)
+        {
+            lock (_sync) { if (_held is not null) return _held.Task; return Task.FromResult(Current); }
+        }
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            lock (_sync) Commands.Add(command);
+            return command == "connect" ? ConnectGate.Task : Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class CaptchaBackend : IBackendClient
+    {
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) => Task.FromResult(new NativeSnapshot(false, false, true, false, "", null));
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) =>
+            Task.FromResult(new CommandResult(false, "HUMAN_VERIFICATION_REQUIRED", "Verification required")
+            { CaptchaUrl = "https://vpn-api.proton.me/core/v4/captcha?Token=fixture-token" });
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class SnapshotBackend(NativeSnapshot snapshot) : IBackendClient
+    {
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) => Task.FromResult(snapshot);
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) => Task.FromResult(new CommandResult(true));
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("Navigation fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
     private static void Pump(Func<bool> completed)
     {
         var end = DateTime.UtcNow.AddSeconds(8);

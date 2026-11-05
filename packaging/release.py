@@ -15,10 +15,34 @@ REPOSITORY = 'insxnsive/brisa'
 VERSION = re.compile(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:alpha|beta|rc)\.(0|[1-9]\d*))?')
 
 
+_DIGESTS = {}
+
+
+def sha256_file(path):
+    """Stream a file through SHA-256 once per (path, size, mtime) so a release run never re-hashes unchanged assets."""
+    path = Path(path)
+    stat = path.stat()
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns)
+    if key not in _DIGESTS:
+        digest = hashlib.sha256()
+        with path.open('rb') as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b''):
+                digest.update(block)
+        _DIGESTS[key] = digest.hexdigest()
+    return _DIGESTS[key]
+
+
 def check_tag(tag, version):
     if not VERSION.fullmatch(version) or tag != 'v' + version:
         raise ValueError('Tag must exactly match the project version')
     return '-' in version
+
+
+def release_tag():
+    tag = os.environ.get('RELEASE_TAG')
+    if not tag:
+        raise SystemExit('RELEASE_TAG is not set (for example v0.1.0-beta.8).')
+    return tag
 
 
 def verify_checksums(root):
@@ -36,7 +60,7 @@ def verify_checksums(root):
     if not entries or actual != set(entries):
         raise ValueError('Checksums do not cover the exact release assets')
     for name, expected in entries.items():
-        if hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
+        if sha256_file(root / name) != expected:
             raise ValueError('Checksum mismatch: ' + name)
 
 
@@ -49,7 +73,7 @@ def verify_feed(root, version):
     if (asset.get('PackageId'), asset.get('Version'), asset.get('Type'), asset.get('FileName')) != ('Brisa', version, 'Full', name):
         raise ValueError('Feed identity/version does not match this Brisa release')
     package = root / name
-    if asset.get('Size') != package.stat().st_size or asset.get('SHA256', '').lower() != hashlib.sha256(package.read_bytes()).hexdigest():
+    if asset.get('Size') != package.stat().st_size or asset.get('SHA256', '').lower() != sha256_file(package):
         raise ValueError('Feed hash/size does not match the full update package')
 
 
@@ -63,13 +87,18 @@ def verify_release(root, version):
             raise ValueError('Missing release asset: ' + name)
     with zipfile.ZipFile(root / f'Brisa-{version}-full.nupkg') as package:
         manifest = json.loads(package.read('lib/app/manifest.sha256.json'))
+        names = set(package.namelist())
         for name, expected in manifest.items():
-            if 'lib/app/' + name not in package.namelist():
+            if 'lib/app/' + name not in names:
                 raise ValueError('Package manifest names a missing file: ' + name)
             data = package.read('lib/app/' + name)
             if len(data) != expected['bytes'] or hashlib.sha256(data).hexdigest() != expected['sha256']:
                 raise ValueError('Package manifest hash/size mismatch: ' + name)
-        if hashlib.sha256(package.read('lib/app/source.zip')).digest() != hashlib.sha256(source.read_bytes()).digest():
+        embedded = hashlib.sha256()
+        with package.open('lib/app/source.zip') as member:
+            for block in iter(lambda: member.read(1024 * 1024), b''):
+                embedded.update(block)
+        if embedded.hexdigest() != sha256_file(source):
             raise ValueError('Distributed source must match the archive bundled in the update')
         info = json.loads(package.read('lib/app/build-info.json'))
         if info.get('version') != version or info.get('repository') != 'https://github.com/' + REPOSITORY:
@@ -83,7 +112,10 @@ def verify_release(root, version):
 
 
 def gh(*args):
-    return subprocess.run(['gh', *map(str, args)], check=True, capture_output=True, text=True).stdout
+    try:
+        return subprocess.run(['gh', *map(str, args)], check=True, capture_output=True, text=True).stdout
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f'gh {args[0]} failed (exit {error.returncode}): {(error.stderr or "").strip()}') from error
 
 
 def verify_uploaded(root, tag, prerelease, draft):
@@ -104,7 +136,7 @@ def verify_uploaded(root, tag, prerelease, draft):
     if set(assets) != set(expected) or len(assets) != len(release['assets']):
         raise ValueError('GitHub release asset inventory does not match the local build')
     for name, path in expected.items():
-        digest = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = 'sha256:' + sha256_file(path)
         if assets[name]['size'] != path.stat().st_size or assets[name].get('digest') != digest:
             raise ValueError('Uploaded asset hash/size mismatch: ' + name)
     return release['html_url']
@@ -152,8 +184,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     version = ET.parse(ROOT / 'src/Brisa/Brisa.csproj').findtext('.//Version')
     if args.command == 'check-tag':
-        print('prerelease=' + str(check_tag(os.environ['RELEASE_TAG'], version)).lower())
+        print('prerelease=' + str(check_tag(release_tag(), version)).lower())
     elif args.command == 'verify':
         verify_release(args.assets, version)
     else:
-        publish(args.assets, os.environ['RELEASE_TAG'], version)
+        publish(args.assets, release_tag(), version)

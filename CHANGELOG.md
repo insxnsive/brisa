@@ -1,5 +1,50 @@
 # Changes
 
+## 1.0.0
+
+First stable release. The beta line ends here; the Windows interface, the connection path and the update flow are the ones that shipped through 0.1.0-beta.10.
+
+- One card on Home: status, route and traffic in a single surface, with the primary action below it and the traffic panel keeping a fixed height so the layout does not jump between states.
+- Two colours do the work. Coral marks an action, teal marks a connected or protected state, and every other state is neutral grey in both themes.
+- Settings is one General page: theme, start with Windows, connection details and language, with the tray note. No scrollbar at the default window size.
+- Advanced explains what the support log contains before generating it, and a rejected configuration says why in plain language.
+- Every visible string exists in English and Brazilian Portuguese. Language sits in Settings, System follows Windows, and a change repaints the open window without a restart.
+- Backend failures arrive as codes the interface translates, so a Portuguese user reads a Portuguese reason instead of the backend's English sentence.
+- The generated support log now states whether the packaged Proton helper is present, which is the first thing support needs when a sign-in fails.
+- Route row shows server and ping, trims the long country name first, and says through a tooltip why the route is locked while connected.
+- Numbers and dates follow the chosen language; durations and log timestamps stay invariant so a log reads the same on any machine.
+- Accessible names on the route, the traffic chart and the direction glyphs, visible focus rings, and WCAG AA contrast in both themes.
+- Motion is limited to a change of state, over 150 to 200 ms, and honours the Windows animation setting.
+
+Brisa is not Authenticode-signed. Checksums in `SHA256SUMS` prove integrity, not publisher identity. WireSock's SDK Free tier carries the vendor's own terms; Brisa does not bundle the SDK.
+
+## 0.1.0-beta.10
+
+- Rebuild Home around one surface: status, route and traffic sit in a single card, with the primary action below it and the traffic card keeping a fixed height so the layout does not jump between states.
+- Apply one colour rule. Coral marks an action, teal marks a connected or protected state, and every other state is neutral grey. The same rule covers both themes.
+- Rebuild Settings as a General section with theme, start with Windows, connection details and language, plus the tray note. The page no longer scrolls at the default window size.
+- Rework Advanced so the support log explains what it contains before you generate it, and an imported configuration that Brisa rejects says why in plain language.
+- Put the server and its ping on the country's line, with the long country name trimming first so the server and the ping stay whole, and explain through a tooltip why the route is locked while connected.
+- Translate the whole interface into Brazilian Portuguese. Language sits in Settings with System, English and Portuguese (Brazil); System follows Windows, and a change repaints the open window without closing it.
+- Turn every backend failure into a code the interface translates, so a Portuguese user reads a Portuguese reason and never the backend's English sentence.
+- Format numbers and dates with the chosen language. Durations and log timestamps stay invariant, so a log reads the same on any machine.
+- Leave product names, the GPL text, the vendor installer and the generated log in English by design, and take country names from one bundled CLDR table instead of translating them one by one.
+- Name the route, the traffic chart and the direction glyphs for screen readers, keep focus rings visible in both themes, and meet WCAG AA contrast throughout.
+- Animate only a change of state, over 150 to 200 ms, and honour the Windows animation setting.
+
+## 0.1.0-beta.9
+
+- Refuse to run a WireSock binary that is not signed by the vendor or that sits in a folder a normal user can write to. Discovery reads the machine-wide install only, checks the executable and its booster, compares the certificate subject exactly, and re-checks both immediately before every elevated use.
+- Keep a stop that already confirmed the tunnel is down from failing: an optional global action that cannot be verified is skipped instead of turning the result into "still running", and the network-lock reset, DNS reset and cache flush each stay inside their own budget.
+- Pause the three-minute connect deadline while the vendor installer is open, with a thirty-minute ceiling and an explicit timeout message instead of a silent cancellation.
+- Stop trapping the user in a window that cannot close. When the installer state is unknown the exit path asks "Exit Brisa anyway?" and says Discord was closed; the backend refuses cancellation while supervision is lost instead of reporting a normal cancel.
+- Bound every backend call. The stop reserves ten seconds for its final check, the residual read always carries a real timeout, and the exit path no longer runs the snapshot, the disconnect and the confirming snapshot on one shared token.
+- Report a snapshot that overlapped a connect or a disconnect as stale instead of publishing a pre-tunnel reading, and re-check freshness at every use rather than once after the inspection.
+- Probe WireSock once per selection, asynchronously, with the trust verdict included. Connection setup went from about 3 s to about 1.4 s on the development machine.
+- Close Discord before stopping the tunnel and put it back on the normal route afterwards. If Discord cannot be found, stop the tunnel anyway and record the failure rather than leaving the tunnel running.
+- Sweep stale cancellation markers left by earlier attempts, and share one inspection between concurrent snapshots so a slow query does not open a second one.
+- Remove the dead tunnel and route orchestration code left behind by the earlier installer work.
+
 ## 0.1.0-beta.8
 
 - Fix the packaged backend exiting before status and sign-in become available. Windows PowerShell now compiles the private-storage helper against its own .NET Framework assemblies, not Brisa's bundled .NET assemblies in the application working directory.

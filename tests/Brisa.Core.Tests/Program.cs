@@ -26,12 +26,84 @@ var tests = new (string Name, Action Run)[]
         Assert(state.Phase == ConnectionPhase.Blocked && !state.PrimaryEnabled && state.Detail!.Contains("Another app"));
     }),
     ("unreliable inspection fails closed", () => Assert(!HomeState.FromSnapshot(new(false, false, false, false, "", null)).PrimaryEnabled)),
+    ("mixed ownership keeps the app open instead of exiting", () =>
+    {
+        var snapshot = new NativeSnapshot(false, true, true, true, "u", null, OwnedTunnelPresent: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.Phase == ConnectionPhase.Blocked && !state.PrimaryEnabled && state.Detail!.Contains("still running alongside"));
+        var backend = new UiTestBackendClient(snapshot);
+        Throws<InvalidOperationException>(() => ExitGuard.StopOwnedAsync(backend, false).GetAwaiter().GetResult());
+        Assert(!backend.Commands.Contains("disconnect"));
+    }),
+    ("unreliable but positively owned never exits or connects", () =>
+    {
+        var snapshot = new NativeSnapshot(false, false, false, true, "u", null, OwnedTunnelPresent: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(!state.PrimaryEnabled && state.Detail!.Contains("may still be running"));
+        var backend = new UiTestBackendClient(snapshot);
+        Throws<InvalidOperationException>(() => ExitGuard.StopOwnedAsync(backend, false).GetAwaiter().GetResult());
+        Assert(!backend.Commands.Contains("disconnect"));
+    }),
+    ("an unknown installer lets the app exit instead of trapping the user", () =>
+    {
+        // installerUnknown forces every snapshot to be unreliable. Refusing exit then leaves
+        // Task Manager as the only way out, after telling the user to restart Brisa.
+        var snapshot = new NativeSnapshot(false, false, false, true, "u", null, InspectionReliable: true, InstallerUnknown: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.Phase == ConnectionPhase.Blocked && state.Detail!.Contains("installation status is unknown"));
+        Assert(!state.Detail.Contains("administrator"));
+        var backend = new UiTestBackendClient(snapshot) { RefuseCancel = true };
+        var decision = ExitGuard.DecideAsync(backend, true).GetAwaiter().GetResult();
+        Assert(decision.Warning is not null && !decision.SafeToApplyUpdate);
+        Assert(!backend.Commands.Contains("disconnect"));
+    }),
+    ("limited access keeps Connect disabled and is not an error", () =>
+    {
+        var snapshot = new NativeSnapshot(false, false, false, false, "", null, RequiresElevation: true);
+        var state = HomeState.FromSnapshot(snapshot);
+        Assert(state.Phase == ConnectionPhase.Limited && !state.PrimaryEnabled && state.PrimaryLabel == "Connect");
+        Assert(state.Detail!.Contains("administrator") && !state.StartupFailed);
+    }),
+    ("optimizing has its own busy text and disables the primary action", () =>
+    {
+        var snapshot = new NativeSnapshot(false, false, true, true, "u", null);
+        var state = new HomeState(ConnectionPhase.Optimizing, snapshot, "Choosing the best route for your selection…");
+        Assert(state.StatusText == "Optimizing route…");
+        Assert(!state.PrimaryEnabled);
+        // The snapshot itself is idle: only the phase says an operation is running, so the
+        // state must not be mistaken for a fresh Disconnected observation.
+        Assert(HomeState.FromSnapshot(snapshot).Phase == ConnectionPhase.Disconnected);
+    }),
+    ("hasOwnedTunnel round-trips once and old JSON still loads", () =>
+    {
+        var json = JsonSerializer.Serialize(new NativeSnapshot(false, true, true, true, "u", null, OwnedTunnelPresent: true),
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        Assert(json.Contains("\"hasOwnedTunnel\":true"));
+        Assert(json.Split("\"hasOwnedTunnel\"").Length == 2);
+        var old = JsonSerializer.Deserialize<NativeSnapshot>(
+            "{\"connected\":false,\"tunnelActive\":false,\"externalTunnel\":false,\"reliable\":true,\"signedIn\":true,\"username\":\"u\",\"route\":null}",
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Assert(!old.HasOwnedTunnel && !old.RequiresElevation);
+    }),
     ("ndjson parses exact envelope", () =>
     {
         var frame = NdjsonProtocol.ParseResponse("{\"id\":\"a\",\"ok\":true,\"result\":{\"success\":true}}");
         Assert(frame.Id == "a" && frame.Ok && frame.Result.GetProperty("success").GetBoolean());
         Throws<InvalidDataException>(() => NdjsonProtocol.ParseResponse("{\"id\":\"a\"}\n{}"));
         Throws<InvalidDataException>(() => NdjsonProtocol.ParseResponse("not json"));
+    }),
+    ("ndjson recovers only an unambiguous request id", () =>
+    {
+        Assert(NdjsonProtocol.TryRecoverRequestId("{\"id\":\"a\",\"ok\":true}", out var recovered) && recovered == "a");
+        // Duplicate or non-string ids are ambiguous: the frame must not be attributed.
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":\"a\",\"id\":\"b\"}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":7}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":\"  \"}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"ok\":true}", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("[{\"id\":\"a\"}]", out _));
+        Assert(!NdjsonProtocol.TryRecoverRequestId("not json", out _));
+        // An oversized frame is never re-parsed.
+        Assert(!NdjsonProtocol.TryRecoverRequestId("{\"id\":\"a\",\"pad\":\"" + new string('x', NdjsonProtocol.MaxResponseCharacters) + "\"}", out _));
     }),
     ("ndjson request keeps secrets in framed payload", () =>
     {
@@ -181,12 +253,154 @@ var tests = new (string Name, Action Run)[]
         service.CheckNowAsync().GetAwaiter().GetResult();
         Assert(service.Status.Phase == UpdatePhase.Error);
         Assert(!service.Status.Message.Contains("private", StringComparison.OrdinalIgnoreCase));
-    })
+    }),
+    ("the panel numbers keep three significant figures", () =>
+    {
+        Assert(MetricsFormat.Rate(430_000) == "430 KB/s");
+        Assert(MetricsFormat.Rate(92_100) == "92.1 KB/s");
+        Assert(MetricsFormat.Rate(9_070) == "9.07 KB/s");
+        Assert(MetricsFormat.Rate(842) == "842 B/s");
+    }),
+    ("units switch at one thousand, not one thousand and twenty-four", () =>
+    {
+        Assert(MetricsFormat.Size(999) == "999 B");
+        Assert(MetricsFormat.Size(1_000) == "1.00 KB");
+        Assert(MetricsFormat.Size(1_600_000) == "1.60 MB");
+        Assert(MetricsFormat.Size(82_500_000) == "82.5 MB");
+        Assert(MetricsFormat.Size(1_250_000_000) == "1.25 GB");
+    }),
+    ("the duration switches to hours at the boundary", () =>
+    {
+        Assert(MetricsFormat.Duration(TimeSpan.FromSeconds(65)) == "1:05");
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(59.5)) == "59:30");
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(60)) == "1:00:00");
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(65)) == "1:05:00");
+        Assert(MetricsFormat.Duration(TimeSpan.FromHours(12.5)) == "12:30:00");
+    }),
+    ("an English UI never formats numbers with a comma decimal", () =>
+    {
+        Assert(!MetricsFormat.Size(26_100_000).Contains(','));
+        Assert(!MetricsFormat.Rate(907_900).Contains(','));
+    }),
+    ("a Portuguese UI formats numbers with a comma decimal", () =>
+    {
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        Assert(MetricsFormat.Size(26_100_000).Contains(','));
+        Assert(MetricsFormat.Rate(1_310_000).Contains(','));
+        Assert(MetricsFormat.Duration(TimeSpan.FromMinutes(5)) == "5:00");
+        loc.Apply(before);
+    }),
+    ("backend text never shows English prose to a Portuguese interface", () =>
+    {
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Outra operação do serviço nativo ainda está em andamento.");
+        // A code the table does not know must not leak the backend's English sentence into pt-BR.
+        var unknown = Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.");
+        Assert(unknown != "English fallback.");
+        Assert(unknown == loc["BackendUnknown"]);
+        loc.Apply(Brisa.Localization.LocalizationManager.English);
+        Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Another native backend operation is still running.");
+        Assert(Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.") == "English fallback.");
+        loc.Apply(before);
+    }),
+    ("every code the backend can emit has a string in both languages", () =>
+    {
+        // O contrato é: um código novo no backend sem tradução vira uma mensagem genérica, sem a
+        // causa nem a orientação. Este teste percorre todos os módulos, não só backend.mjs, e falha
+        // quando o backend cresce um código sem string.
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "backend", "src")))
+            root = root.Parent;
+        Assert(root is not null);
+        var backend = Path.Combine(root!.FullName, "backend", "src");
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        // Toda tabela congelada de mensagens conta, com ou sem nome: a de compatibilidade do Discord
+        // é `const messages` e passou por fora da varredura por nome.
+        var tables = @"Object\.freeze\(\{(?<body>.*?)\n\}\);";
+        var literals = @"code\s*[:=]\s*""(?<code>[A-Z][A-Z_0-9]{2,})""";
+        // Códigos que viajam como argumento de construtor, e não como campo.
+        var thrown = @"new\s+\w*Error\(\s*""(?<code>[A-Z][A-Z_0-9]{2,})""\s*\)";
+        foreach (var file in Directory.EnumerateFiles(backend, "*.mjs", SearchOption.AllDirectories)
+                     .Concat(Directory.EnumerateFiles(backend, "*.ts", SearchOption.AllDirectories)))
+        {
+            var source = File.ReadAllText(file);
+            foreach (System.Text.RegularExpressions.Match table in System.Text.RegularExpressions.Regex.Matches(
+                         source, tables, System.Text.RegularExpressions.RegexOptions.Singleline))
+                foreach (System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(
+                             table.Groups["body"].Value, @"\n  (?<code>[A-Z][A-Z_0-9]{2,}):"))
+                    codes.Add(entry.Groups["code"].Value);
+            foreach (System.Text.RegularExpressions.Match literal in System.Text.RegularExpressions.Regex.Matches(source, literals))
+                codes.Add(literal.Groups["code"].Value);
+            foreach (System.Text.RegularExpressions.Match error in System.Text.RegularExpressions.Regex.Matches(source, thrown))
+                codes.Add(error.Groups["code"].Value);
+        }
+        // Códigos de plataforma que nunca chegam a uma mensagem do produto.
+        codes.Remove("ABORT_ERR");
+        Assert(codes.Count > 50);
+        // Os dois códigos que a varredura anterior perdia: eles existem só na tabela sem nome e no
+        // construtor do erro de compatibilidade, então a cobertura precisa provar que os achou.
+        foreach (var required in new[] { "DISCORD_UNAVAILABLE", "DISCORD_CHANGED", "DISCORD_CHECK_FAILED" })
+            if (!codes.Contains(required)) throw new Exception("the scan must discover " + required);
+        var localization = Path.Combine(root!.FullName, "src", "Brisa", "Localization");
+        var missing = new List<string>();
+        foreach (var file in new[] { "Strings.resx", "Strings.pt-BR.resx" })
+        {
+            var text = File.ReadAllText(Path.Combine(localization, file));
+            foreach (var code in codes)
+                if (!text.Contains($"\"Backend.{code}\"", StringComparison.Ordinal)) missing.Add($"{file}: {code}");
+        }
+        if (missing.Count > 0) throw new Exception("missing translations: " + string.Join(", ", missing));
+    }),
+    ("a retained error state follows the language without a refresh", () =>
+    {
+        // O estado de erro guarda uma chave, então o texto muda com o idioma mesmo sem um snapshot
+        // novo: antes ele guardava a frase já traduzida e ficava no idioma antigo.
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        var state = new Brisa.Models.HomeState(Brisa.Models.ConnectionPhase.Error, null, "ServiceTimeout");
+        var portuguese = state.Detail;
+        Assert(portuguese == loc["ServiceTimeout"] && portuguese != "ServiceTimeout");
+        loc.Apply(Brisa.Localization.LocalizationManager.English);
+        Assert(state.Detail == loc["ServiceTimeout"]);
+        Assert(state.Detail != portuguese);
+        Assert(state.StatusText == loc["StatusError"]);
+        loc.Apply(before);
+    }),
+    ("the system language survives a language switch", () =>
+    {
+        // Apply rewrites the process culture, so reading CurrentUICulture after it would return the
+        // user's choice instead of the Windows language. The captured value must not move.
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var system = Brisa.Localization.LocalizationManager.SystemLanguage();
+        var before = loc.Language;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        Assert(Brisa.Localization.LocalizationManager.SystemLanguage() == system);
+        Assert(loc.Apply("system") == true || loc.Language == system);
+        Assert(loc.Language == system);
+        loc.Apply(before);
+    }),
 };
 
 var failures = new List<string>();
 foreach (var test in tests) try { test.Run(); Console.WriteLine($"PASS {test.Name}"); } catch (Exception ex) { failures.Add($"FAIL {test.Name}: {ex.Message}"); }
 foreach (var failure in failures) Console.Error.WriteLine(failure);
+        // Finding 3: a visible vendor installer must not be cancelled by the three-minute limit,
+        // and the hard ceiling must still bound the wait.
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        Assert(InstallerDeadline.Decide(start, TimeSpan.FromSeconds(30), start.AddMinutes(2), true) == InstallerDeadline.Expiry.None);
+        Assert(InstallerDeadline.Decide(start, TimeSpan.FromMinutes(3), start.AddMinutes(4), false) == InstallerDeadline.Expiry.Connect);
+        Assert(InstallerDeadline.Decide(start, TimeSpan.FromMinutes(29), start.AddMinutes(31), true) == InstallerDeadline.Expiry.Ceiling);
+        // The poll cadence can be about 2.4 s per tick, so the grace must cover a slow poll.
+        Assert(InstallerDeadline.IsInstallerActive(start, start.AddSeconds(5)));
+        Assert(!InstallerDeadline.IsInstallerActive(start, start.AddSeconds(7)));
+        Assert(InstallerDeadline.InstallerGrace >= TimeSpan.FromSeconds(6));
+        Assert(!InstallerDeadline.IsInstallerActive(null, start));
+
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed");
 return failures.Count == 0 ? 0 : 1;
 

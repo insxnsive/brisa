@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\Brisa.ico</ApplicationIcon>
     <RootNamespace>Brisa</RootNamespace>
     <StartupObject>Brisa.App</StartupObject>
-    <Version>0.1.0-beta.8</Version>
+    <Version>1.0.0</Version>
     <Authors>insxnsive</Authors>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
     <Product>Brisa</Product>
@@ -24,5 +24,12 @@
   <ItemGroup>
     <ApplicationDefinition Remove="App.xaml" />
     <Page Include="App.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Test seams only: the request deadline must be short in transport tests. -->
+    <InternalsVisibleTo Include="Brisa.Integration.Tests" />
+    <InternalsVisibleTo Include="Brisa.Core.Tests" />
+    <InternalsVisibleTo Include="Brisa.Navigation.Tests" />
+    <InternalsVisibleTo Include="Brisa.Appearance.Tests" />
   </ItemGroup>
 </Project>

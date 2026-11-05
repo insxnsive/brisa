@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using Brisa.Localization;
 using Brisa.Security;
 using Microsoft.Web.WebView2.Core;
 
@@ -16,7 +17,8 @@ public partial class VerificationWindow : Window
 
     public VerificationWindow(VerificationChallenge challenge, CancellationToken cancellationToken)
     {
-        InitializeComponent(); _challenge = challenge; _cancellationToken = cancellationToken;
+        InitializeComponent(); Title = LocalizationManager.Current["VerificationTitle"];
+        _challenge = challenge; _cancellationToken = cancellationToken;
         Loaded += OnLoaded; Closed += OnClosed;
     }
 
@@ -50,9 +52,17 @@ public partial class VerificationWindow : Window
                   window.chrome.webview.postMessage(value);
                 });
                 """);
+            if (_closed || _cancellationToken.IsCancellationRequested) return;
             core.Navigate(_challenge.Url.AbsoluteUri);
         }
-        catch { _result.TrySetResult(null); if (!_closed) Close(); }
+        catch (Exception ex)
+        {
+            // A startup failure is not a cancellation: report it, unless the user already
+            // closed the window or the token won the race, in which case null stands.
+            if (!_closed && !_cancellationToken.IsCancellationRequested)
+                _result.TrySetException(new Services.VerificationUnavailableException(ex));
+            if (!_closed) Close();
+        }
     }
 
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)

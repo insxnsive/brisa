@@ -28,15 +28,21 @@ test("production wires scoped Discord restart, route proof and post-start settli
 });
 
 test("native start prepares WireSock on demand before launching the owned tunnel", () => {
-  assert.match(source, /await ensureWireSockInstalled\(/);
-  assert.match(source, /findWireSockCandidate\(\)/);
-  assert.match(source, /A compatible WireSock SDK installation is required\./);
+  // One preparation returns the whole validated pair; a second discovery here could pick a
+  // different pair than the one just validated, and repeated the registry/CIM cost.
+  assert.match(source, /await ensureWireSockCandidate\(\(\) => \{\}, \{ signal, onEvent: options\?\.onEvent \}\)/);
+  assert.doesNotMatch(source, /findWireSockCandidate\(\)/);
+  assert.match(source, /return \{ configPath: target, candidate \}/);
 });
 
 test("WireSock setup launches the verified vendor installer visibly, never silently", () => {
   const vpnWindows = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/network/vpn-windows.ts"), "utf8");
   assert.match(vpnWindows, /WIRESOCK_INSTALLER_SHA256/);
-  assert.match(vpnWindows, /Start-Process -FilePath .* -Verb RunAs -WindowStyle Normal/);
+  // Elevation goes through ProcessStartInfo so a declined prompt raises a Win32Exception the
+  // wrapper can recognise, instead of an InvalidOperationException with no error code.
+  assert.match(vpnWindows, /Diagnostics.ProcessStartInfo/);
+  assert.match(vpnWindows, /\$psi\.Verb = 'runas'/);
+  assert.doesNotMatch(vpnWindows, /Start-Process -FilePath/);
   assert.doesNotMatch(vpnWindows, /ArgumentList @\('\/quiet','\/norestart'\)/);
 });
 
@@ -48,4 +54,20 @@ test("native WireSock start uses direct application mode without global service 
   assert.ok(source.includes("elevatedPowerShellFileArgs(scriptPath, resultPath)"));
   assert.ok(source.includes("file === cancelPath && cancellationMarked"));
   assert.match(source, /Get-CimInstance Win32_(?:Service|Process)/);
+});
+
+test("start refusals are classified instead of collapsed into one message", () => {
+  assert.match(source, /classifyStartResult\(/);
+  assert.match(source, /WireSockStartError/);
+  assert.match(source, /START_STATE_UNRELIABLE/);
+  assert.match(source, /START_EXTERNAL_ACTIVE/);
+  assert.match(source, /START_NOT_CONFIRMED/);
+  // Vendor output is never read: the result file carries the only code that leaves here.
+  assert.doesNotMatch(source, /readFileSync\([^)]*stderr/);
+});
+
+test("production persists diagnostics inside the private data directory", () => {
+  assert.match(production, /createDiagnostics\(\{ file: path\.join\(dataDir, "diagnostics\.log"\) \}\)/);
+  assert.match(production, /diag: diagnostics/);
+  assert.match(production, /if \(!elevated\) diagnostics\.record\("startup", "NOT_ELEVATED"\)/);
 });

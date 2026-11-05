@@ -13,6 +13,17 @@ test("host internet success is not proof of split-tunnel routing", () => {
   assert.equal(verifyRouteEvidence(direct, result(observation("invalid-ip"))).verified, false);
   assert.equal(verifyRouteEvidence(direct, result(observation("198.51.100.2", "different-source"))).verified, false);
 });
+test("an address-family mismatch is not proof of a changed egress", () => {
+  // An IPv4 baseline says nothing about an IPv6 egress, or the reverse.
+  assert.deepEqual(verifyRouteEvidence(result(observation("192.0.2.1")), result(observation("2001:db8::1"))), { verified: false, reason: "probe_failed" });
+  assert.deepEqual(verifyRouteEvidence(result(observation("2001:db8::1")), result(observation("198.51.100.2"))), { verified: false, reason: "probe_failed" });
+  // A matching family pair that did not change still refuses, even when the other family moved.
+  const direct = result(observation("192.0.2.1"), observation("2001:db8::1"));
+  const tunneled = result(observation("192.0.2.1"), observation("2001:db8::2"));
+  assert.deepEqual(verifyRouteEvidence(direct, tunneled), { verified: false, reason: "same_as_direct" });
+  // And a same-family pair that did change still verifies.
+  assert.deepEqual(verifyRouteEvidence(result(observation("2001:db8::1")), result(observation("2001:db8::2"))), { verified: true, reason: "verified" });
+});
 test("verification uses a separate helper path, never routes the account helper", async () => {
   const calls = [];
   const verifier = createRouteVerifier({ helperPath: "C:/fixture/resources/proton-confgen.exe", probePath: "C:/fixture/data/brisa-route-probe.exe",

@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <data name="AppTitle" xml:space="preserve"><value>Brisa</value></data>
+  <data name="HomeTitle" xml:space="preserve"><value>Início</value></data>
+  <data name="SettingsTitle" xml:space="preserve"><value>Configurações</value></data>
+  <data name="Back" xml:space="preserve"><value>Voltar</value></data>
+  <data name="General" xml:space="preserve"><value>Geral</value></data>
+  <data name="StartWithWindows" xml:space="preserve"><value>Iniciar com o Windows</value></data>
+  <data name="CloseToTrayNote" xml:space="preserve"><value>Fechar a janela mantém o Brisa na bandeja. Use Sair no menu da bandeja para encerrar.</value></data>
+  <data name="ThemeLabel" xml:space="preserve"><value>Tema</value></data>
+  <data name="ThemeSystem" xml:space="preserve"><value>Sistema</value></data>
+  <data name="ThemeLight" xml:space="preserve"><value>Claro</value></data>
+  <data name="ThemeDark" xml:space="preserve"><value>Escuro</value></data>
+  <data name="LanguageLabel" xml:space="preserve"><value>Idioma</value></data>
+  <data name="LanguageSystem" xml:space="preserve"><value>Sistema</value></data>
+  <data name="LanguageEnglish" xml:space="preserve"><value>English</value></data>
+  <data name="LanguagePortuguese" xml:space="preserve"><value>Português (Brasil)</value></data>
+  <data name="ShowDetails" xml:space="preserve"><value>Mostrar detalhes da conexão</value></data>
+  <data name="Save" xml:space="preserve"><value>Salvar</value></data>
+  <data name="Advanced" xml:space="preserve"><value>Avançado</value></data>
+  <data name="ImportConfiguration" xml:space="preserve"><value>Importar configuração</value></data>
+  <data name="GenerateLog" xml:space="preserve"><value>Gerar log</value></data>
+  <data name="SaveLog" xml:space="preserve"><value>Salvar…</value></data>
+  <data name="CopyLog" xml:space="preserve"><value>Copiar</value></data>
+  <data name="NoLogGenerated" xml:space="preserve"><value>Nenhum log gerado ainda.</value></data>
+  <data name="LogCopied" xml:space="preserve"><value>Log copiado.</value></data>
+  <data name="LogSaved" xml:space="preserve"><value>Log salvo.</value></data>
+  <data name="AdvancedSubtitle" xml:space="preserve"><value>Importe um perfil ou gere um log para enviar junto com um pedido de suporte.</value></data>
+  <data name="CheckForUpdates" xml:space="preserve"><value>Verificar atualizações</value></data>
+  <data name="RestartToUpdate" xml:space="preserve"><value>Reiniciar para atualizar</value></data>
+  <data name="LicenseAndCredits" xml:space="preserve"><value>Licença e créditos</value></data>
+  <data name="TrayExit" xml:space="preserve"><value>Sair</value></data>
+  <data name="SaveLogDialogTitle" xml:space="preserve"><value>Salvar log</value></data>
+  <data name="ImportDialogTitle" xml:space="preserve"><value>Importar configuração do WireGuard</value></data>
+  <data name="ImportDialogFilter" xml:space="preserve"><value>Configuração do WireGuard (*.conf)|*.conf</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="AdvancedTooltip" xml:space="preserve"><value>Importe uma configuração ou veja o diagnóstico</value></data>
+  <data name="SettingsSaveFailed" xml:space="preserve"><value>Não foi possível salvar as configurações. Tente de novo.</value></data>
+  <data name="Connect" xml:space="preserve"><value>Conectar</value></data>
+  <data name="Disconnect" xml:space="preserve"><value>Desconectar</value></data>
+  <data name="StatusChecking" xml:space="preserve"><value>Verificando o status…</value></data>
+  <data name="StatusConnecting" xml:space="preserve"><value>Conectando…</value></data>
+  <data name="StatusDisconnecting" xml:space="preserve"><value>Desconectando…</value></data>
+  <data name="StatusOptimizing" xml:space="preserve"><value>Otimizando a rota…</value></data>
+  <data name="StatusConnected" xml:space="preserve"><value>Conectado</value></data>
+  <data name="StatusUnverified" xml:space="preserve"><value>Não verificado</value></data>
+  <data name="StatusUnavailable" xml:space="preserve"><value>Indisponível</value></data>
+  <data name="StatusAdministratorRequired" xml:space="preserve"><value>Administrador necessário</value></data>
+  <data name="StatusError" xml:space="preserve"><value>Não foi possível carregar o status</value></data>
+  <data name="StatusDisconnected" xml:space="preserve"><value>Desconectado</value></data>
+  <data name="ExitBrisa" xml:space="preserve"><value>Sair do Brisa</value></data>
+  <data name="SignIn" xml:space="preserve"><value>Entrar</value></data>
+  <data name="Account" xml:space="preserve"><value>Conta</value></data>
+  <data name="Automatic" xml:space="preserve"><value>Automático</value></data>
+  <data name="BackLabel" xml:space="preserve"><value>Voltar (Alt+Seta para a esquerda)</value></data>
+  <data name="ImportTooltip" xml:space="preserve"><value>Escolha um arquivo de configuração do WireGuard</value></data>
+  <data name="ChooseRouteHelper" xml:space="preserve"><value>Escolha automaticamente ou selecione um país para otimizar dentro dele.</value></data>
+  <data name="ChooseRoute" xml:space="preserve"><value>Escolher rota</value></data>
+  <data name="VerificationHelper" xml:space="preserve"><value>Conclua a verificação da Proton abaixo. Este navegador temporário fica isolado do restante do aplicativo.</value></data>
+  <data name="ConnectedFor" xml:space="preserve"><value>Tempo conectado</value></data>
+  <data name="ConnectionInProgress" xml:space="preserve"><value>Conexão em andamento</value></data>
+  <data name="ConnectionStatus" xml:space="preserve"><value>Status da conexão</value></data>
+  <data name="CreateAccount" xml:space="preserve"><value>Criar uma conta Proton gratuita</value></data>
+  <data name="CredentialsHelper" xml:space="preserve"><value>Credenciais e sessões ficam apenas na pasta de dados isolada do aplicativo nativo.</value></data>
+  <data name="DisconnectToChangeRoute" xml:space="preserve"><value>Desconecte para trocar a rota</value></data>
+  <data name="VerificationTitle" xml:space="preserve"><value>Verifique sua conta</value></data>
+  <data name="UpdateIdle" xml:space="preserve"><value>As atualizações são verificadas automaticamente.</value></data>
+  <data name="UpdateChecking" xml:space="preserve"><value>Verificando atualizações…</value></data>
+  <data name="UpdateDownloading" xml:space="preserve"><value>Baixando atualização…</value></data>
+  <data name="UpdateUpToDate" xml:space="preserve"><value>O Brisa está atualizado.</value></data>
+  <data name="UpdateReadyOnExit" xml:space="preserve"><value>Uma atualização será instalada quando você sair do Brisa.</value></data>
+  <data name="UpdateReadyVersion" xml:space="preserve"><value>O Brisa {0} será instalado quando você sair.</value></data>
+  <data name="SignOut" xml:space="preserve"><value>Sair da conta</value></data>
+  <data name="AccountSubtitle" xml:space="preserve"><value>Sua conta Proton.</value></data>
+  <data name="NewToProton" xml:space="preserve"><value>Novo no Proton?</value></data>
+  <data name="CreateFreeAccount" xml:space="preserve"><value>Criar uma conta gratuita</value></data>
+  <data name="SignUpHelp" xml:space="preserve"><value>Abra https://account.protonvpn.com/signup?plan=free no navegador para criar uma conta.</value></data>
+  <data name="AccountOperationStopping" xml:space="preserve"><value>A operação da conta ainda está parando. Tente voltar de novo em instantes.</value></data>
+  <data name="RouteStateChanged" xml:space="preserve"><value>O estado da conexão mudou enquanto você escolhia a rota. A escolha não foi aplicada. Tente de novo quando o Brisa estiver parado.</value></data>
+  <data name="DetailOptimizing" xml:space="preserve"><value>Escolhendo a melhor rota para a sua seleção…</value></data>
+  <data name="Backend.INVALID_CREDENTIALS" xml:space="preserve"><value>O usuário ou a senha do Proton foi recusado.</value></data>
+  <data name="Backend.START_CLIENT_EXITED" xml:space="preserve"><value>O WireSock iniciou e parou logo em seguida. Tente outra rota ou confira se o WireSock está instalado corretamente.</value></data>
+  <data name="Backend.PROFILE_HOOKS" xml:space="preserve"><value>Este arquivo do WireGuard tem comandos (como PreUp ou PostUp). O Brisa nunca executa esses comandos. Remova-os e importe o arquivo de novo.</value></data>
+  <data name="Backend.SDK_INSTALL_SUPERVISION_LOST" xml:space="preserve"><value>O status da instalação do WireSock é desconhecido. Reinicie o Brisa antes de tentar de novo.</value></data>
+  <data name="Backend.STOP_NOT_CONFIRMED" xml:space="preserve"><value>Não foi possível parar o túnel nativo com segurança. O Brisa fica aberto. Confira o status do túnel antes de tentar de novo.</value></data>
+  <data name="Backend.STOP_NOT_CONFIRMED_DISCORD_CLOSED" xml:space="preserve"><value>O Discord foi fechado, mas não foi possível parar o túnel nativo com segurança. O Brisa fica aberto. Confira o status do túnel antes de reabrir o Discord.</value></data>
+  <data name="Backend.STOP_NOT_CONFIRMED_OR_CLOSED" xml:space="preserve"><value>Não foi possível parar o Discord nem o túnel com segurança. Feche o Discord e desconecte de novo.</value></data>
+  <data name="DiscordTraffic" xml:space="preserve"><value>Tráfego do Discord</value></data>
+  <data name="DiscordTrafficChart" xml:space="preserve"><value>Gráfico de tráfego do Discord</value></data>
+  <data name="Download" xml:space="preserve"><value>Download</value></data>
+  <data name="DownloadRate" xml:space="preserve"><value>Taxa de download</value></data>
+  <data name="Password" xml:space="preserve"><value>Senha</value></data>
+  <data name="Protocol" xml:space="preserve"><value>Protocolo</value></data>
+  <data name="ProtonPassword" xml:space="preserve"><value>Senha da Proton</value></data>
+  <data name="ProtonUsername" xml:space="preserve"><value>Usuário da Proton</value></data>
+  <data name="Route" xml:space="preserve"><value>Rota</value></data>
+  <data name="RouteCountry" xml:space="preserve"><value>País da rota</value></data>
+  <data name="SignInHelper" xml:space="preserve"><value>Entre com sua conta Proton para conectar.</value></data>
+  <data name="SignedInAs" xml:space="preserve"><value>Conta:</value></data>
+  <data name="LogBox" xml:space="preserve"><value>Prévia do log de suporte</value></data>
+  <data name="TotalTraffic" xml:space="preserve"><value>Tráfego total</value></data>
+  <data name="TwoFactorCode" xml:space="preserve"><value>Código de dois fatores</value></data>
+  <data name="UpdateStatus" xml:space="preserve"><value>Status da atualização</value></data>
+  <data name="Upload" xml:space="preserve"><value>Upload</value></data>
+  <data name="UploadRate" xml:space="preserve"><value>Taxa de upload</value></data>
+  <data name="UseRoute" xml:space="preserve"><value>Usar rota</value></data>
+  <data name="Username" xml:space="preserve"><value>Usuário</value></data>
+  <data name="VerificationRequired" xml:space="preserve"><value>Verificação necessária</value></data>
+  <data name="DiscordClosing" xml:space="preserve"><value>Fechando a sessão antiga do Discord…</value></data>
+  <data name="DiscordReopening" xml:space="preserve"><value>Reabrindo o Discord…</value></data>
+  <data name="RestoringConnection" xml:space="preserve"><value>Restaurando a conexão normal…</value></data>
+  <data name="GeneratingLog" xml:space="preserve"><value>Gerando log…</value></data>
+  <data name="SdkPreparing" xml:space="preserve"><value>Preparando o SDK do WireSock. Conclua ou cancele o instalador visível se ele abrir.</value></data>
+  <data name="SdkInstallerOpen" xml:space="preserve"><value>O instalador do WireSock ainda está aberto. Conclua ou cancele na janela do instalador do Windows e tente de novo.</value></data>
+  <data name="ServiceStoppedUnsafe" xml:space="preserve"><value>O serviço nativo parou enquanto uma conexão pode estar ativa. O Brisa não consegue confirmar uma desconexão segura.</value></data>
+  <data name="ServiceStoppingRetry" xml:space="preserve"><value>O serviço ainda não terminou de parar. Tente sair de novo.</value></data>
+  <data name="VerificationRejected" xml:space="preserve"><value>O endereço de verificação foi recusado.</value></data>
+  <data name="SecondaryWindowFailed" xml:space="preserve"><value>A janela secundária não carregou.</value></data>
+  <data name="SaveLogFilter" xml:space="preserve"><value>Arquivo de texto (*.txt)|*.txt</value></data>
+  <data name="TrayOpen" xml:space="preserve"><value>Abrir</value></data>
+  <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
+  <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>
+  <data name="RouteAccessibleName" xml:space="preserve"><value>{0}, servidor {1}</value></data>
+  <data name="RouteAccessibleNameWithPing" xml:space="preserve"><value>{0}, servidor {1}, {2} ms</value></data>
+  <data name="StagePreparingRoute" xml:space="preserve"><value>Preparando sua rota de VPN…</value></data>
+  <data name="StageStartingTunnel" xml:space="preserve"><value>Iniciando e estabilizando o túnel…</value></data>
+  <data name="StageVerifyingRoute" xml:space="preserve"><value>Verificando a rota do Discord…</value></data>
+  <data name="ServiceUnreadableResponse" xml:space="preserve"><value>O serviço nativo devolveu uma resposta ilegível.</value></data>
+  <data name="BackendNotInstalled" xml:space="preserve"><value>O componente nativo não está instalado nesta versão.</value></data>
+  <data name="ServiceStoppedRetry" xml:space="preserve"><value>O serviço nativo parou. Saia do Brisa e abra de novo para tentar outra vez.</value></data>
+  <data name="ServiceActionIncomplete" xml:space="preserve"><value>O serviço nativo não conseguiu concluir esta ação. Confira o status da conexão antes de tentar de novo.</value></data>
+  <data name="ServiceTimeout" xml:space="preserve"><value>O serviço nativo não respondeu a tempo. Confira o status da conexão antes de tentar de novo.</value></data>
+  <data name="TwoFactorPrompt" xml:space="preserve"><value>Digite sua senha de novo com o código de dois fatores.</value></data>
+  <data name="AccountOperationFailed" xml:space="preserve"><value>A operação da conta falhou.</value></data>
+  <data name="AccountServiceUnavailable" xml:space="preserve"><value>O serviço da conta não está disponível.</value></data>
+  <data name="Import" xml:space="preserve"><value>Importar</value></data>
+  <data name="UpdatesUnavailableIsolated" xml:space="preserve"><value>As atualizações não estão disponíveis nesta sessão isolada.</value></data>
+  <data name="UpdatesCheckFailed" xml:space="preserve"><value>Não foi possível verificar atualizações. Tente de novo mais tarde.</value></data>
+  <data name="ConfigurationImported" xml:space="preserve"><value>Configuração importada.</value></data>
+  <data name="ConfigurationRejected" xml:space="preserve"><value>A configuração foi recusada.</value></data>
+  <data name="NativeServiceUnavailable" xml:space="preserve"><value>O serviço nativo não está disponível.</value></data>
+  <data name="DetailTunnelMixedOwnership" xml:space="preserve"><value>O túnel do Brisa continua ativo junto com outro túnel do WireSock. Feche o outro túnel e desconecte o Brisa. O Brisa fica aberto até o túnel dele poder ser parado com segurança.</value></data>
+  <data name="DetailOwnershipUnreliable" xml:space="preserve"><value>O túnel do Brisa pode continuar ativo, mas não foi possível confirmar o dono do túnel. Abra o Brisa como administrador e tente de novo. O Brisa fica aberto.</value></data>
+  <data name="DetailInstallerUnknown" xml:space="preserve"><value>O status da instalação do WireSock é desconhecido. Reinicie o Brisa antes de conectar.</value></data>
+  <data name="DetailExternalTunnel" xml:space="preserve"><value>Outro app é dono do túnel ativo. Feche-o antes de continuar.</value></data>
+  <data name="DetailRequiresElevation" xml:space="preserve"><value>Abra o Brisa como administrador para conectar ou desconectar. Aqui você ainda pode entrar na conta e importar um perfil.</value></data>
+  <data name="DetailOwnershipUnverified" xml:space="preserve"><value>Não foi possível verificar o dono do túnel. Abra o Brisa como administrador. Nada foi alterado.</value></data>
+  <data name="DetailTunnelUnverified" xml:space="preserve"><value>O túnel está ativo, mas o roteamento do Discord não foi verificado. Desconecte e tente de novo.</value></data>
+  <data name="Backend.PROFILE_INVALID" xml:space="preserve"><value>O perfil do WireGuard é inválido.</value></data>
+  <data name="Backend.PROFILE_INVALID_SAVED" xml:space="preserve"><value>O perfil do WireGuard salvo é inválido. Importe de novo.</value></data>
+  <data name="Backend.CAPTCHA_CANCELLED" xml:space="preserve"><value>Operação cancelada.</value></data>
+  <data name="Backend.PROFILE_BAD_VALUE" xml:space="preserve"><value>Uma configuração deste arquivo do WireGuard tem um valor inválido.</value></data>
+  <data name="Backend.PROFILE_CONTROL_CHARS" xml:space="preserve"><value>Este arquivo do WireGuard tem caracteres de controle inesperados.</value></data>
+  <data name="Backend.PROFILE_DIRECTIVE" xml:space="preserve"><value>Este arquivo do WireGuard tem diretivas do WireSock que o Brisa não aceita. O Brisa define o filtro do app sozinho. Remova as diretivas e importe de novo.</value></data>
+  <data name="Backend.PROFILE_DUPLICATE_KEY" xml:space="preserve"><value>Este arquivo do WireGuard repete uma configuração. Deixe uma cópia de cada e importe de novo.</value></data>
+  <data name="Backend.PROFILE_DUPLICATE_SECTION" xml:space="preserve"><value>Este arquivo do WireGuard tem mais de uma seção Interface ou Peer. O Brisa aceita uma de cada.</value></data>
+  <data name="Backend.PROFILE_UNKNOWN_KEY" xml:space="preserve"><value>Este arquivo do WireGuard tem uma configuração que o Brisa não aceita. Use um arquivo padrão, só com as configurações usuais de Interface e Peer.</value></data>
+  <data name="Backend.PROFILE_UNKNOWN_SECTION" xml:space="preserve"><value>Este arquivo do WireGuard tem uma seção que o Brisa não aceita. Só uma Interface e um Peer são aceitos.</value></data>
+  <data name="Backend.START_EXTERNAL_ACTIVE" xml:space="preserve"><value>Outro cliente do WireSock está aberto, então o Brisa não iniciou o túnel dele. O Brisa não mexeu nisso. Feche esse cliente e tente de novo.</value></data>
+  <data name="Backend.START_EXTERNAL_PROCESS" xml:space="preserve"><value>Outro cliente do WireSock está aberto, então o Brisa não iniciou o túnel dele. O Brisa não mexeu nisso. Feche esse cliente e tente de novo.</value></data>
+  <data name="Backend.START_EXTERNAL_SERVICE" xml:space="preserve"><value>O serviço do WireSock de outro app está ativo, então o Brisa não iniciou o túnel dele. O Brisa não mexeu nisso. Pare esse túnel e tente de novo.</value></data>
+  <data name="Backend.START_NOT_APPROVED" xml:space="preserve"><value>O Windows não aprovou a etapa de administrador, ou ela não terminou a tempo. Aprove a janela de permissão e tente de novo.</value></data>
+  <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>O WireSock iniciou, mas o Brisa não conseguiu confirmar que ele está rodando com o perfil do próprio Brisa. Tente de novo.</value></data>
+  <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>Não foi possível iniciar o túnel do Brisa. Confira o WireSock e o seu perfil de VPN e tente de novo.</value></data>
+  <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>O Brisa não conseguiu ler o estado do WireSock com confiança, então não alterou nada. Abra o Brisa como administrador e tente de novo.</value></data>
+  <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Digite o código de dois fatores do Proton e tente de novo.</value></data>
+  <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>O código de dois fatores do Proton foi recusado ou expirou.</value></data>
+  <data name="Backend.CAPTCHA_REQUIRED" xml:space="preserve"><value>Conclua a verificação de segurança do Proton e tente de novo.</value></data>
+  <data name="Backend.CAPTCHA_INVALID" xml:space="preserve"><value>A verificação de segurança foi recusada ou expirou. Abra uma nova e tente de novo.</value></data>
+  <data name="Backend.NETWORK_ERROR" xml:space="preserve"><value>Não foi possível falar com o Proton. Confira a conexão e tente de novo.</value></data>
+  <data name="Backend.TIMEOUT" xml:space="preserve"><value>O Proton não respondeu a tempo. Tente de novo.</value></data>
+  <data name="Backend.MISSING_EXECUTABLE" xml:space="preserve"><value>O componente do Proton que vem com o Brisa não está disponível.</value></data>
+  <data name="Backend.SESSION_PERSISTENCE" xml:space="preserve"><value>Não foi possível salvar a sessão do Proton. Feche outras instâncias do Brisa e tente de novo.</value></data>
+  <data name="Backend.CONFIGURATION_ERROR" xml:space="preserve"><value>Não foi possível gerar o perfil do WireGuard. Tente outra rota.</value></data>
+  <data name="Backend.UNKNOWN" xml:space="preserve"><value>A operação do Proton falhou. Tente de novo.</value></data>
+  <data name="Backend.PROFILE_EMPTY" xml:space="preserve"><value>Este arquivo do WireGuard está vazio.</value></data>
+  <data name="Backend.START_CANCELLED" xml:space="preserve"><value>A inicialização foi cancelada.</value></data>
+  <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>A instalação do WireSock não terminou. O Brisa vai orientar você de novo.</value></data>
+  <data name="Backend.DISCORD_CHECK_FAILED" xml:space="preserve"><value>O Brisa não conseguiu verificar o Discord instalado. Termine qualquer atualização do Discord, reabra o Discord e tente de novo.</value></data>
+  <data name="Backend.DISCORD_UNAVAILABLE" xml:space="preserve"><value>O Brisa não encontrou uma instalação do Discord que possa usar. Instale ou atualize o Discord, abra o Discord uma vez para terminar a configuração e tente de novo.</value></data>
+  <data name="Backend.DISCORD_CHANGED" xml:space="preserve"><value>A instalação do Discord escolhida mudou ou ainda está sendo atualizada. Termine a atualização do Discord, abra o Discord uma vez e tente de novo.</value></data>
+  <data name="BackendUnknown" xml:space="preserve"><value>Algo deu errado. Tente de novo.</value></data>
+  <data name="Backend.WIRESOCK_STATE_UNRELIABLE" xml:space="preserve"><value>Não foi possível ler o estado do WireSock com confiança; nada foi alterado.</value></data>
+  <data name="Backend.TUNNEL_MIXED_OWNERSHIP" xml:space="preserve"><value>O túnel do Brisa continua ativo junto com outro túnel do WireSock. Feche o outro túnel e desconecte o Brisa. O Brisa fica aberto até o túnel dele poder ser parado com segurança.</value></data>
+  <data name="Backend.TUNNEL_EXTERNAL_ACTIVE" xml:space="preserve"><value>Outro túnel do WireSock está ativo; nada foi alterado.</value></data>
+  <data name="Backend.PROTON_HELPER_MISSING" xml:space="preserve"><value>O auxiliar da Proton incluído no aplicativo não está disponível.</value></data>
+  <data name="Backend.NOT_SIGNED_IN" xml:space="preserve"><value>Entre na ProtonVPN primeiro.</value></data>
+  <data name="Backend.MUTATION_BUSY" xml:space="preserve"><value>Outra operação do serviço nativo ainda está em andamento.</value></data>
+  <data name="Backend.SIGN_OUT_WITH_TUNNEL" xml:space="preserve"><value>Desconecte o túnel nativo antes de sair da conta.</value></data>
+  <data name="Backend.SIGN_OUT_PROFILE_KEPT" xml:space="preserve"><value>Você saiu da conta. O Brisa manteve o perfil do túnel nativo porque não conseguiu confirmar o dono do túnel. Abra o Brisa como administrador e saia da conta de novo para limpar esse perfil.</value></data>
+  <data name="Backend.ROUTE_CHANGE_ACTIVE" xml:space="preserve"><value>Desconecte antes de otimizar; túneis ativos nunca são trocados automaticamente.</value></data>
+  <data name="Backend.PROFILE_PATH_NOT_ABSOLUTE" xml:space="preserve"><value>Selecione um arquivo .conf do WireGuard com caminho absoluto.</value></data>
+  <data name="Backend.PROFILE_UNREADABLE" xml:space="preserve"><value>Não foi possível ler o arquivo do WireGuard selecionado.</value></data>
+  <data name="Backend.TUNNEL_ALREADY_ACTIVE" xml:space="preserve"><value>Já existe um túnel do Brisa ativo. Desconecte antes de iniciar uma nova conexão com o Discord.</value></data>
+  <data name="Backend.PROFILE_MISSING" xml:space="preserve"><value>Importe um perfil do WireGuard primeiro.</value></data>
+  <data name="Backend.ROUTE_UNVERIFIED" xml:space="preserve"><value>O Discord foi reaberto e o túnel está ativo, mas não foi possível confirmar a conexão pela rota. Desconecte e tente outra rota.</value></data>
+  <data name="Backend.TUNNEL_OWNERSHIP_UNCONFIRMED" xml:space="preserve"><value>O túnel do Brisa pode ainda estar ativo, mas não foi possível confirmar o dono do túnel. Abra o Brisa como administrador e tente de novo. O Brisa vai ficar aberto.</value></data>
+  <data name="Backend.DISCORD_REOPEN_FAILED" xml:space="preserve"><value>O túnel foi parado, mas não foi possível reabrir o Discord. Abra o Discord manualmente.</value></data>
+  <data name="Backend.SDK_INSTALL_STAYS_OPEN" xml:space="preserve"><value>O status da instalação do WireSock é desconhecido. O Brisa vai ficar aberto; reinicie o Brisa antes de tentar de novo.</value></data>
+  <data name="Backend.SDK_INSTALL_DISCORD_CLOSED" xml:space="preserve"><value>O Discord foi fechado; abra-o de novo manualmente.</value></data>
+  <data name="Backend.CANCEL_RESTORE_UNCONFIRMED" xml:space="preserve"><value>O cancelamento não conseguiu confirmar a volta da rota normal. Verifique o status do túnel e o Discord antes de tentar de novo.</value></data>
+</root>

@@ -121,3 +121,12 @@ The packaged executable was also inspected in isolated UI mode. A manual desktop
 Setup's command-line entry point was checked without installation. A normal install/uninstall, installed-app upgrade, real Proton verification and live tunnel routing still need acceptance on a suitable test machine. The preview is unsigned. These checks are not a claim of production readiness.
 
 The GitHub workflow reruns the offline suites, packages the app and exercises the disposable portable upgrade before publishing a version. See the run linked to the release commit for its result.
+
+## Test machine differences
+
+The Windows runner on CI is not this desktop. It reports `Segoe UI` rather than Segoe UI Variable and has Windows animation turned off, so any assertion about text metrics or a running storyboard has to say what it accepts in both places. Two rules follow, and both were learned from 1.0.0 failing on the runner while passing here:
+
+- Compare layout by the promise, not by a pixel of it. Two font sizes centred on one line have different tops by a fraction of the line, and that fraction follows the font; the vertical centre does not.
+- Gate motion checks on `StatusMotion.Allowed(null)` the way the app does. With animation off the ring is still shown while work is pending and collapsed afterwards, it just does not spin.
+
+The appearance suite collects every failure and raises them together, so a run on a different font reports all of them instead of stopping at the first.

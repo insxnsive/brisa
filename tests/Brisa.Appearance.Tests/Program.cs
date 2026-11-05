@@ -22,6 +22,7 @@ internal static class Program
         var root = Path.Combine(Environment.GetEnvironmentVariable("TMPDIR") ?? Path.GetTempPath(), "native-appearance-" + Guid.NewGuid().ToString("N"));
         var store = new SettingsStore(root, false);
         var assertions = 0;
+        var failures = new List<string>();
         // WPF can clone templates when switching theme dictionaries. Verify
         // inheritance instead of comparing reference identity across themes.
         bool MatchesTemplate(Control control, string key)
@@ -77,20 +78,28 @@ internal static class Program
                 Capture(main, theme + "-Blocked-Minimum");
                 foreach (var pageName in new[] { "Settings", "Account", "Route", "Advanced" })
                 {
-                    var inline = pageName is "Settings" or "Account";
+                    var inline = pageName is "Settings" or "Account" or "Advanced";
                     Window window;
                     FrameworkElement view;
                     if (inline)
                     {
-                        ((Button)main.FindName(pageName + "Button")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        // Advanced fica um passo à frente de Settings: abre pelo botão de lá.
+                        if (pageName == "Advanced")
+                        {
+                            ((Button)main.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                            main.UpdateLayout();
+                            var settingsView = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
+                            ((Button)settingsView.FindName("AdvancedButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        }
+                        else ((Button)main.FindName(pageName + "Button")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                         window = main;
                         view = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
                     }
                     else
                     {
-                        window = pageName == "Route" ? new RouteWindow(main) : new AdvancedWindow(backend, null);
+                        window = new RouteWindow(main);
                         window.Owner = main; window.Show(); view = window;
-                        if (window is AdvancedWindow) { window.Width = window.MinWidth; window.Height = window.MinHeight; }
                     }
                     window.UpdateLayout();
                     if (view is AccountView)
@@ -102,64 +111,131 @@ internal static class Program
                         var action = (Button)view.FindName("ActionButton");
                         Check(codeBox.TranslatePoint(new Point(0, codeBox.ActualHeight), window).Y + 12 <= action.TranslatePoint(new Point(), window).Y, "2FA field clears the account footer");
                     }
+                    if (view is AdvancedView advanced)
+                    {
+                        // Item 10: sem log gerado não existe arquivo para salvar nem texto para copiar.
+                        var save = (Button)advanced.FindName("SaveLogButton");
+                        var copy = (Button)advanced.FindName("CopyLogButton");
+                        var box = (TextBox)advanced.FindName("LogBox");
+                        Check(save.Content as string == "Save…" && copy.Content as string == "Copy", "the log actions are Save… and Copy");
+                        Check(!save.IsEnabled && !copy.IsEnabled, "save and copy stay off until a log exists");
+                        Check(box.IsReadOnly, "the preview is read-only");
+                        Check(box.Text == "No log generated yet.", "the preview starts empty, not with sample text");
+                        // O cabeçalho tem de caber: sem rolagem horizontal e com quebra de linha.
+                        Check(box.TextWrapping == TextWrapping.Wrap, "the preview wraps instead of scrolling sideways");
+                        Check(box.HorizontalScrollBarVisibility == ScrollBarVisibility.Disabled, "no horizontal scrollbar sits over the log");
+                        Check(box.ActualHeight >= 150, "the preview is about ten lines tall");
+                        var notice = (TextBlock)advanced.FindName("LogNotice");
+                        Check(System.Windows.Automation.AutomationProperties.GetLiveSetting(notice) == System.Windows.Automation.AutomationLiveSetting.Polite,
+                            "the copy confirmation is announced politely");
+                        Check(AdvancedView.SupportLogFileName(new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc)) == "brisa-log-20260304-0506.txt",
+                            "the default file name is the UTC date and time");
+                        Check(Descendants(view).OfType<Button>().Any(b => b.Name == "LogButton" && (b.Content as string) == "Generate Log"),
+                            "the diagnostics action is Generate Log, in title case like every other button");
+                        Check(!Descendants(view).OfType<Button>().Any(b => (b.Content as string) == "Refresh Diagnostics"),
+                            "Refresh Diagnostics is gone");
+                    }
                     if (view is SettingsView)
                     {
-                        Check(view.FindName("UpdatesExpander") is Expander { IsExpanded: false }, "Updates and legal detail start collapsed");
                         ((CheckBox)view.FindName("StartupBox")).IsChecked = true;
                         Check(view.FindName("TrayBox") is null, "close-to-tray is unconditional, not an opt-in setting");
+                        var settingsText = Descendants(view).OfType<TextBlock>().Select(t => t.Text).ToList();
+                        Check(!settingsText.Contains("Appearance, startup, and updates."), "Settings carries no subtitle");
+                        Check(settingsText.Contains("General"), "the startup section is called General");
+                        Check(!settingsText.Contains("Behavior"), "the old Behavior heading is gone");
+                        Check(((CheckBox)view.FindName("StartupBox")).Content as string == "Start with Windows",
+                            "the startup checkbox says Start with Windows");
+                        Check(settingsText.Contains("Closing the window keeps Brisa running in the tray. Use Exit in the tray menu to quit."),
+                            "the tray note is the new copy");
+                        // A mensagem carrega as medidas: num runner com fonte de fallback o
+                        // excesso aparece aqui, e o número diz se é um pixel ou uma seção inteira.
+                        var settingsScroll = Descendants(view).OfType<ScrollViewer>().First();
+                        Check(settingsScroll.ScrollableHeight == 0,
+                            "Settings does not scroll at the default size"
+                            + $": scrollable={settingsScroll.ScrollableHeight:0.#} viewport={settingsScroll.ViewportHeight:0.#}"
+                            + $" extent={settingsScroll.ExtentHeight:0.#} font={SystemFonts.MessageFontFamily.Source}"
+                            + $" dpi={System.Windows.Media.VisualTreeHelper.GetDpi(view).PixelsPerDip:0.##}");
+                        // Item 9: a preferência do painel mora em General, ao lado do início com o Windows.
+                        var details = (CheckBox)view.FindName("DetailsBox");
+                        Check(details.Content as string == "Show connection details", "the details preference is labelled Show connection details");
+                        Check(details.IsChecked == true, "the details panel is on by default");
+                        Check(details.TranslatePoint(new Point(), view).Y > ((CheckBox)view.FindName("StartupBox")).TranslatePoint(new Point(), view).Y,
+                            "the details checkbox sits under Start with Windows in General");
+                        // O anel de foco só aparece com foco de teclado: UIA SetFocus não pinta,
+                        // então a evidência do anel sai daqui e os estados checados saem do app real.
+                        var startup = (CheckBox)view.FindName("StartupBox");
+                        startup.Focus();
+                        System.Windows.Input.Keyboard.Focus(startup);
+                        window.UpdateLayout(); Spin(120);
+                        Check(startup.IsKeyboardFocused, "the startup checkbox takes keyboard focus");
+                        Capture(window, theme + "-SettingsFocus");
+                        startup.IsChecked = false;
                         window.UpdateLayout();
-                        var updates = (Expander)view.FindName("UpdatesExpander");
-                        Check(updates.HorizontalContentAlignment == HorizontalAlignment.Stretch,
-                            "expanded Updates content stretches to the measured column width");
-                        Check(updates.Content is Grid, "expanded Updates uses a width-constrained content grid");
-                        var scroll = Descendants(view).OfType<ScrollViewer>().First(s => s.Parent is Grid);
+                        foreach (var buttonName in new[] { "AdvancedButton", "CancelButton", "SaveButton" })
+                        {
+                            var button = (Button)view.FindName(buttonName);
+                            var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
+                            var hit = window.InputHitTest(center) as DependencyObject;
+                            while (hit is not null && hit != button) hit = VisualTreeHelper.GetParent(hit);
+                            Check(hit == button, buttonName + " stays reachable on Settings");
+                        }
+                    }
+                    if (view is AdvancedView)
+                    {
+                        var credits = (Expander)view.FindName("CreditsExpander");
+                        Check(!credits.IsExpanded, "credits start collapsed");
+                        Check(!Descendants(credits).OfType<TextBlock>().Any(t => t.IsVisible && t.Text.Contains("GPL-3.0")),
+                            "collapsed credits hide the licence text");
+                        credits.IsExpanded = true;
+                        view.UpdateLayout();
+                        Check(Descendants(credits).OfType<TextBlock>().Any(t => t.Text.Contains("GPL-3.0")),
+                            "the GPL notice is displayed inside the credits");
+                        Check(Descendants(credits).OfType<TextBlock>().Any(t => t.Text.Contains("GoLiveBypass")),
+                            "the upstream attribution is displayed inside the credits");
+                        // Hyperlink é TextElement, não Visual: não aparece no walk da árvore visual.
+                        var attribution = Descendants(credits).OfType<TextBlock>().First(t => t.Text.Contains("GoLiveBypass"));
+                        var link = attribution.Inlines.OfType<System.Windows.Documents.Hyperlink>().First();
+                        Check(((SolidColorBrush)link.Foreground).Color == ((SolidColorBrush)Application.Current.Resources["NativeLinkForeground"]).Color,
+                            "the licence link uses the pinned accent, not the system hyperlink colour");
                         var status = (TextBlock)view.FindName("UpdateStatusText");
                         status.Text = "A versioned Brisa update is ready. Review the release details before restarting. " +
                             "The current connection remains available while the update is prepared in this isolated fixture.";
-                        updates.IsExpanded = true;
-                        foreach (var size in new[] { (460d, 540d), (440d, 520d) })
-                        {
-                            window.Width = size.Item1; window.Height = size.Item2; window.UpdateLayout();
-                            Check(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
-                                $"expanded Settings at {size.Item1}x{size.Item2} fits its horizontal viewport");
-                            foreach (var text in Descendants(updates).OfType<TextBlock>().Where(t => t.IsVisible && t.TextWrapping == TextWrapping.Wrap))
-                            {
-                                var right = text.TranslatePoint(new Point(text.ActualWidth, 0), scroll).X;
-                                Check(right <= scroll.ViewportWidth + 1,
-                                    $"expanded {text.Name} wraps within Settings at {size.Item1}x{size.Item2}");
-                            }
-                            Check(status.ActualHeight >= 48, "long update status wraps into full lines at " + size.Item1 + "x" + size.Item2);
-                            scroll.ScrollToBottom(); window.UpdateLayout();
-                            var updateButton = (Button)view.FindName("CheckUpdateButton");
-                            updateButton.IsEnabled = true; // Hit-test the disabled isolated-session action without invoking it.
-                            var updateCenter = updateButton.TranslatePoint(new Point(updateButton.ActualWidth / 2, updateButton.ActualHeight / 2), window);
-                            var updateHit = window.InputHitTest(updateCenter) as DependencyObject;
-                            while (updateHit is not null && updateHit != updateButton) updateHit = VisualTreeHelper.GetParent(updateHit);
-                            Check(updateHit == updateButton, "expanded Updates action stays visible at " + size.Item1 + "x" + size.Item2);
-                            updateButton.IsEnabled = false;
-                            foreach (var buttonName in new[] { "CancelButton", "SaveButton" })
-                            {
-                                var button = (Button)view.FindName(buttonName);
-                                var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
-                                var hit = window.InputHitTest(center) as DependencyObject;
-                                while (hit is not null && hit != button) hit = VisualTreeHelper.GetParent(hit);
-                                Check(hit == button, buttonName + " stays reachable below expanded Settings");
-                            }
-                        }
-                        // Font scaling approximates content pressure; this does not change OS DPI.
+                        window.Width = 440; window.Height = 520; window.UpdateLayout();
+                        Check(status.TranslatePoint(new Point(status.ActualWidth, 0), view).X <= view.ActualWidth + 1,
+                            "long update status wraps inside Advanced at minimum size");
+                        foreach (var text in Descendants(credits).OfType<TextBlock>().Where(t => t.IsVisible && t.TextWrapping == TextWrapping.Wrap))
+                            Check(text.TranslatePoint(new Point(text.ActualWidth, 0), view).X <= view.ActualWidth + 1,
+                                $"credit line {text.Name} wraps inside Advanced");
+                        // A escala de fonte aproxima pressão de conteúdo; não mexe no DPI do sistema.
                         foreach (var simulatedScale in new[] { 1d, 1.25d, 1.5d, 2d })
                         {
                             status.FontSize = 14 * simulatedScale;
-                            window.Width = 440; window.Height = 520; window.UpdateLayout();
-                            Check(scroll.ExtentWidth <= scroll.ViewportWidth + 1,
-                                $"Settings fits at simulated {simulatedScale:P0} status-text scale");
-                            Check(status.TranslatePoint(new Point(status.ActualWidth, 0), scroll).X <= scroll.ViewportWidth + 1,
-                                $"update status wraps at simulated {simulatedScale:P0} status-text scale");
+                            window.UpdateLayout();
+                            Check(status.TranslatePoint(new Point(status.ActualWidth, 0), view).X <= view.ActualWidth + 1,
+                                $"update status wraps at simulated {simulatedScale:P0} scale on Advanced");
                         }
                         status.FontSize = 14;
-                        updates.IsExpanded = false; scroll.ScrollToTop(); window.UpdateLayout();
+                        var pageScroll = Descendants(view).OfType<ScrollViewer>().First();
+                        pageScroll.ScrollToBottom(); window.UpdateLayout();
+                        var checkButton = (Button)view.FindName("CheckUpdateButton");
+                        checkButton.IsEnabled = true; // Hit-test the disabled isolated-session action without invoking it.
+                        var center = checkButton.TranslatePoint(new Point(checkButton.ActualWidth / 2, checkButton.ActualHeight / 2), window);
+                        var hit = window.InputHitTest(center) as DependencyObject;
+                        while (hit is not null && hit != checkButton) hit = VisualTreeHelper.GetParent(hit);
+                        Check(hit == checkButton, "the update action stays reachable on Advanced");
+                        checkButton.IsEnabled = false;
+                        credits.IsExpanded = false;
+                        // Volta ao estado real antes da captura: o texto longo é só para medir.
+                        status.Text = "Updates are unavailable in this isolated session.";
+                        window.Width = 460; window.Height = 540;
+                        pageScroll.ScrollToTop(); window.UpdateLayout();
+                        credits.IsExpanded = true; window.UpdateLayout(); Spin(120);
+                        Capture(window, theme + "-Advanced-Credits");
+                        credits.IsExpanded = false; window.UpdateLayout();
                     }
-                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.Content is string && (view is not SettingsView || b.Name != "CheckUpdateButton")))
+                    // Um botão desabilitado não recebe hit test, então não pode ser cobrado aqui: a
+                    // ausência de clique é o comportamento esperado. Os estados dele são assertados.
+                    foreach (var button in Descendants(view).OfType<Button>().Where(b => b.IsVisible && b.IsEnabled && b.Content is string && b.Name != "CheckUpdateButton"))
                     {
                         Check(button.ActualHeight >= 30, $"{window.GetType().Name}: {button.Content} keeps its height");
                         var center = button.TranslatePoint(new Point(button.ActualWidth / 2, button.ActualHeight / 2), window);
@@ -172,20 +248,109 @@ internal static class Program
                         var key = control switch { PasswordBox => "DefaultPasswordBoxStyle", TextBox => "DefaultTextBoxStyle", ListBox => "DefaultListBoxStyle", CheckBox => "DefaultCheckBoxStyle", RadioButton => "DefaultRadioButtonStyle", _ => null };
                         if (key is not null) Check(MatchesTemplate(control, key), control.GetType().Name + " retains its Fluent template");
                     }
+                    // A transição de página anima a opacidade: capturar antes do fim entrega uma
+                    // página lavada, que não serve para julgar contraste.
+                    Spin(320);
                     Capture(window, theme + "-" + view.GetType().Name);
                     if (inline)
                     {
-                        ((Button)main.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                        // Advanced devolve a Settings antes de voltar ao início, então precisa de dois Voltar.
+                        var backs = pageName == "Advanced" ? 2 : 1;
+                        for (var i = 0; i < backs; i++)
+                        {
+                            ((Button)main.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                        }
                         Check(((ContentControl)main.FindName("PageHost")).Content is null, "inline Back restores Home");
                     }
                     else window.Close();
                 }
-                var connectedBackend = new UiTestBackendClient(new(true, false, true, true, "", new("Selected server", "Country")));
+                foreach (var (phase, message, label) in new[]
+                {
+                    (UpdatePhase.Current, "Brisa is up to date.", "UpToDate"),
+                    (UpdatePhase.Ready, "Version 0.1.0-beta.10 is ready. Restart to update.", "UpdateAvailable"),
+                })
+                {
+                    // Fixture render, rotulado: o app isolado só produz o estado "unavailable".
+                    var fixture = new FixtureUpdates(new(phase, message, "0.1.0-beta.10"));
+                    var host = new Window { Width = 460, Height = 540, Background = main.Background, Content = new AdvancedView(backend, null, updates: fixture) };
+                    host.Show(); host.UpdateLayout(); Spin(200);
+                    Capture(host, theme + "-Advanced-" + label);
+                    host.Close();
+                }
+                var connectedBackend = new UiTestBackendClient(new(true, false, true, true, "", new("", "Country")));
                 var connected = new MainWindow(connectedBackend, store);
                 connected.Show(); connected.InitializeAsync().GetAwaiter().GetResult(); connected.UpdateLayout();
                 Check(((Button)connected.FindName("PrimaryButton")).Content as string == "Disconnect", "connected action stays Disconnect");
                 Check(!((Button)connected.FindName("RouteButton")).IsEnabled, "connected route selection stays disabled");
+                Check(((TextBlock)connected.FindName("RouteChevron")).Text == "\uE72E", "connected route row shows the lock glyph");
+                Check(((Button)connected.FindName("RouteButton")).ToolTip as string == "Disconnect to change the route",
+                    "the locked route explains itself on hover instead of taking a row");
+                // País e servidor dividem uma linha: mesma altura de topo, servidor depois do país, e o
+                // cartão de tráfego com altura fixa para os contadores não moverem o layout.
+                Check(Math.Abs(((FrameworkElement)connected.FindName("TrafficCard")).ActualHeight - 108) < 1,
+                    "the traffic card keeps one height while the counters change");
+                var routed = new MainWindow(new UiTestBackendClient(new(true, false, true, true, "", new("HT#28", "Country", 34))), store);
+                routed.Show(); routed.InitializeAsync().GetAwaiter().GetResult(); routed.UpdateLayout(); Spin(120);
+                var routeCountry = (TextBlock)routed.FindName("RouteText");
+                var routeServer = (TextBlock)routed.FindName("RouteServerText");
+                Check(routeServer.Visibility == Visibility.Visible, "a connected route shows the server on the same line");
+                // Dois tamanhos de fonte centrados na mesma linha têm topos diferentes por
+                // poucos pixels, e a diferença muda com a fonte do sistema: comparar topo media a
+                // métrica da fonte, não o layout. O centro vertical é o que a linha promete.
+                var countryCenter = routeCountry.TranslatePoint(new Point(0, routeCountry.ActualHeight / 2), routed).Y;
+                var serverCenter = routeServer.TranslatePoint(new Point(0, routeServer.ActualHeight / 2), routed).Y;
+                Check(Math.Abs(countryCenter - serverCenter) < 1,
+                    $"country and server share one line: country={countryCenter:0.#} server={serverCenter:0.#}");
+                Check(routeServer.TranslatePoint(new Point(), routed).X > routeCountry.TranslatePoint(new Point(), routed).X,
+                    "the server follows the country instead of sitting at the far edge");
+                var routeName = System.Windows.Automation.AutomationProperties.GetName((Button)routed.FindName("RouteButton")) ?? "";
+                Check(routeName.Contains("COUNTRY", StringComparison.OrdinalIgnoreCase) && routeName.Contains("HT#28"),
+                    "the locked route names country and server together for screen readers (got '" + routeName + "')");
+                routed.RequestExit();
+                Check(((TextBlock)connected.FindName("RouteServerText")).Visibility == Visibility.Collapsed,
+                    "a placeholder server label is never shown as a value");
+                Check(((Button)connected.FindName("RouteButton")).IsTabStop == false || !((Button)connected.FindName("RouteButton")).IsEnabled,
+                    "locked route row is not a tab stop");
+                Check(((TextBlock)main.FindName("RouteChevron")).Text == "\uE76C"
+                    && ((Button)main.FindName("RouteButton")).ToolTip is null,
+                    "idle route row keeps the chevron and no tooltip");
+                var toolbarButton = (Button)connected.FindName("SettingsButton");
+                var accountButton = (Brisa.Controls.ToolbarButton)connected.FindName("AccountButton");
+                Grid Root(Button b) => (Grid)b.Template.FindName("Root", b);
+                Border Layer(Button b, string layer) => (Border)b.Template.FindName(layer, b);
+
+                toolbarButton.IsEnabled = false;
+                Settle(connected);
+                Check(Root(toolbarButton).Opacity < 1.0, "disabled toolbar action fades instead of filling");
+                Capture(connected, theme + "-ToolbarDisabled");
+                toolbarButton.IsEnabled = true;
+                Settle(connected);
+                Check(Root(toolbarButton).Opacity > 0.9, "enabling the action restores it");
+
+                // O estado é a mesma propriedade que os eventos de mouse escrevem no app.
+                accountButton.State = "MouseOver";
+                Settle(connected);
+                Check(Layer(accountButton, "Hover").Opacity > 0.5, "hover paints the toolbar action");
+                Capture(connected, theme + "-ToolbarHover");
+
+                accountButton.State = "Pressed";
+                Settle(connected);
+                Check(Layer(accountButton, "Press").Opacity > 0.5 && Layer(accountButton, "Hover").Opacity < 0.5,
+                    "press paints the toolbar action");
+
+                Capture(connected, theme + "-ToolbarPressed");
+                accountButton.State = "Normal";
+                Settle(connected);
+                Check(Layer(accountButton, "Hover").Opacity < 0.5 && Layer(accountButton, "Press").Opacity < 0.5,
+                    "leaving the action clears the hover and press paint");
+
+                connected.Activate();
+                accountButton.Focus();
+                System.Windows.Input.Keyboard.Focus(accountButton);
+                Settle(connected);
+                Check(accountButton.IsKeyboardFocused, "toolbar action takes keyboard focus");
+                Capture(connected, theme + "-ToolbarFocus");
                 connected.Width = connected.MinWidth; connected.Height = connected.MinHeight;
                 ((Button)connected.FindName("AccountButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var signedInAccount = (AccountView)((ContentControl)connected.FindName("PageHost")).Content;
@@ -196,19 +361,111 @@ internal static class Program
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 Check(((ContentControl)connected.FindName("PageHost")).Content is null,
                     "signed-in account returns to Connection");
+                // O painel de detalhes existe só conectado: com o bloco centralizado no lugar, os
+                // três rótulos de métrica e o protocolo ficam escondidos.
+                var detailsHost = (StackPanel)connected.FindName("DetailsHost");
+                var statusBlock = (StackPanel)connected.FindName("StatusBlock");
+                Check(detailsHost.Visibility == Visibility.Visible, "a connected window shows the details panel");
+                Check(statusBlock.Visibility == Visibility.Collapsed, "the centred status block steps aside while the panel shows");
+                Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "WireGuard (UDP)"), "the protocol cell names WireGuard over UDP");
+                Check(Descendants(detailsHost).OfType<TextBlock>().Any(t => t.Text == "Total traffic"), "the panel carries a total traffic cell");
+                // 8b: um anel neutro no lugar do traço salmão, e nada dele quando já está conectado.
+                var ring = (System.Windows.Shapes.Ellipse)connected.FindName("StatusRing");
+                Check(ring.Visibility == Visibility.Collapsed, "the progress ring is absent once connected");
+                Check(ring.Stroke is not null && !(ring.Stroke is System.Windows.Media.SolidColorBrush b && b.Color.R > 150 && b.Color.G < 120),
+                    "the progress ring is neutral, not the salmon action colour");
+                Check(Descendants(detailsHost).OfType<Grid>().Any(g => System.Windows.Automation.AutomationProperties.GetName(g) == "Discord traffic chart"),
+                    "the chart is one named object for a screen reader");
+                var rateGlyphs = Descendants(detailsHost).OfType<TextBlock>()
+                    .Where(t => System.Windows.Automation.AutomationProperties.GetName(t) is "Download" or "Upload").ToList();
+                Check(rateGlyphs.Count == 2, "each rate carries a direction glyph with an accessible name");
                 Capture(connected, theme + "-Connected");
                 connected.RequestExit();
                 main.RequestExit();
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 Console.WriteLine("PASS loaded Fluent controls: " + theme);
             }
+            // Regressão do dois fatores: o pedido é estado da tela, então precisa sobreviver ao
+            // Render do finally e a uma troca de idioma, e não só ao instante em que foi pedido.
+            var loc = Brisa.Localization.LocalizationManager.Current;
+            var savedLanguage = loc.Language;
+            var stub = new UiTestBackendClient(new(false, false, true, false, "", null));
+            stub.LoginResult = new Brisa.Models.CommandResult(false, Code: "TWO_FACTOR_REQUIRED");
+            var twoFactorWindow = new MainWindow(stub, store);
+            twoFactorWindow.Show();
+            twoFactorWindow.InitializeAsync().GetAwaiter().GetResult();
+            Settle(twoFactorWindow);
+            ((Button)twoFactorWindow.FindName("AccountButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var accountView = (AccountView)((ContentControl)twoFactorWindow.FindName("PageHost")).Content;
+            ((TextBox)accountView.FindName("UsernameBox")).Text = "fixture";
+            ((PasswordBox)accountView.FindName("PasswordInput")).Password = "fixture";
+            ((Button)accountView.FindName("ActionButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var subtitle = (TextBlock)accountView.FindName("Subtitle");
+            var panel = (FrameworkElement)accountView.FindName("TwoFactorPanel");
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (panel.Visibility != Visibility.Visible && DateTime.UtcNow < deadline) Spin(50);
+            Check(panel.Visibility == Visibility.Visible, "a two-factor challenge reveals the code field");
+            Check(subtitle.Text == loc["TwoFactorPrompt"], "the two-factor prompt survives the render that follows the attempt");
+            loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+            Spin(100);
+            var englishPrompt = "Enter your password again with your two-factor code.";
+            Check(subtitle.Text == loc["TwoFactorPrompt"] && subtitle.Text != englishPrompt && subtitle.Text.Length > 0,
+                "the two-factor prompt follows a language change");
+            loc.Apply(savedLanguage);
+            Spin(100);
+            Check(subtitle.Text == loc["TwoFactorPrompt"], "the two-factor prompt returns with the language");
+            twoFactorWindow.RequestExit();
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            // Uma execução revela todas as falhas de uma vez: em runner com a fonte clássica cada
+            // diferença de métrica derrubava só a primeira, e a próxima só aparecia no run seguinte.
+            if (failures.Count > 0)
+                throw new InvalidOperationException($"{failures.Count} of {assertions} assertions failed: "
+                    + string.Join(" | ", failures));
             Console.WriteLine($"{assertions} loaded-window assertions passed");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
         finally { app.Shutdown(); if (Directory.Exists(root)) Directory.Delete(root, true); }
 
-        void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); assertions++; }
+        void Check(bool ok, string message)
+        {
+            assertions++;
+            if (ok) return;
+            failures.Add(message);
+            Console.Error.WriteLine("FAIL " + message);
+        }
+    }
+
+    // Storyboards de duração zero só pintam no próximo ciclo de render: sem esse flush, a
+    // verificação lê a opacidade anterior e o teste mente.
+    // Deixa a animação de transição terminar: sem isso a captura pega a página em fade.
+    private static void Spin(int milliseconds)
+    {
+        var until = DateTime.UtcNow.AddMilliseconds(milliseconds);
+        while (DateTime.UtcNow < until)
+        {
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.Background);
+            System.Threading.Thread.Sleep(15);
+        }
+    }
+
+    private sealed class FixtureUpdates : IUpdateService
+    {
+        public FixtureUpdates(UpdateStatus status) => Status = status;
+        public UpdateStatus Status { get; private set; }
+        public bool HasPendingUpdate => Status.Phase == UpdatePhase.Ready;
+        public event EventHandler<UpdateStatus>? StatusChanged;
+        public void Start() { }
+        public Task CheckNowAsync(CancellationToken cancellationToken = default) { StatusChanged?.Invoke(this, Status); return Task.CompletedTask; }
+        public void PrepareApply(bool restart) { }
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private static void Settle(Window window)
+    {
+        window.UpdateLayout();
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
     }
 
     private static void Capture(Window window, string name)
