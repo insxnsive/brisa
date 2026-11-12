@@ -249,7 +249,7 @@ public partial class MainWindow : Window
         // Missing SDK is a prerequisite state, not a connection error: one red line above the
         // primary action, only while the probe stands behind it. It disappears once a tunnel
         // starts, and while the vendor installer is on screen the existing stage text says more.
-        SdkBanner.Visibility = state.Snapshot is { SdkMissing: true, Stage: not "installing-wiresock" }
+        SdkBanner.Visibility = state.Snapshot is { SdkMissing: true, Stage: not "installing-wiresock", HasOwnedTunnel: false }
             && state.Phase is not ConnectionPhase.Connected ? Visibility.Visible : Visibility.Collapsed;
         PrimaryButton.Content = state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;

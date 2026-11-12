@@ -575,6 +575,33 @@ test("snapshot exposes the exact contract and obtains username from the owned-se
   });
 });
 
+test("a proved absence is reported only after the probe answers", async () => {
+  let resolveProbe;
+  const probe = new Promise(resolve => { resolveProbe = resolve; });
+  const { backend } = harness({ probeSdk: () => probe });
+  const pending = await backend.execute("snapshot", {});
+  assert.equal(pending.sdkMissing, false, "no answer before the probe resolves");
+  resolveProbe({ parsed: true, candidates: [] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await backend.execute("snapshot", {})).sdkMissing, true);
+});
+
+test("a probe that finishes after a successful start cannot report the SDK missing", async () => {
+  let resolveProbe;
+  const probe = new Promise(resolve => { resolveProbe = resolve; });
+  const { backend, files, setInspection } = harness({
+    probeSdk: () => probe,
+    start: async () => { setInspection({ active: true, owned: true, reliable: true }); return {}; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  assert.equal((await backend.execute("snapshot", {})).sdkMissing, false);
+  assert.equal((await backend.execute("connect", {})).success, true);
+  resolveProbe({ parsed: true, candidates: [] });
+  await new Promise(resolve => setImmediate(resolve));
+  const after = await backend.execute("snapshot", {});
+  assert.equal(after.sdkMissing, false, "the start proved the SDK is present");
+});
+
 test("mutations are gated by their actual effects, not by a blanket WireSock check", async () => {
   const external = { active: true, owned: false, reliable: true, reason: "GUI active" };
   const unreliable = { active: false, owned: false, reliable: false, reason: "unknown" };

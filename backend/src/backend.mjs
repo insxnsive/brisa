@@ -204,16 +204,18 @@ export function createBackend(deps, paths) {
   let snapshotInspection = null;
   // A SDK presence probe is one PowerShell read per process, started in the background: a
   // snapshot never waits for it, and an unreadable probe reports nothing instead of "missing".
-  // A successful native start is proof enough to clear it for the rest of the session.
+  // A successful native start is proof enough to clear it for the rest of the session, and it
+  // also wins against a probe that was still in flight when the tunnel came up.
   let sdkMissingFlag = false;
   let sdkProbeStarted = false;
+  let sdkProven = false;
   const sdkMissing = () => {
-    if (process.platform !== "win32") return false;
+    if (sdkProven || process.platform !== "win32") return false;
     if (!sdkProbeStarted) {
       sdkProbeStarted = true;
       (deps.probeSdk ? deps.probeSdk() : probeWireSock(process.env))
-        .then(result => { sdkMissingFlag = result.parsed === true && result.candidates.length === 0; })
-        .catch(() => { sdkMissingFlag = false; });
+        .then(result => { if (!sdkProven) sdkMissingFlag = result.parsed === true && result.candidates.length === 0; })
+        .catch(() => { if (!sdkProven) sdkMissingFlag = false; });
     }
     return sdkMissingFlag;
   };
@@ -695,6 +697,7 @@ export function createBackend(deps, paths) {
           await deps.start(paths.ownedConfigPath, raw, apps, operation.controller.signal, { onStage });
           if (!operation.isCurrent()) return await cancelledStart(apps);
           // The tunnel started on a real SDK pair, so the banner is stale from here on.
+          sdkProven = true;
           sdkMissingFlag = false;
           stage = "starting-discord";
           await deps.launchDiscord(apps, operation.controller.signal);
