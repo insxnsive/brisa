@@ -12,7 +12,10 @@ public sealed record NativeSnapshot(
     [property: JsonPropertyName("requiresElevation")] bool RequiresElevation = false,
     // The raw inspection result, before an unknown installer state forces Reliable false.
     [property: JsonPropertyName("inspectionReliable")] bool InspectionReliable = false,
-    [property: JsonPropertyName("installerUnknown")] bool InstallerUnknown = false)
+    [property: JsonPropertyName("installerUnknown")] bool InstallerUnknown = false,
+    // The backend probed this machine and found no usable WireSock SDK pair. False also means
+    // "not known yet", so the interface never shows a warning it cannot stand behind.
+    [property: JsonPropertyName("sdkMissing")] bool SdkMissing = false)
 {
     // Positive evidence that this process's own tunnel may still be running, even when the
     // aggregate state is mixed or unreadable. Never authorizes stopping anything by itself.

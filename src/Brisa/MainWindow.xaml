@@ -12,7 +12,7 @@
       </StackPanel>
     </Grid>
     <Grid x:Name="HomeContent" Grid.Row="1" Focusable="True" FocusVisualStyle="{x:Null}">
-      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Border x:Name="ConnectionSurface" Grid.Row="0" Style="{StaticResource SettingsSurface}" Margin="0,20,0,20" Padding="20">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -96,7 +96,11 @@
         </Border>
       </Grid>
     </Border>
-    <Button x:Name="PrimaryButton" Grid.Row="1" Style="{StaticResource PrimaryAction}" AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}" IsEnabled="False" MinHeight="40" Click="Primary_Click" Content="{loc:Loc Connect}"/>
+    <!-- Missing SDK: one red line, only when the probe proved the absence. The link opens the
+         vendor's SDK page; the automatic installer stays the normal path. -->
+    <TextBlock x:Name="SdkBanner" Grid.Row="1" Margin="0,0,0,12" Visibility="Collapsed" FontSize="12"
+               Foreground="{DynamicResource NativeDanger}" TextWrapping="Wrap" TextAlignment="Center"><Run Text="{loc:Loc SdkMissing}"/><Hyperlink Foreground="{DynamicResource NativeDanger}" Click="SdkLink_Click"><Run Text="{loc:Loc SdkInstallLink}"/></Hyperlink></TextBlock>
+    <Button x:Name="PrimaryButton" Grid.Row="2" Style="{StaticResource PrimaryAction}" AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}" IsEnabled="False" MinHeight="40" Click="Primary_Click" Content="{loc:Loc Connect}"/>
     </Grid>
     <ContentControl x:Name="PageHost" Grid.Row="1" Margin="0,20,0,0" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
   </Grid>

@@ -5,76 +5,76 @@
 <h1 align="center">Brisa</h1>
 
 <p align="center">
-  <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square" alt="release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square" alt="license"></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/platform-Windows%20x64-blue?style=flat-square" alt="platform"></a>
-  <a href="docs/development.md"><img src="https://img.shields.io/badge/built%20with-.NET%2010-512BD4?style=flat-square" alt="built with"></a>
+  <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square&label=vers%C3%A3o" alt="versão"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square&label=licen%C3%A7a" alt="licença"></a>
+  <a href="#requisitos"><img src="https://img.shields.io/badge/plataforma-Windows%20x64-blue?style=flat-square" alt="plataforma"></a>
+  <a href="docs/development.md"><img src="https://img.shields.io/badge/feito%20com-.NET%2010-512BD4?style=flat-square" alt="feito com"></a>
 </p>
 
-**Discord goes through WireGuard. Everything else stays on your normal connection.** No VPN for your browser, your games or the rest of the PC, and no Electron wrapper. Built with .NET and WPF, interface in English and Portuguese (Brazil).
+**O Discord passa pelo WireGuard. O resto continua na sua conexão normal.** Sem VPN no navegador, nos jogos ou no resto do PC, e sem Electron por cima. Feito em .NET e WPF, interface em inglês e português do Brasil.
 
-[Download](https://github.com/insxnsive/brisa/releases) · [Install](#install) · [Features](#features) · [Usage](#usage) · [Requirements](#requirements) · [Docs](#docs) · [License](#license) · [Português (Brasil)](README.pt-BR.md)
+[Baixar](https://github.com/insxnsive/brisa/releases) · [Instalar](#instalar) · [Recursos](#recursos) · [Uso](#uso) · [Requisitos](#requisitos) · [Documentação](#documentação) · [Licença](#licença) · [English](README.en.md)
 
-## Install
+## Instalar
 
-Download **`Brisa-win-Setup.exe`** from [Releases](https://github.com/insxnsive/brisa/releases), or take the portable ZIP from the same page.
+Baixe o **`Brisa-win-Setup.exe`** em [Releases](https://github.com/insxnsive/brisa/releases), ou pegue o ZIP portátil na mesma página.
 
-The Windows setup is not code-signed yet, so SmartScreen may warn about an unknown publisher. If the file came from this repository's Releases, choose **More info → Run anyway**.
+O instalador ainda não tem assinatura digital, então o SmartScreen pode avisar sobre editor desconhecido. Se o arquivo veio das Releases deste repositório, clique em **Mais informações → Executar assim mesmo**.
 
-Brisa installs per user without administrator rights; the WebView2 and WireSock installers it may open can ask for them. Nothing installs silently.
+O Brisa se instala por usuário, sem precisar de administrador; os instaladores do WebView2 e do WireSock que ele abrir podem pedir. Nada é instalado às escondidas.
 
-Prefer a script that checks the download first? In Windows PowerShell (not Command Prompt):
+Prefere um script que confere o download antes? No Windows PowerShell (não no Prompt de Comando):
 
 ```powershell
 irm https://raw.githubusercontent.com/insxnsive/brisa/brisa/scripts/install.ps1 | iex
 ```
 
-It verifies Microsoft's signature on WebView2 and the SHA-256 of the Brisa setup before running either. The pinned bootstrap, and what each check does and does not prove: [install checks](docs/install.md).
+Ele confere a assinatura da Microsoft no WebView2 e o SHA-256 do instalador do Brisa antes de rodar qualquer um dos dois. O script fixado em um commit, e o que cada verificação garante ou não: [verificações de instalação](docs/install.md).
 
-## Features
+## Recursos
 
-- Only Discord takes the tunnel. Your browser, games and everything else keep the normal route.
-- Proton sign in, or import a WireGuard `.conf` you already have.
-- Closing the window leaves Brisa and the connection running in the tray.
-- Updates download in the background and install when you exit Brisa.
+- Só o Discord entra no túnel. Navegador, jogos e o resto seguem pela rota normal.
+- Entre com a sua conta Proton, ou importe um `.conf` que você já tem.
+- Fechar a janela mantém o Brisa e a conexão na bandeja.
+- As atualizações são baixadas em segundo plano e instaladas quando você sai do Brisa.
 
-## Usage
+## Uso
 
-1. Open Brisa from the Start menu. Administrator rights are needed to connect, not to browse the app.
-2. Sign in to your Proton account, or import your profile under Settings → Advanced.
-3. Pick a route if you want one, then press Connect.
+1. Abra o Brisa pelo menu Iniciar. Para conectar é preciso ser administrador; para só abrir o app, não.
+2. Entre na sua conta Proton, ou importe o seu perfil em Configurações → Avançado.
+3. Escolha a rota se quiser, e clique em Conectar.
 
-Connecting and disconnecting close and reopen Discord, whichever version you run. Leave any call first; on disconnect Brisa reopens Discord on the normal route.
+Conectar e desconectar fecham e reabrem o Discord, em qualquer versão. Saia de qualquer chamada antes; ao desconectar, o Brisa reabre o Discord na rota normal.
 
-If WireSock is missing, Brisa opens the official installer on the first connection and continues afterwards. More in [setup](docs/setup.md).
+Se o WireSock não estiver instalado, o Brisa abre o instalador oficial na primeira conexão e segue com a conexão em seguida. Mais em [configuração](docs/setup.md).
 
-## Requirements
+## Requisitos
 
-- Windows x64, built for Windows 11.
-- Administrator rights to connect or disconnect.
-- [WireSock Secure Connect SDK](https://wiresock.net/wiresock-sdk), fetched on the first connection if missing.
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) for Proton's verification page.
-- A Proton account or your own WireGuard `.conf`.
-- No other WireSock or GoLiveBypass tunnel running. Brisa never takes over another app's tunnel.
+- Windows x64, feito para o Windows 11.
+- Permissão de administrador para conectar ou desconectar.
+- [WireSock Secure Connect SDK](https://wiresock.net/wiresock-sdk), baixado na primeira conexão se faltar.
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) para a página de verificação da Proton.
+- Uma conta Proton ou o seu próprio `.conf` do WireGuard.
+- Nenhum outro túnel do WireSock ou do GoLiveBypass ativo. O Brisa nunca assume o túnel de outro app.
 
-## Docs
+## Documentação
 
 | | |
 | --- | --- |
-| [Install checks](docs/install.md) | Pinned bootstrap, hash verification |
-| [Setup](docs/setup.md) | Requirements, installer, portable build, first connection, [window and tray](docs/setup.md#window-and-tray), saved data |
-| [Development](docs/development.md) | Build, test, package, macOS branch |
-| [Verification](docs/verification.md) | What was tested and how |
-| [Privacy](docs/privacy.md) | What Brisa stores and what it never sends |
-| [Releasing](docs/releasing.md) | Version bumps, tags, update feed |
-| [Third-party notices](THIRD-PARTY-NOTICES.md) | Licenses of everything inside |
+| [Verificações de instalação](docs/install.md) | Instalação fixada em um commit, verificação de hash |
+| [Configuração](docs/setup.md) | Requisitos, instalador, versão portátil, primeira conexão, [janela e bandeja](docs/setup.md#window-and-tray), dados salvos |
+| [Desenvolvimento](docs/development.md) | Compilar, testar, empacotar, branch do macOS |
+| [Verificação](docs/verification.md) | O que foi testado e como |
+| [Privacidade](docs/privacy.md) | O que o Brisa guarda e o que ele nunca envia |
+| [Publicação de versões](docs/releasing.md) | Versões, tags e feed de atualização |
+| [Avisos de terceiros](THIRD-PARTY-NOTICES.md) | Licenças de tudo que vem dentro |
 
-## Contributing
+## Contribuir
 
-Bugs and suggestions go to [Issues](https://github.com/insxnsive/brisa/issues). Never post passwords, verification codes, session files or VPN profiles there. The log from Advanced → Generate Log is safe to share: account names, paths and addresses are stripped before it is written.
+Bugs e sugestões vão nas [Issues](https://github.com/insxnsive/brisa/issues). Nunca publique senhas, códigos de verificação, arquivos de sessão ou perfis de VPN. O log gerado em Avançado → Gerar log pode ser compartilhado: nomes de conta, caminhos e endereços são removidos antes de o log ser escrito.
 
-## License
+## Licença
 
-[GPL-3.0-or-later](LICENSE), no warranty. Brisa is a native fork of [GoLiveBypass](https://github.com/bezumiya/GoLiveBypass). The Electron interface and plugin were removed and the original copyright notices kept. The Proton profile helper comes from [hatemosphere/protonvpn-wg-confgen](https://github.com/hatemosphere/protonvpn-wg-confgen).
+[GPL-3.0-or-later](LICENSE), sem garantia. O Brisa é um fork nativo do [GoLiveBypass](https://github.com/bezumiya/GoLiveBypass). A interface Electron e o plugin foram removidos, e os avisos de direitos autorais originais foram mantidos. A ferramenta que gera os perfis da Proton vem do [hatemosphere/protonvpn-wg-confgen](https://github.com/hatemosphere/protonvpn-wg-confgen).
 
-Brisa is not affiliated with Discord, Proton or WireSock.
+O Brisa não tem vínculo com Discord, Proton ou WireSock.

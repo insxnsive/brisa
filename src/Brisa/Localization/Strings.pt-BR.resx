@@ -117,6 +117,8 @@
   <data name="GeneratingLog" xml:space="preserve"><value>Gerando log…</value></data>
   <data name="SdkPreparing" xml:space="preserve"><value>Preparando o SDK do WireSock. Conclua ou cancele o instalador visível se ele abrir.</value></data>
   <data name="SdkInstallerOpen" xml:space="preserve"><value>O instalador do WireSock ainda está aberto. Conclua ou cancele na janela do instalador do Windows e tente de novo.</value></data>
+  <data name="SdkMissing" xml:space="preserve"><value>Você não tem o WireSock SDK. O Brisa não funciona direito sem ele. </value></data>
+  <data name="SdkInstallLink" xml:space="preserve"><value>Clique aqui para instalar.</value></data>
   <data name="ServiceStoppedUnsafe" xml:space="preserve"><value>O serviço nativo parou enquanto uma conexão pode estar ativa. O Brisa não consegue confirmar uma desconexão segura.</value></data>
   <data name="ServiceStoppingRetry" xml:space="preserve"><value>O serviço ainda não terminou de parar. Tente sair de novo.</value></data>
   <data name="VerificationRejected" xml:space="preserve"><value>O endereço de verificação foi recusado.</value></data>
@@ -180,7 +182,7 @@
   <data name="Backend.UNKNOWN" xml:space="preserve"><value>A operação do Proton falhou. Tente de novo.</value></data>
   <data name="Backend.PROFILE_EMPTY" xml:space="preserve"><value>Este arquivo do WireGuard está vazio.</value></data>
   <data name="Backend.START_CANCELLED" xml:space="preserve"><value>A inicialização foi cancelada.</value></data>
-  <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>A instalação do WireSock não terminou. O Brisa vai orientar você de novo.</value></data>
+  <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>A instalação do WireSock não terminou. O Brisa vai orientar você de novo. Você também pode baixar o SDK em https://wiresock.net/wiresock-sdk</value></data>
   <data name="Backend.DISCORD_CHECK_FAILED" xml:space="preserve"><value>O Brisa não conseguiu verificar o Discord instalado. Termine qualquer atualização do Discord, reabra o Discord e tente de novo.</value></data>
   <data name="Backend.DISCORD_UNAVAILABLE" xml:space="preserve"><value>O Brisa não encontrou uma instalação do Discord que possa usar. Instale ou atualize o Discord, abra o Discord uma vez para terminar a configuração e tente de novo.</value></data>
   <data name="Backend.DISCORD_CHANGED" xml:space="preserve"><value>A instalação do Discord escolhida mudou ou ainda está sendo atualizada. Termine a atualização do Discord, abra o Discord uma vez e tente de novo.</value></data>

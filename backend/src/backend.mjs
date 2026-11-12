@@ -2,6 +2,7 @@ import path from "node:path";
 import { WireSockSetupError, wireSockSetupFailure } from "./wiresock-setup.mjs";
 import { renderSupportLog } from "./support-log.mjs";
 import { WireSockStartError } from "./wiresock-start-result.mjs";
+import { probeWireSock } from "./wiresock-probe.mjs";
 import { DiscordCompatibilityError, discordCompatibilityFailure } from "./discord-compatibility.mjs";
 
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
@@ -201,6 +202,21 @@ export function createBackend(deps, paths) {
   let installerUnknown = false;
   // Compartilhado apenas entre snapshots concorrentes; nunca com caminhos de mutação.
   let snapshotInspection = null;
+  // A SDK presence probe is one PowerShell read per process, started in the background: a
+  // snapshot never waits for it, and an unreadable probe reports nothing instead of "missing".
+  // A successful native start is proof enough to clear it for the rest of the session.
+  let sdkMissingFlag = false;
+  let sdkProbeStarted = false;
+  const sdkMissing = () => {
+    if (process.platform !== "win32") return false;
+    if (!sdkProbeStarted) {
+      sdkProbeStarted = true;
+      (deps.probeSdk ? deps.probeSdk() : probeWireSock(process.env))
+        .then(result => { sdkMissingFlag = result.parsed === true && result.candidates.length === 0; })
+        .catch(() => { sdkMissingFlag = false; });
+    }
+    return sdkMissingFlag;
+  };
   let lastRouteCheck = 0;
   // A route verdict is bound to the operation that asked for it and to the tunnel it
   // observed. `generation` covers new operations; `routeEpoch` covers an explicit reset
@@ -507,6 +523,7 @@ export function createBackend(deps, paths) {
           // tell "no tunnel, install status unknown" from "could not inspect at all".
           inspectionReliable: status?.reliable === true,
           installerUnknown,
+          sdkMissing: sdkMissing(),
           signedIn: Boolean(currentUsername),
           username: currentUsername,
           route: state.route,
@@ -677,6 +694,8 @@ export function createBackend(deps, paths) {
           };
           await deps.start(paths.ownedConfigPath, raw, apps, operation.controller.signal, { onStage });
           if (!operation.isCurrent()) return await cancelledStart(apps);
+          // The tunnel started on a real SDK pair, so the banner is stale from here on.
+          sdkMissingFlag = false;
           stage = "starting-discord";
           await deps.launchDiscord(apps, operation.controller.signal);
           if (!operation.isCurrent()) return await cancelledStart(apps);

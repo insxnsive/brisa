@@ -18,7 +18,7 @@ PRIVATE_NAMES = {'.env', 'proton-session.json', 'session.json', 'state.json', 's
 GENERATED = {'bin', 'obj', 'artifacts', 'dist', 'node_modules', '__pycache__', '.git', '.tools', '.hermes', 'build', 'vendor'}
 PRIVATE_SUFFIXES = {'.conf', '.key', '.pem', '.pfx', '.p12'}
 SOURCE_ROOTS = ('src', 'backend', 'tools/proton-confgen', 'tests', 'packaging', 'scripts', 'docs', '.github', '.config')
-SOURCE_FILES = ('README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'CHANGELOG.md', 'AGENTS.md', '.gitignore', '.gitattributes')
+SOURCE_FILES = ('README.md', 'README.en.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'CHANGELOG.md', 'AGENTS.md', '.gitignore', '.gitattributes')
 VERSION_PATTERN = re.compile(r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:alpha|beta|rc)\.(0|[1-9]\d*))?$')
 
 
@@ -216,6 +216,7 @@ def package(skip_build=False, output=None, version=None, allow_dirty=False):
     run([tool('go'), 'mod', 'vendor', '-o', vendor], cwd=REPO / 'tools/proton-confgen')
     collect_licenses(publish, dest, vendor)
     copy(REPO / 'README.md', dest / 'README.md')
+    copy(REPO / 'README.en.md', dest / 'README.en.md')
     for p in (REPO / 'docs').glob('*.md'):
         copy(p, dest / 'docs' / p.name)
     commit = source_commit()

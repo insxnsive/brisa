@@ -59,7 +59,11 @@ public sealed class LocalizationManager : INotifyPropertyChanged
     public static string SystemLanguage() => OperatingSystemLanguage;
 
     private static string Detect(CultureInfo ui) =>
-        ui.TwoLetterISOLanguageName.Equals("pt", StringComparison.OrdinalIgnoreCase) ? PortugueseBrazil : English;
+        // Brisa opens in English everywhere except Brazil and Portugal. Reading the exact culture
+        // name keeps pt-AO, pt-MZ and any other Portuguese locale on the English page, which is
+        // what the product promises; the setting and Settings still let anyone switch by hand.
+        ui.Name.Equals(PortugueseBrazil, StringComparison.OrdinalIgnoreCase) ||
+        ui.Name.Equals("pt-PT", StringComparison.OrdinalIgnoreCase) ? PortugueseBrazil : English;
 
     /// <summary>Aplica a preferência. Devolve true quando o idioma em uso mudou.</summary>
     public bool Apply(string preference)

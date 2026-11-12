@@ -32,7 +32,7 @@ class QuickInstallTests(unittest.TestCase):
     def test_each_readme_is_one_language_with_working_jump_links(self):
         # Uma página por idioma, cada uma com a sua linha de atalhos: o link de cada atalho precisa
         # cair num título que existe naquele arquivo, senão o leitor clica e não chega a lugar nenhum.
-        for name, language_link in (('README.md', 'README.pt-BR.md'), ('README.pt-BR.md', 'README.md')):
+        for name, language_link in (('README.md', 'README.en.md'), ('README.en.md', 'README.md')):
             readme = (ROOT / name).read_text(encoding='utf-8')
             self.assertIn(f']({language_link})', readme, name)
             self.assertEqual(readme.count('](README'), 1, name)
@@ -53,8 +53,8 @@ class QuickInstallTests(unittest.TestCase):
         # O aviso de que o comando não é para o Prompt de Comando: cada idioma diz isso com as
         # suas próprias palavras, então o padrão acompanha a página.
         for name, not_command_prompt in (
-            ('README.md', r'not (?:Command Prompt|cmd[.]exe)'),
-            ('README.pt-BR.md', r'[nN][aã]o (?:no Prompt de Comando|no cmd[.]exe)'),
+            ('README.en.md', r'not (?:Command Prompt|cmd[.]exe)'),
+            ('README.md', r'[nN][aã]o (?:no Prompt de Comando|no cmd[.]exe)'),
         ):
             readme = (ROOT / name).read_text(encoding='utf-8')
             self.assertEqual(re.findall(r'```powershell\n(.*?)\n```', readme, re.DOTALL), [snippet], name)
@@ -68,7 +68,7 @@ class QuickInstallTests(unittest.TestCase):
         pinned = pinned_blocks[0]
         pinned_url = r'https://raw[.]githubusercontent[.]com/insxnsive/brisa/[0-9a-f]{40}/scripts/install[.]ps1'
         self.assertRegex(pinned, pinned_url)
-        for name in ('README.md', 'README.pt-BR.md'):
+        for name in ('README.md', 'README.en.md'):
             readme = (ROOT / name).read_text(encoding='utf-8')
             self.assertNotRegex(readme, pinned_url)
             self.assertNotIn(pinned, readme)
@@ -76,7 +76,7 @@ class QuickInstallTests(unittest.TestCase):
     def test_readme_download_path_stays_windows_only(self):
         # A 1.0.0 distribui o app nativo do Windows. Um destaque de build para macOS na primeira
         # página vende uma prévia que não conecta, então ela mora na documentação, não aqui.
-        for name in ('README.md', 'README.pt-BR.md'):
+        for name in ('README.md', 'README.en.md'):
             readme = (ROOT / name).read_text(encoding='utf-8')
             self.assertNotIn('actions/runs/', readme, name)
             self.assertNotIn('macos-v', readme, name)
@@ -245,8 +245,8 @@ class QuickInstallTests(unittest.TestCase):
         self.assertEqual(result['launches'], [])
 
     def test_readme_explains_prerequisite_prompts_and_windows_scope(self):
-        en = (ROOT / 'README.md').read_text(encoding='utf-8')
-        pt = (ROOT / 'README.pt-BR.md').read_text(encoding='utf-8')
+        en = (ROOT / 'README.en.md').read_text(encoding='utf-8')
+        pt = (ROOT / 'README.md').read_text(encoding='utf-8')
         for phrase in ('x64', 'SHA-256', 'WebView2', 'WireSock'):
             self.assertIn(phrase.lower(), en.lower())
         for phrase in ('x64', 'SHA-256', 'WebView2', 'WireSock'):

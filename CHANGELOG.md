@@ -1,5 +1,12 @@
 # Changes
 
+## 1.0.1
+
+- Home now says when WireSock SDK is missing: one red line above the primary action, shown only when the probe could prove the absence, with a link to the vendor's SDK page. The setup failure dialog carries the same link instead of leaving the user with a restart instruction.
+- English is the default interface language everywhere except a Windows set to Portuguese (Brazil) or Portuguese (Portugal). Other Portuguese locales, such as Angola and Mozambique, now open in English, and the language setting still switches by hand.
+- The Brazilian Portuguese README is the repository's main page. The English page moved to `README.en.md`, and both installers ship with both pages.
+- No change to the installation flow, the pinned SDK download or the tunnel.
+
 ## 1.0.0
 
 First stable release. The beta line ends here; the Windows interface, the connection path and the update flow are the ones that shipped through 0.1.0-beta.10.

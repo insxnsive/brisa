@@ -10,6 +10,7 @@ const backend = createBackend({
   start: async () => ({}), stop: async () => ({ stopped: true }),
   validateConfig: () => ({ valid: false }), sanitizeConfig: value => value,
   discoverDiscord: async () => [], launchDiscord: async () => {}, helperAvailable: () => true,
+  probeSdk: async () => ({ parsed: true, candidates: [{}] }),
   files: {
     readExplicit: async () => "", readOwned: async p => files.get(p) || "",
     writeOwned: async (p, v) => files.set(p, v), removeOwned: async p => files.delete(p), existsOwned: async p => files.has(p),

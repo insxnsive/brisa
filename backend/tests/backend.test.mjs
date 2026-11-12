@@ -37,6 +37,8 @@ function harness(overrides = {}) {
     discordRunning: async () => true,
     verifyRoute: async () => ({ verified: true, reason: "verified" }),
     helperAvailable: () => true,
+    // Fixed presence so the snapshot contract never depends on this machine's SDK.
+    probeSdk: async () => ({ parsed: true, candidates: [{}] }),
     files: {
       readExplicit: async p => {
         if (!files.has(p)) throw new Error("missing");
@@ -560,6 +562,7 @@ test("snapshot exposes the exact contract and obtains username from the owned-se
     externalTunnel: false,
     reliable: true,
     installerUnknown: false,
+    sdkMissing: false,
     inspectionReliable: true,
     signedIn: true,
     username: "own-user",

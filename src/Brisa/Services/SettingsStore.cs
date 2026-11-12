@@ -77,6 +77,8 @@ public sealed class SettingsStore
         app.Resources["NativeSurface"] = SystemParameters.HighContrast ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#2B2B2B" : "#FFFFFF");
         app.Resources["NativeSecondary"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#C5C5C5" : "#5D5D5D");
         app.Resources["NativeStroke"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#353535" : "#E5E5E5");
+        // Missing prerequisite. Windows' own error red: 5.2:1 on the light page, 6.4:1 on dark.
+        app.Resources["NativeDanger"] = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush : Brush(dark ? "#FF99A4" : "#C42B1C");
         app.Resources["NativeIconSurface"] = SystemParameters.HighContrast ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#363636" : "#F3F3F3");
         // Hover e pressionado precisam ser distinguíveis, e no tema claro o fundo da página já é
         // #F3F3F3: um hover nessa cor seria invisível, então os dois passos descem.

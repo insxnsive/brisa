@@ -246,6 +246,11 @@ public partial class MainWindow : Window
         else if (_operation.CurrentCount != 0 && state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Blocked
             && state.Snapshot is { Reliable: true, HasOwnedTunnel: false, Stage: "idle" }) _nativeOperationMayBeActive = false;
         _state = state; RenderStatusText(state.StatusText); DetailText.Text = state.Detail ?? "";
+        // Missing SDK is a prerequisite state, not a connection error: one red line above the
+        // primary action, only while the probe stands behind it. It disappears once a tunnel
+        // starts, and while the vendor installer is on screen the existing stage text says more.
+        SdkBanner.Visibility = state.Snapshot is { SdkMissing: true, Stage: not "installing-wiresock" }
+            && state.Phase is not ConnectionPhase.Connected ? Visibility.Visible : Visibility.Collapsed;
         PrimaryButton.Content = state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;
         SetStatusRing(busy);
@@ -478,6 +483,14 @@ public partial class MainWindow : Window
         return result;
     }
 
+
+    // Manual fallback for the missing SDK: the automatic installer is the normal path, and this
+    // link is what a user has left when the download or the elevation prompt cannot run.
+    private void SdkLink_Click(object sender, RoutedEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://wiresock.net/wiresock-sdk") { UseShellExecute = true }); }
+        catch { }
+    }
 
     private async void Primary_Click(object sender, RoutedEventArgs e)
     {
