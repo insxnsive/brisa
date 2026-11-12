@@ -1,23 +1,31 @@
-<p align="center">
+
+<div align="center">
   <img src="src/Brisa/Assets/Brisa.png" width="112" alt="Brisa">
-</p>
-
-<h1 align="center">Brisa</h1>
+  
+  <h1>Brisa VPN</h1>
+  
+  <p><strong>O Discord passa pelo WireGuard e você tem tela de novo.</strong></p>
+  
+  <p>
+    <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square&label=vers%C3%A3o" alt="versão"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square&label=licen%C3%A7a" alt="licença"></a>
+    <a href="#requisitos"><img src="https://img.shields.io/badge/plataforma-Windows%20x64-blue?style=flat-square" alt="plataforma"></a>
+    <a href="docs/development.md"><img src="https://img.shields.io/badge/feito%20com-.NET%2010-512BD4?style=flat-square" alt="feito com"></a>
+  </p>
+  
+  [Baixar](https://github.com/insxnsive/brisa/releases) · [Instalar](#instalar) · [Recursos](#recursos) · [Uso](#uso) · [Requisitos](#requisitos) · [Documentação](#documentação) · [Licença](#licença) · [English](README.en.md)
+</div>
 
 <p align="center">
-  <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square&label=vers%C3%A3o" alt="versão"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square&label=licen%C3%A7a" alt="licença"></a>
-  <a href="#requisitos"><img src="https://img.shields.io/badge/plataforma-Windows%20x64-blue?style=flat-square" alt="plataforma"></a>
-  <a href="docs/development.md"><img src="https://img.shields.io/badge/feito%20com-.NET%2010-512BD4?style=flat-square" alt="feito com"></a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://i.imgur.com/8YCDiqr.png" />
+    <img src="https://i.imgur.com/8YCDiqr.png" alt="Website do Brisa https://insxnsive.github.io/brisa/ explicando a lógica do tunelamento dívido." width="460" />
+  </picture>
 </p>
-
-**O Discord passa pelo WireGuard. O resto continua na sua conexão normal.** Sem VPN no navegador, nos jogos ou no resto do PC, e sem Electron por cima. Feito em .NET e WPF, interface em inglês e português do Brasil.
-
-[Baixar](https://github.com/insxnsive/brisa/releases) · [Instalar](#instalar) · [Recursos](#recursos) · [Uso](#uso) · [Requisitos](#requisitos) · [Documentação](#documentação) · [Licença](#licença) · [English](README.en.md)
 
 ## Instalar
 
-Baixe o **`Brisa-win-Setup.exe`** em [Releases](https://github.com/insxnsive/brisa/releases), ou pegue o ZIP portátil na mesma página.
+Baixe o **`Brisa-win-Setup.exe`** no [Site Oficial](https://insxnsive.github.io/brisa/) ou em [Releases](https://github.com/insxnsive/brisa/releases).
 
 O instalador ainda não tem assinatura digital, então o SmartScreen pode avisar sobre editor desconhecido. Se o arquivo veio das Releases deste repositório, clique em **Mais informações → Executar assim mesmo**.
 

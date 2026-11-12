@@ -1,23 +1,30 @@
-<p align="center">
+<div align="center">
   <img src="src/Brisa/Assets/Brisa.png" width="112" alt="Brisa">
-</p>
 
-<h1 align="center">Brisa</h1>
+  <h1>Brisa VPN</h1>
+
+  <p><strong>Discord goes through WireGuard and you now have GoLive again.</strong></p>
+
+  <p>
+    <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square" alt="release"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square" alt="license"></a>
+    <a href="#requirements"><img src="https://img.shields.io/badge/platform-Windows%20x64-blue?style=flat-square" alt="platform"></a>
+    <a href="docs/development.md"><img src="https://img.shields.io/badge/built%20with-.NET%2010-512BD4?style=flat-square" alt="built with"></a>
+  </p>
+
+  [Download](https://github.com/insxnsive/brisa/releases) · [Install](#install) · [Features](#features) · [Usage](#usage) · [Requirements](#requirements) · [Docs](#docs) · [License](#license) · [Português (Brasil)](README.md)
+</div>
 
 <p align="center">
-  <a href="https://github.com/insxnsive/brisa/releases"><img src="https://img.shields.io/github/v/release/insxnsive/brisa?style=flat-square" alt="release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/insxnsive/brisa?style=flat-square" alt="license"></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/platform-Windows%20x64-blue?style=flat-square" alt="platform"></a>
-  <a href="docs/development.md"><img src="https://img.shields.io/badge/built%20with-.NET%2010-512BD4?style=flat-square" alt="built with"></a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://i.imgur.com/8YCDiqr.png" />
+    <img src="https://i.imgur.com/8YCDiqr.png" alt="Brisa's landing page from https://insxnsive.github.io/brisa/ explaining the tunnel logic." width="460" />
+  </picture>
 </p>
-
-**Discord goes through WireGuard. Everything else stays on your normal connection.** No VPN for your browser, your games or the rest of the PC, and no Electron wrapper. Built with .NET and WPF, interface in English and Portuguese (Brazil).
-
-[Download](https://github.com/insxnsive/brisa/releases) · [Install](#install) · [Features](#features) · [Usage](#usage) · [Requirements](#requirements) · [Docs](#docs) · [License](#license) · [Português (Brasil)](README.md)
 
 ## Install
 
-Download **`Brisa-win-Setup.exe`** from [Releases](https://github.com/insxnsive/brisa/releases), or take the portable ZIP from the same page.
+Download **`Brisa-win-Setup.exe`** from the [Official Website](https://insxnsive.github.io/brisa/), or at the [Releases](https://github.com/insxnsive/brisa/releases) page.
 
 The Windows setup is not code-signed yet, so SmartScreen may warn about an unknown publisher. If the file came from this repository's Releases, choose **More info → Run anyway**.
 
