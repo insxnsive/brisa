@@ -2,7 +2,7 @@
 
 Static one-page site for [Brisa](https://github.com/insxnsive/brisa): `index.html` in Brazilian Portuguese, `en.html` in English. Hand-written HTML and CSS, no build step, no tracking, no remote requests.
 
-Deploy: copy these files to the root of the `site` branch of `insxnsive/brisa` and serve that branch with GitHub Pages. It lives at `https://insxnsive.github.io/brisa/`, so every path is relative.
+Deploy: `npx wrangler pages deploy . --project-name brisa --branch main` from this folder. It lives at `https://brisa-a0u.pages.dev/`, with the English page at `/en`, so every path is relative. The same files are also on the `site` branch of `insxnsive/brisa`, which is ready for GitHub Pages if that switch is ever turned on.
 
 Local preview: `python -m http.server 8080` in this folder, then open `http://localhost:8080/`.
 
