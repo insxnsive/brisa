@@ -1,0 +1,392 @@
+/* Brisa site. Black, warm off-white and the logo teal. Teal appears only in the logo and the tunnel. */
+
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("./assets/fonts/schibsted-grotesk-latin.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-weight: 400 500;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #121110;
+  --surface: #1b1917;
+  --raised: #252321;
+  --line: rgba(239, 233, 222, 0.09);
+  --text: #efe9de;
+  --text-2: #b8b0a3;
+  --muted: #958d81;
+  --action: #ede7dc;
+  --action-hover: #f6f1e8;
+  --on-action: #141210;
+  --teal: #125b50;
+  --teal-ink: #6cbfad;
+  --route-dim: #6b655c;
+
+  --sans: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --page: 1120px;
+  --gutter: 24px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  font-weight: 400;
+  overflow-x: clip;
+}
+
+img, svg { display: block; max-width: 100%; }
+
+a { color: inherit; text-decoration-color: rgba(239, 233, 222, 0.35); text-underline-offset: 3px; }
+a:hover { text-decoration-color: currentColor; }
+
+:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.wrap {
+  width: 100%;
+  max-width: calc(var(--page) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.skip {
+  position: absolute;
+  left: 16px;
+  top: -48px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-radius: 8px;
+}
+.skip:focus { top: 12px; }
+
+/* Header */
+
+.site-header .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+.brand img { width: 32px; height: 32px; }
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 15px;
+}
+.site-nav a { color: var(--text-2); text-decoration: none; }
+.site-nav a:hover { color: var(--text); }
+
+.lang {
+  display: flex;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.lang a { padding: 4px 8px; border-radius: 6px; }
+.lang a[aria-current="page"] { color: var(--text); background: var(--raised); }
+
+/* Hero */
+
+.hero .wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 64px;
+  align-items: center;
+  padding-top: 72px;
+  padding-bottom: 96px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(34px, 1.4vw + 32px, 52px);
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  max-width: 22ch;
+}
+h1 span { display: block; text-wrap: balance; }
+
+.lede {
+  text-wrap: pretty;
+  margin: 24px 0 0;
+  max-width: 34ch;
+  font-size: 19px;
+  color: var(--text-2);
+}
+
+.download {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 40px;
+  height: 48px;
+  padding: 0 20px;
+  border-radius: 10px;
+  background: var(--action);
+  color: var(--on-action);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 160ms var(--ease), transform 160ms var(--ease);
+}
+.download:hover { background: var(--action-hover); }
+.download:active { transform: translateY(1px); }
+.download svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+/* Routing diagram: the one showy moment. Two colors, flat. */
+
+.route {
+  margin: 0;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.route svg { width: 100%; height: auto; overflow: visible; }
+
+.route text { font-family: var(--mono); font-size: 16px; fill: var(--muted); }
+.route .label-app { font-family: var(--sans); font-size: 20px; font-weight: 500; fill: var(--text); }
+.route .label-other { font-family: var(--sans); font-size: 19px; fill: var(--text-2); }
+.route .label-tunnel { fill: var(--teal-ink); }
+.route .label-net { fill: var(--text-2); }
+
+/* Phones get their own drawing, so its labels keep a readable size instead of scaling down. */
+.route .route-narrow { display: none; }
+.route .route-narrow text { font-size: 14px; }
+.route .route-narrow .label-app,
+.route .route-narrow .label-other { font-size: 17px; }
+
+.route .path-discord { fill: none; stroke: var(--text); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.route .path-other { fill: none; stroke: var(--route-dim); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.route .path-shared { fill: none; stroke: var(--text-2); stroke-width: 3; stroke-linecap: round; }
+.route .tunnel { fill: var(--teal); }
+.route .flow { fill: none; stroke: var(--text); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 2 14; }
+.route .end { fill: var(--text-2); }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The drawing is complete at first paint. The only motion is the dash flow in the tunnel, while in view. */
+@media (prefers-reduced-motion: no-preference) {
+  .route.is-flowing .flow { animation: flow 1.4s linear infinite; }
+}
+
+@keyframes flow { to { stroke-dashoffset: -16; } }
+
+/* Sections */
+
+.section { padding: 96px 0; border-top: 1px solid var(--line); }
+
+h2 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  gap: 64px;
+  align-items: start;
+}
+.split.flip { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+.split.flip .shot { order: -1; }
+
+.steps {
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  max-width: 52ch;
+}
+.steps li {
+  position: relative;
+  padding: 20px 0 20px 48px;
+  border-top: 1px solid var(--line);
+  counter-increment: step;
+}
+.steps li:last-child { border-bottom: 1px solid var(--line); }
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 22px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+
+.shot {
+  margin: 0;
+}
+.shot img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.needs {
+  margin: 32px 0 0;
+  max-width: 56ch;
+}
+.needs div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+.needs div:last-child { border-bottom: 1px solid var(--line); }
+.needs dt { font-family: var(--mono); font-size: 14px; color: var(--muted); padding-top: 3px; }
+.needs dd { margin: 0; }
+
+.shot-note {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Install: a compact download card beside the steps. */
+.get {
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.get .download { margin-top: 0; }
+/* Starts on the same line as the rule above the first step. */
+.split > .get { margin-top: calc(32px * 1.15 + 32px); }
+.get-meta {
+  margin: 12px 0 0;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--text-2);
+}
+.get-warn {
+  margin: 24px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.alt {
+  margin: 16px 0 0;
+  font-size: 15px;
+  color: var(--muted);
+}
+.alt a { color: var(--text-2); }
+
+/* Footer */
+
+.site-footer {
+  padding: 48px 0 64px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--muted);
+}
+.site-footer nav { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-bottom: 16px; }
+.site-footer nav a { display: inline-block; padding: 4px 0; color: var(--text-2); }
+.site-footer p { margin: 4px 0 0; max-width: 72ch; }
+.site-footer a { color: var(--text-2); }
+
+/* Narrower screens */
+
+@media (max-width: 960px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 48px; padding-top: 48px; padding-bottom: 64px; }
+  .split, .split.flip { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .split.flip .shot { order: 0; }
+  .shot { max-width: 420px; }
+  .split > .get { margin-top: 0; }
+  .route { max-width: 560px; }
+}
+
+@media (max-width: 520px) {
+  .route { padding: 16px; }
+  .route .route-wide { display: none; }
+  .route .route-narrow { display: block; }
+}
+
+@media (max-width: 600px) {
+  :root { --gutter: 20px; }
+  body { font-size: 16px; }
+  .site-header .wrap { height: 64px; }
+  .site-nav { gap: 16px; }
+  .lede { font-size: 17px; }
+  .download { width: 100%; justify-content: center; }
+  .get { padding: 20px; }
+  .route { padding: 16px; }
+  .section { padding: 64px 0; }
+  h2 { font-size: 26px; }
+  .needs div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}

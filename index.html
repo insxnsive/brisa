@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Brisa: só o Discord passa pelo túnel WireGuard</title>
+<meta name="description" content="No Brasil, o Go Live e a câmera do Discord não funcionam. O Brisa manda só o Discord por um túnel WireGuard até um servidor fora do Brasil. O resto do PC continua na conexão normal.">
+<link rel="canonical" href="https://insxnsive.github.io/brisa/">
+<link rel="alternate" hreflang="pt-BR" href="https://insxnsive.github.io/brisa/">
+<link rel="alternate" hreflang="en" href="https://insxnsive.github.io/brisa/en.html">
+<link rel="alternate" hreflang="x-default" href="https://insxnsive.github.io/brisa/">
+<meta name="theme-color" content="#121110">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Brisa">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:title" content="Brisa: o Discord sai por um túnel. O resto do PC não.">
+<meta property="og:description" content="O Brisa manda só o Discord por um túnel WireGuard até um servidor fora do Brasil. O resto do PC continua na conexão normal.">
+<meta property="og:url" content="https://insxnsive.github.io/brisa/">
+<meta property="og:image" content="https://insxnsive.github.io/brisa/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Brisa. O Discord sai por um túnel. O resto do PC não.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="./assets/favicon.ico" sizes="any">
+<link rel="icon" href="./assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
+<link rel="preload" href="./assets/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="./index.html">
+      <img src="./assets/icon.png" alt="" width="32" height="32">
+      <span>Brisa</span>
+    </a>
+    <nav class="site-nav" aria-label="Principal">
+      <a href="https://github.com/insxnsive/brisa">GitHub</a>
+      <div class="lang" aria-label="Idioma">
+        <a href="./index.html" hreflang="pt-BR" lang="pt-BR" aria-current="page">PT</a>
+        <a href="./en.html" hreflang="en" lang="en">EN</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div>
+        <h1 id="hero-title"><span>O Discord sai por um túnel.</span> <span>O resto do PC não.</span></h1>
+        <p class="lede">No Brasil, o Go Live e a câmera do Discord não funcionam. O Brisa manda só o Discord por um túnel WireGuard até um servidor fora do Brasil. O navegador, os jogos e o resto do PC continuam na conexão normal.</p>
+        <a class="download" href="https://github.com/insxnsive/brisa/releases/latest/download/Brisa-win-Setup.exe">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          Baixar para Windows
+        </a>
+        <ul class="meta">
+          <li>Windows 11 x64</li>
+          <li>código aberto, GPL-3.0</li>
+        </ul>
+      </div>
+
+      <figure class="route" id="route">
+        <svg class="route-wide" viewBox="0 0 376 272" aria-hidden="true">
+          <text class="label-app" x="4" y="48">Discord</text>
+          <text class="label-tunnel" x="158" y="32" text-anchor="middle">túnel WireGuard</text>
+          <path class="path-discord" d="M4 72H236L300 150"/>
+          <path class="path-other" d="M4 224H236L300 150"/>
+          <path class="path-shared" d="M300 150H330"/>
+          <rect class="tunnel" x="96" y="48" width="124" height="48" rx="24"/>
+          <path class="flow" d="M116 72H200"/>
+          <text class="label-other" x="4" y="200">Navegador, jogos e o resto</text>
+          <text x="4" y="256">sem túnel</text>
+          <circle class="end" cx="336" cy="150" r="6"/>
+          <text class="label-net" x="336" y="126" text-anchor="middle">internet</text>
+        </svg>
+        <svg class="route-narrow" viewBox="0 0 300 246" aria-hidden="true">
+          <text class="label-app" x="2" y="36">Discord</text>
+          <path class="path-discord" d="M2 68H150L200 122"/>
+          <path class="path-other" d="M2 176H150L200 122"/>
+          <path class="path-shared" d="M200 122H266"/>
+          <rect class="tunnel" x="58" y="46" width="84" height="44" rx="22"/>
+          <path class="flow" d="M76 68H124"/>
+          <text class="label-tunnel" x="100" y="118" text-anchor="middle">túnel WireGuard</text>
+          <text class="label-other" x="2" y="208">Navegador, jogos e o resto</text>
+          <text x="2" y="236">sem túnel</text>
+          <circle class="end" cx="272" cy="122" r="5"/>
+          <text class="label-net" x="298" y="100" text-anchor="end">internet</text>
+        </svg>
+        <figcaption class="visually-hidden">Dois caminhos até a internet. O do Discord passa por um túnel WireGuard. O do navegador, dos jogos e do resto do PC vai direto, sem túnel.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="how-title">
+    <div class="wrap split">
+      <div>
+        <h2 id="how-title">Como funciona</h2>
+        <ol class="steps">
+          <li>Conectar fecha o Discord (saia de qualquer chamada antes), sobe um túnel <code>WireGuard</code> só para ele e abre o Discord de novo.</li>
+          <li>Desconectar fecha o Discord, derruba o túnel e abre o Discord de novo pela rota normal.</li>
+          <li>Nada mais do PC entra no túnel. Nem o navegador, nem os jogos.</li>
+        </ol>
+      </div>
+      <figure class="shot">
+        <img src="./assets/app-home.png" width="557" height="629" loading="lazy" decoding="async"
+             alt="Tela principal do Brisa em inglês: título Connection, estado Disconnected, rota Automatic e o botão Connect.">
+        <figcaption class="shot-note">As capturas mostram o app em inglês. No Windows em português, ele abre em português.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="needs-title">
+    <div class="wrap split flip">
+      <div>
+        <h2 id="needs-title">O que você precisa</h2>
+        <dl class="needs">
+          <div>
+            <dt>Windows</dt>
+            <dd>x64, feito para o Windows 11.</dd>
+          </div>
+          <div>
+            <dt>Administrador</dt>
+            <dd>O Windows pede permissão de administrador para conectar e desconectar. Só abrir o app não pede.</dd>
+          </div>
+          <div>
+            <dt>Conta</dt>
+            <dd>Entre com a sua conta Proton (o túnel termina num servidor da Proton) ou importe um <code>.conf</code> do WireGuard em <code>Configurações</code>, <code>Avançado</code>.</dd>
+          </div>
+          <div>
+            <dt>WireSock</dt>
+            <dd>Não vem junto. Na primeira conexão, o Brisa baixa o instalador de uma versão específica, confere o <code>SHA-256</code> e abre o instalador do fabricante.</dd>
+          </div>
+        </dl>
+      </div>
+      <figure class="shot">
+        <img src="./assets/app-settings.png" width="557" height="629" loading="lazy" decoding="async"
+             alt="Tela de configurações do Brisa em inglês: opções de tema, a opção Start When I Sign In, a seção About and Updates e o botão Advanced.">
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="install-title">
+    <div class="wrap split">
+      <div>
+        <h2 id="install-title">Instalar</h2>
+        <ol class="steps">
+          <li>Baixe e rode o <code>Brisa-win-Setup.exe</code>.</li>
+          <li>Abra o Brisa pelo menu Iniciar, entre com a Proton ou importe o seu <code>.conf</code> e clique em <code>Conectar</code>.</li>
+        </ol>
+      </div>
+      <div class="get">
+        <a class="download" href="https://github.com/insxnsive/brisa/releases/latest/download/Brisa-win-Setup.exe">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          Baixar para Windows
+        </a>
+        <p class="get-meta">131 MB, Windows 11 x64</p>
+        <p class="get-warn">O instalador ainda não tem assinatura digital, então o SmartScreen pode avisar sobre editor desconhecido. Se o arquivo veio das releases do repositório, clique em Mais informações e depois em Executar assim mesmo.</p>
+        <p class="alt">Também dá para usar a <a href="https://github.com/insxnsive/brisa/releases/latest/download/Brisa-win-Portable.zip">versão portátil em ZIP</a> ou o <a href="https://github.com/insxnsive/brisa/blob/brisa/docs/install.md">instalador por PowerShell</a>, que confere o hash antes de rodar.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <nav aria-label="Links do projeto">
+      <a href="https://github.com/insxnsive/brisa">Código no GitHub</a>
+      <a href="https://github.com/insxnsive/brisa/releases/latest">Releases</a>
+      <a href="https://github.com/insxnsive/brisa/blob/brisa/LICENSE">Licença GPL-3.0-or-later</a>
+    </nav>
+    <p>Software livre, sem garantia. O Brisa é um fork do <a href="https://github.com/bezumiya/GoLiveBypass">GoLiveBypass</a>, de bezumiya. O gerador de perfis da Proton vem do <a href="https://github.com/hatemosphere/protonvpn-wg-confgen">protonvpn-wg-confgen</a>, de hatemosphere.</p>
+    <p>O Brisa não é afiliado ao Discord, à Proton nem à WireSock.</p>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var route = document.getElementById("route");
+    if (!route || !("IntersectionObserver" in window)) return;
+    new IntersectionObserver(function (entries) {
+      route.classList.toggle("is-flowing", entries[0].isIntersecting);
+    }).observe(route);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Brisa: only Discord goes through the WireGuard tunnel</title>
+<meta name="description" content="In Brazil, Discord Go Live and camera don't work. Brisa sends only Discord through a WireGuard tunnel to a server outside Brazil. The rest of the PC stays on the normal connection.">
+<link rel="canonical" href="https://insxnsive.github.io/brisa/en.html">
+<link rel="alternate" hreflang="pt-BR" href="https://insxnsive.github.io/brisa/">
+<link rel="alternate" hreflang="en" href="https://insxnsive.github.io/brisa/en.html">
+<link rel="alternate" hreflang="x-default" href="https://insxnsive.github.io/brisa/">
+<meta name="theme-color" content="#121110">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Brisa">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="pt_BR">
+<meta property="og:title" content="Brisa: Discord goes out through a tunnel. The rest of the PC does not.">
+<meta property="og:description" content="Brisa sends only Discord through a WireGuard tunnel to a server outside Brazil. The rest of the PC stays on the normal connection.">
+<meta property="og:url" content="https://insxnsive.github.io/brisa/en.html">
+<meta property="og:image" content="https://insxnsive.github.io/brisa/assets/og-en.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Brisa. Discord goes out through a tunnel. The rest of the PC does not.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="./assets/favicon.ico" sizes="any">
+<link rel="icon" href="./assets/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
+<link rel="preload" href="./assets/fonts/schibsted-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="./en.html">
+      <img src="./assets/icon.png" alt="" width="32" height="32">
+      <span>Brisa</span>
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="https://github.com/insxnsive/brisa">GitHub</a>
+      <div class="lang" aria-label="Language">
+        <a href="./index.html" hreflang="pt-BR" lang="pt-BR">PT</a>
+        <a href="./en.html" hreflang="en" lang="en" aria-current="page">EN</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div>
+        <h1 id="hero-title"><span>Discord goes out through a tunnel.</span> <span>The rest of the PC does not.</span></h1>
+        <p class="lede">In Brazil, Discord Go Live and camera don't work. Brisa sends only Discord through a WireGuard tunnel to a server outside Brazil. Your browser, your games and the rest of the PC stay on the normal connection.</p>
+        <a class="download" href="https://github.com/insxnsive/brisa/releases/latest/download/Brisa-win-Setup.exe">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          Download for Windows
+        </a>
+        <ul class="meta">
+          <li>Windows 11 x64</li>
+          <li>open source, GPL-3.0</li>
+        </ul>
+      </div>
+
+      <figure class="route" id="route">
+        <svg class="route-wide" viewBox="0 0 376 272" aria-hidden="true">
+          <text class="label-app" x="4" y="48">Discord</text>
+          <text class="label-tunnel" x="158" y="32" text-anchor="middle">WireGuard tunnel</text>
+          <path class="path-discord" d="M4 72H236L300 150"/>
+          <path class="path-other" d="M4 224H236L300 150"/>
+          <path class="path-shared" d="M300 150H330"/>
+          <rect class="tunnel" x="96" y="48" width="124" height="48" rx="24"/>
+          <path class="flow" d="M116 72H200"/>
+          <text class="label-other" x="4" y="200">Browser, games, the rest</text>
+          <text x="4" y="256">no tunnel</text>
+          <circle class="end" cx="336" cy="150" r="6"/>
+          <text class="label-net" x="336" y="126" text-anchor="middle">internet</text>
+        </svg>
+        <svg class="route-narrow" viewBox="0 0 300 246" aria-hidden="true">
+          <text class="label-app" x="2" y="36">Discord</text>
+          <path class="path-discord" d="M2 68H150L200 122"/>
+          <path class="path-other" d="M2 176H150L200 122"/>
+          <path class="path-shared" d="M200 122H266"/>
+          <rect class="tunnel" x="58" y="46" width="84" height="44" rx="22"/>
+          <path class="flow" d="M76 68H124"/>
+          <text class="label-tunnel" x="100" y="118" text-anchor="middle">WireGuard tunnel</text>
+          <text class="label-other" x="2" y="208">Browser, games, the rest</text>
+          <text x="2" y="236">no tunnel</text>
+          <circle class="end" cx="272" cy="122" r="5"/>
+          <text class="label-net" x="298" y="100" text-anchor="end">internet</text>
+        </svg>
+        <figcaption class="visually-hidden">Two routes to the internet. Discord's route goes through a WireGuard tunnel. The browser, games and the rest of the PC go straight, with no tunnel.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="how-title">
+    <div class="wrap split">
+      <div>
+        <h2 id="how-title">How it works</h2>
+        <ol class="steps">
+          <li>Connect closes Discord (leave any call first), brings up a <code>WireGuard</code> tunnel for it alone and opens Discord again.</li>
+          <li>Disconnect closes Discord, drops the tunnel and opens Discord again on the normal route.</li>
+          <li>Nothing else on the PC ever enters the tunnel. Not the browser, not your games.</li>
+        </ol>
+      </div>
+      <figure class="shot">
+        <img src="./assets/app-home.png" width="557" height="629" loading="lazy" decoding="async"
+             alt="Brisa main screen: the Connection title, a Disconnected status, the Automatic route and the Connect button.">
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="needs-title">
+    <div class="wrap split flip">
+      <div>
+        <h2 id="needs-title">What it needs</h2>
+        <dl class="needs">
+          <div>
+            <dt>Windows</dt>
+            <dd>x64, built for Windows 11.</dd>
+          </div>
+          <div>
+            <dt>Administrator</dt>
+            <dd>Windows asks for administrator rights to connect and disconnect. Opening the app does not.</dd>
+          </div>
+          <div>
+            <dt>Account</dt>
+            <dd>Sign in with your Proton account (the tunnel ends at a Proton server) or import a WireGuard <code>.conf</code> under <code>Settings</code>, <code>Advanced</code>.</dd>
+          </div>
+          <div>
+            <dt>WireSock</dt>
+            <dd>Not bundled. On the first connection Brisa downloads the installer for one specific version, checks its <code>SHA-256</code> and opens the vendor's installer.</dd>
+          </div>
+        </dl>
+      </div>
+      <figure class="shot">
+        <img src="./assets/app-settings.png" width="557" height="629" loading="lazy" decoding="async"
+             alt="Brisa Settings screen: theme options, the Start When I Sign In option, the About and Updates section and the Advanced button.">
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="install-title">
+    <div class="wrap split">
+      <div>
+        <h2 id="install-title">Install</h2>
+        <ol class="steps">
+          <li>Download and run <code>Brisa-win-Setup.exe</code>.</li>
+          <li>Open Brisa from the Start menu, sign in with Proton or import your <code>.conf</code>, and click <code>Connect</code>.</li>
+        </ol>
+      </div>
+      <div class="get">
+        <a class="download" href="https://github.com/insxnsive/brisa/releases/latest/download/Brisa-win-Setup.exe">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          Download for Windows
+        </a>
+        <p class="get-meta">131 MB, Windows 11 x64</p>
+        <p class="get-warn">The setup is not code-signed yet, so SmartScreen may warn about an unknown publisher. If the file came from the repository's Releases, choose More info, then Run anyway.</p>
+        <p class="alt">You can also use the <a href="https://github.com/insxnsive/brisa/releases/latest/download/Brisa-win-Portable.zip">portable ZIP</a> or the <a href="https://github.com/insxnsive/brisa/blob/brisa/docs/install.md">PowerShell installer</a>, which checks the hash before it runs.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <nav aria-label="Project links">
+      <a href="https://github.com/insxnsive/brisa">Source on GitHub</a>
+      <a href="https://github.com/insxnsive/brisa/releases/latest">Releases</a>
+      <a href="https://github.com/insxnsive/brisa/blob/brisa/LICENSE">License GPL-3.0-or-later</a>
+    </nav>
+    <p>Free software, no warranty. Brisa is a fork of <a href="https://github.com/bezumiya/GoLiveBypass">GoLiveBypass</a> by bezumiya. The Proton profile helper comes from <a href="https://github.com/hatemosphere/protonvpn-wg-confgen">protonvpn-wg-confgen</a> by hatemosphere.</p>
+    <p>Brisa is not affiliated with Discord, Proton or WireSock.</p>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var route = document.getElementById("route");
+    if (!route || !("IntersectionObserver" in window)) return;
+    new IntersectionObserver(function (entries) {
+      route.classList.toggle("is-flowing", entries[0].isIntersecting);
+    }).observe(route);
+  })();
+</script>
+</body>
+</html>
