@@ -6,4 +6,4 @@ Deploy: copy these files to the root of the `site` branch of `insxnsive/brisa` a
 
 Local preview: `python -m http.server 8080` in this folder, then open `http://localhost:8080/`.
 
-Assets: the icon and both screenshots come from the Brisa repository (the screenshots only lose their Windows title bar). Fonts are Schibsted Grotesk and JetBrains Mono, latin subset, both under the SIL Open Font License 1.1.
+Assets: the icon comes from the Brisa repository; both screenshots are Brisa 1.0.1 in Portuguese. The only webfont is Schibsted Grotesk, latin subset, under the SIL Open Font License 1.1.
