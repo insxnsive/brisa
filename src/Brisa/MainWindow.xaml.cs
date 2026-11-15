@@ -205,7 +205,7 @@ public partial class MainWindow : Window
         var ticket = IssueTicket();
         var accepted = false;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
         try
         {
             var snapshot = await _backend.SnapshotAsync(timeout.Token).WaitAsync(timeout.Token);
@@ -233,7 +233,7 @@ public partial class MainWindow : Window
         if (_refreshing || _closing || !IsVisible || _currentPage is not null || UiMutationBusy ||
             _state.Phase is ConnectionPhase.Loading) return;
         _refreshing = true;
-        try { await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(20)); }
+        try { await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(30)); }
         finally { _refreshing = false; }
     }
 
