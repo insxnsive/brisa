@@ -1,5 +1,15 @@
 # Changes
 
+## 1.0.2
+
+- Startup works on PCs where the Windows account name has an accented character. Those machines showed "the native service stopped" before the first status and could not generate a log at all.
+- The same characters no longer break tunnel ownership or Discord detection after startup. Brisa used to read its own tunnel as someone else's and refuse to connect, or report Discord stopped while it was still running.
+- A startup failure reports a code, and the support log still works when the native service is already gone. Unknown failures keep their code instead of vanishing.
+- A WireSock query that cannot run no longer counts as "no tunnel". With WMI unavailable, Brisa reports the state as unknown and refuses to guess who owns the tunnel.
+- Status no longer starts the Proton helper on every refresh, and a failed WireSock query is not repeated each time.
+- The status card waits 30 seconds before reporting a timeout, and a first load that times out says so instead of showing a generic failure.
+- The log error message follows the interface language.
+
 ## 1.0.1
 
 - Home now says when WireSock SDK is missing: one red line above the primary action, shown only when the probe could prove the absence, with a link to the vendor's SDK page. The setup failure dialog carries the same link instead of leaving the user with a restart instruction.
