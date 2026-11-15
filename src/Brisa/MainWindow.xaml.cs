@@ -211,6 +211,11 @@ public partial class MainWindow : Window
             var snapshot = await _backend.SnapshotAsync(timeout.Token).WaitAsync(timeout.Token);
             accepted = ApplySnapshot(snapshot, ticket);
         }
+        catch (OperationCanceledException) when (!_lifetime.IsCancellationRequested)
+        {
+            if (CanCommit(ticket)) SetError(new TimeoutException(BackendClient.TimeoutMessage), null);
+        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             if (CanCommit(ticket)) SetError(ex, null);

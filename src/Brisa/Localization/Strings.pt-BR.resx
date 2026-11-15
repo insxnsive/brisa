@@ -115,6 +115,7 @@
   <data name="DiscordReopening" xml:space="preserve"><value>Reabrindo o Discord…</value></data>
   <data name="RestoringConnection" xml:space="preserve"><value>Restaurando a conexão normal…</value></data>
   <data name="GeneratingLog" xml:space="preserve"><value>Gerando log…</value></data>
+  <data name="LogGenerationFailed" xml:space="preserve"><value>Não foi possível gerar o log.</value></data>
   <data name="SdkPreparing" xml:space="preserve"><value>Preparando o SDK do WireSock. Conclua ou cancele o instalador visível se ele abrir.</value></data>
   <data name="SdkInstallerOpen" xml:space="preserve"><value>O instalador do WireSock ainda está aberto. Conclua ou cancele na janela do instalador do Windows e tente de novo.</value></data>
   <data name="SdkMissing" xml:space="preserve"><value>Você não tem o WireSock SDK. O Brisa não funciona direito sem ele. </value></data>

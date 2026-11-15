@@ -61,11 +61,29 @@ internal static class Program
             Check(((TextBlock)unavailable.FindName("DetailText")).Text.Contains("native service"), "returning from Settings preserves actionable terminal-failure details");
             unavailable.RequestExit(); Pump(() => app.Windows.Count == 0);
             Check(!unavailableOrder.Contains("update-apply"), "failed-service exit cannot apply an update without verified ownership");
+            var logLanguage = Brisa.Localization.LocalizationManager.Current.Language;
+            foreach (var language in new[] { "en", "pt-BR" })
+            {
+                Brisa.Localization.LocalizationManager.Current.Apply(language);
+                var failedLog = new AdvancedView(new CountingBackend { FailDiagnostics = true }, null);
+                Click((Button)failedLog.FindName("LogButton"));
+                Check(((TextBox)failedLog.FindName("LogBox")).Text == (language == "en" ? "The log could not be generated." : "Não foi possível gerar o log."),
+                    "log-generation failures use the selected UI language");
+                failedLog.DisposeAsync().GetAwaiter().GetResult();
+            }
+            Brisa.Localization.LocalizationManager.Current.Apply(logLanguage);
             var failedClose = new MainWindow(new UnavailableBackendClient(), store);
             failedClose.Show(); failedClose.InitializeAsync().GetAwaiter().GetResult();
             failedClose.Close(); Pump(() => !failedClose.IsVisible);
             Check(!app.Windows.Cast<Window>().Contains(failedClose), "X exits a terminal idle startup failure instead of hiding it in the tray");
             var unknownStartup = new StartupProbeBackend();
+            var cancelledStartup = new StartupProbeBackend();
+            cancelledStartup.Release.TrySetCanceled();
+            var cancelledStartupMain = new MainWindow(cancelledStartup, store);
+            cancelledStartupMain.Show(); cancelledStartupMain.InitializeAsync().GetAwaiter().GetResult();
+            Check(((TextBlock)cancelledStartupMain.FindName("DetailText")).Text == Brisa.Localization.LocalizationManager.Current["ServiceTimeout"],
+                "first-load cancellation renders the localized service timeout");
+            cancelledStartupMain.RequestExit(); Pump(() => app.Windows.Count == 0);
             unknownStartup.Release.TrySetException(new TimeoutException("fixture initial status timeout"));
             var unknownMain = new MainWindow(unknownStartup, store);
             unknownMain.Show(); unknownMain.InitializeAsync().GetAwaiter().GetResult();
@@ -442,6 +460,7 @@ internal static class Program
 
     private sealed class CountingBackend : IBackendClient
     {
+        public bool FailDiagnostics { get; set; }
         public List<string> Commands { get; } = new();
         public int Cancels { get; private set; }
         public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) =>
@@ -452,7 +471,8 @@ internal static class Program
             return Task.FromResult(new CommandResult(true));
         }
         public Task CancelAsync() { Cancels++; return Task.CompletedTask; }
-        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => FailDiagnostics
+            ? Task.FromException<string>(new IOException("synthetic fixture")) : Task.FromResult("fixture");
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 

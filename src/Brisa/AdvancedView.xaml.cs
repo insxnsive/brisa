@@ -154,7 +154,7 @@ public partial class AdvancedView : UserControl, IAsyncDisposable
         }
         catch
         {
-            LogBox.Text = "The log could not be generated.";
+            LogBox.Text = LocalizationManager.Current["LogGenerationFailed"];
             _logReady = false;
         }
         KeepLogReady(_logReady);
