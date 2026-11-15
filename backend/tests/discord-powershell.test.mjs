@@ -1,10 +1,35 @@
 import assert from "node:assert/strict";
 import { execFile as execute } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { createDiscordLifecycle } from "../src/discord-lifecycle.mjs";
 
 const app = String.raw`C:\Fixture's Folder\Discord\app-1\Discord.exe`;
 const literal = value => `'${value.replaceAll("'", "''")}'`;
+
+test("real PowerShell preserves Discord ownership under an accented folder", { skip: process.platform !== "win32" }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-discord-encoding-"));
+  try {
+    const executable = path.join(root, "Jo\u00e3o", "Discord", "app-1", "Discord.exe");
+    fs.mkdirSync(path.dirname(executable), { recursive: true });
+    fs.writeFileSync(executable, "synthetic fixture");
+    let reported;
+    const execFile = (file, args, options, callback) => {
+      const fixture = `function Get-CimInstance { [pscustomobject]@{ProcessId=42;ParentProcessId=1;Name='Discord.exe';ExecutablePath=(Get-Item -LiteralPath ${literal(executable)}).FullName} }; `;
+      return execute(file, [...args.slice(0, -1), fixture + args.at(-1)], options, (error, stdout) => {
+        if (!error) reported = JSON.parse(stdout)[0].ExecutablePath;
+        callback(error, stdout);
+      });
+    };
+    const lifecycle = createDiscordLifecycle({ execFile });
+    assert.equal(await lifecycle.isRunning([executable]), true);
+    assert.deepEqual(Buffer.from(reported, "utf8"), Buffer.from(executable, "utf8"));
+    assert.deepEqual(await lifecycle.runningApps([executable]), [executable]);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const changed of [false, true]) {
   test(`real PowerShell parsing ${changed ? "rejects a changed process identity" : "accepts quoted owned identity"}`, { skip: process.platform !== "win32" }, async () => {
     let active = true, commands = 0;

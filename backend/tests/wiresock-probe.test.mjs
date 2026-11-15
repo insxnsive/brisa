@@ -1,7 +1,21 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
-import { parseWireSockProbe, probeWireSock, wireSockProbeScript } from "../src/wiresock-probe.mjs";
+import { parseWireSockProbe, probeWireSock, runProbe, wireSockProbeScript } from "../src/wiresock-probe.mjs";
+
+test("PowerShell reports a non-ASCII path byte-for-byte", { skip: process.platform !== "win32" }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-probe-encoding-"));
+  try {
+    const directory = path.join(root, "Jo\u00e3o's \u6771\u4eac");
+    fs.mkdirSync(directory);
+    const literal = `'${directory.replaceAll("'", "''")}'`;
+    const output = await runProbe(`(Get-Item -LiteralPath ${literal}).FullName`, 10000);
+    assert.deepEqual(Buffer.from(output.trim(), "utf8"), Buffer.from(directory, "utf8"));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 const good = {
   executable: "C:\\Program Files\\WireSock Secure Connect\\sdk\\wiresock-client.exe",

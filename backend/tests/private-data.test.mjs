@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import test from 'node:test';
-import { assertPrivateDataTreeSync, secureNewPrivateDirectorySync, validateAclRecords, validateTrustedRecords } from '../src/private-data.mjs';
+import { assertPrivateDataTreeSync, secureNewPrivateDirectorySync, securePrivateFileSync, validateAclRecords, validateTrustedRecords } from '../src/private-data.mjs';
 
 const scratch = process.env.TMPDIR || os.tmpdir();
 const safeError = /Brisa data directory is not private\./;
@@ -33,6 +33,20 @@ test('legacy ownership decision rejects a foreign owner and reparse point while 
   assert.equal(validateTrustedRecords([broad], user), true);
   assert.equal(validateTrustedRecords([{ ...broad, owner: 'S-1-5-21-2' }], user), false);
   assert.equal(validateTrustedRecords([{ ...broad, reparse: true }], user), false);
+});
+
+test('directory and file hardening preserve non-ASCII paths', { skip: process.platform !== 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(scratch, 'brisa-acl-encoding-'));
+  try {
+    const child = path.join(root, 'Jo\u00e3o');
+    fs.mkdirSync(child);
+    secureNewPrivateDirectorySync(child);
+    const file = path.join(child, 'a\u00e7\u00e3o.txt');
+    fs.writeFileSync(file, 'synthetic fixture');
+    securePrivateFileSync(file);
+    assert.doesNotThrow(() => assertPrivateDataTreeSync(child));
+    assert.equal(fs.readFileSync(file, 'utf8'), 'synthetic fixture');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('fixture ACL commands work through a PowerShell 7 parent without elevation', { skip: process.platform !== 'win32' }, () => {

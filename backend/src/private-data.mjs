@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { powerShellCommandArgs } from './network/powershell.ts';
 
 const PRIVATE_ERROR = 'Brisa data directory is not private.';
 const allowedSystemSids = new Set(['S-1-5-18', 'S-1-5-32-544']);
@@ -38,7 +39,7 @@ $result = foreach ($entry in $paths) {
 `;
 
 function readAclRecordsSync(paths) {
-  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', readAclScript], {
+  const output = execFileSync('powershell.exe', powerShellCommandArgs(readAclScript), {
     input: JSON.stringify(paths), encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024,
     windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'],
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH')),
@@ -90,7 +91,7 @@ const secureFileScript = secureDirectoryScript
 export function securePrivateFileSync(target) {
   if (process.platform !== 'win32') throw new Error('Brisa private data requires Windows NTFS ACLs.');
   try {
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', secureFileScript], {
+    execFileSync('powershell.exe', powerShellCommandArgs(secureFileScript), {
       input: target, encoding: 'utf8', timeout: 10000, windowsHide: true,
       stdio: ['pipe', 'pipe', 'ignore'],
       env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH')),
@@ -102,7 +103,7 @@ export function securePrivateFileSync(target) {
 export function secureNewPrivateDirectorySync(target) {
   if (process.platform !== 'win32') throw new Error('Brisa private data requires Windows NTFS ACLs.');
   try {
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', secureDirectoryScript], {
+    execFileSync('powershell.exe', powerShellCommandArgs(secureDirectoryScript), {
       input: target, encoding: 'utf8', timeout: 10000, windowsHide: true,
       stdio: ['pipe', 'pipe', 'ignore'],
       env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH')),

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { helperSource } from './native-storage-transaction.mjs';
 import { assertTrustedDataPathsSync } from './private-data.mjs';
+import { powerShellCommandArgs } from './network/powershell.ts';
 
 const names = Object.freeze(['state.json', 'proton-session.json', 'native-wiresock.conf', 'imported.conf', 'wireguard.conf']);
 const error = 'Brisa private data migration failed safely.';
@@ -37,7 +38,7 @@ export function prepareNativeDataStoreSync(base, { probeLegacyTunnel, fixtureFai
     allowed = true;
   }
   try {
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    execFileSync('powershell.exe', powerShellCommandArgs(script), {
       input: JSON.stringify({ base: hostBase, allowed, failAfter: fixtureFailAfterPublish, failAfterDelete: fixtureFailAfterDelete, source: helperSource }), encoding: 'utf8', timeout: 30000,
       windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
       env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH')),

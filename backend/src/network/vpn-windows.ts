@@ -23,7 +23,7 @@ import {
     VPN_SERVICE_NAMES,
     type WireGuardConfigValidation,
 } from "./vpn-types";
-import { quotePowerShell } from "./powershell.ts";
+import { powerShellCommandArgs, quotePowerShell } from "./powershell.ts";
 import { parseWireSockSnapshot } from "./vpn-snapshot";
 import { runWireSockSnapshotOutsideMainThread } from "./vpn-snapshot-worker";
 
@@ -194,7 +194,7 @@ $procs=@(Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" -Err
 function readWireSockSnapshot(names: readonly string[]): WireSockSnapshot | null {
     const script = wireSockSnapshotScript(names);
     try {
-        const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+        const output = execFileSync("powershell.exe", powerShellCommandArgs(script), {
             encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 8000,
         }).trim();
         if (!output) return null;
@@ -207,7 +207,7 @@ function readWireSockSnapshot(names: readonly string[]): WireSockSnapshot | null
 function readWireSockSnapshotInProcessAsync(script: string, names: readonly string[]): Promise<WireSockSnapshot | null> {
     const { promise, resolve } = Promise.withResolvers<WireSockSnapshot | null>();
     try {
-        execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+        execFile("powershell.exe", powerShellCommandArgs(script), {
             encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: 8000,
         }, (error, stdout) => {
             if (error || !stdout) {
@@ -630,7 +630,7 @@ export function runElevatedInstaller(installer: string, signal?: AbortSignal, op
         signal?.addEventListener("abort", onAbort, { once: true });
         // Sem timeout: encerrar o wrapper não encerra o instalador elevado, e reportar timeout
         // aqui seria declarar um cancelamento que nunca aconteceu.
-        const child = exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { windowsHide: true }, error => settle(error ?? null, "callback"));
+        const child = exec("powershell.exe", powerShellCommandArgs(command), { windowsHide: true }, error => settle(error ?? null, "callback"));
         child.once("spawn", () => { spawned = true; });
         child.once("error", error => settle(error, "error"));
     });
@@ -941,7 +941,7 @@ export const defaultStopRuntime: StopRuntime = {
     run: runCommandAsync,
     async snapshot(names, timeoutMs, signal) {
         const script = wireSockSnapshotScript(names);
-        const result = await runCommandAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], timeoutMs, signal);
+        const result = await runCommandAsync("powershell.exe", powerShellCommandArgs(script), timeoutMs, signal);
         const output = result.stdout.trim();
         if (!result.ok || !output) return null;
         try { return parseWireSockSnapshot(output, names); } catch { return null; }
@@ -1178,7 +1178,7 @@ export async function stopOwnedWireSock(configPath: string, log: WireSockLogger,
             if (!(await canRunGlobalAction())) { skipGlobals = true; }
             else {
                 const script = "Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -match 'ProTUN|WireSock' -or $_.InterfaceDescription -match 'ProTUN|WireSock' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }";
-                const result = await runtime.run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], scope.budget(STOP_STEP_TIMEOUT_MS.dnsReset), scope.signal);
+                const result = await runtime.run("powershell.exe", powerShellCommandArgs(script), scope.budget(STOP_STEP_TIMEOUT_MS.dnsReset), scope.signal);
                 dnsCleared = result.ok;
                 if (!result.ok) log("warn", "não consegui limpar DNS do adaptador WireSock", { timedOut: result.timedOut, aborted: result.aborted });
             }

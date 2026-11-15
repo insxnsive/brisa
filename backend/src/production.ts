@@ -27,6 +27,7 @@ import { createBackend } from "./backend.mjs";
 import { createDiagnostics } from "./diagnostics.mjs";
 import { startNativeWireSock } from "./native-wiresock-start.ts";
 import { prepareNativeDataStoreSync } from "./native-data-store.mjs";
+import { powerShellCommandArgs } from "./network/powershell.ts";
 
 const MAX_CONFIG_BYTES = 512 * 1024;
 
@@ -112,7 +113,7 @@ export function createProductionBackend() {
   let elevated = false;
   try {
     const script = "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)";
-    elevated = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    elevated = execFileSync("powershell.exe", powerShellCommandArgs(script), {
       encoding: "utf8", windowsHide: true, timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
     }).trim().toLowerCase() === "true";
   } catch { /* Unknown privilege fails closed, just like unknown ownership. */ }

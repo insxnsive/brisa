@@ -5,6 +5,7 @@
  */
 
 import { Worker } from "worker_threads";
+import { powerShellCommandArgs } from "./powershell.ts";
 
 // A consulta do WireSock no Windows é um `powershell.exe`, e é o processo principal do
 // Discord (Electron) que paga a criação dele. Medido na VM (win11, 6 vCPU), com o painel
@@ -21,13 +22,15 @@ import { Worker } from "worker_threads";
 // confirmação e status do painel são atendidos em série, na ordem em que chegam — sem fila
 // própria, sem worker nova por consulta e sem timer periódico.
 const WORKER_SOURCE = `
-const { parentPort } = require("worker_threads");
+const { parentPort, workerData } = require("worker_threads");
 const { execFileSync } = require("child_process");
 
 parentPort.on("message", request => {
     let stdout = null;
     try {
-        const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", request.script], {
+        const args = workerData.args.slice();
+        args[args.length - 1] += request.script;
+        const output = execFileSync("powershell.exe", args, {
             encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: request.timeoutMs,
         });
         stdout = String(output ?? "").trim() || null;
@@ -95,7 +98,7 @@ function ensureWorker(): Worker | null {
     if (worker) return worker;
     if (unavailable) return null;
     try {
-        const created = new Worker(WORKER_SOURCE, { eval: true });
+        const created = new Worker(WORKER_SOURCE, { eval: true, workerData: { args: powerShellCommandArgs("") } });
         // A worker não segura o processo do Discord aberto; `unref` cobre o encerramento
         // normal e `disposeWireSockSnapshotWorker` encerra explicitamente na saída.
         created.unref();

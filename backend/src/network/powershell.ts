@@ -6,3 +6,9 @@
 export function quotePowerShell(value: string): string {
     return `'${value.replace(/'/g, "''")}'`;
 }
+
+export const POWERSHELL_UTF8_PRELUDE = "[Console]::InputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);";
+
+export function powerShellCommandArgs(script: string): string[] {
+    return ["-NoProfile", "-NonInteractive", "-Command", `${POWERSHELL_UTF8_PRELUDE}\n${script}`];
+}

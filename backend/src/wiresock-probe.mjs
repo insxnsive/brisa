@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 
 import { wireSockTrustHelpers } from "./wiresock-trust.mjs";
+import { powerShellCommandArgs } from "./network/powershell.ts";
 
 /**
  * Uma única sondagem assíncrona devolve tudo que a seleção precisa: as pastas encontradas, o par
@@ -100,7 +101,7 @@ export function parseWireSockProbe(stdout) {
 /** Runner padrão: um processo, com timeout e aborto cooperativo. */
 export function runProbe(script, timeoutMs, signal) {
   return new Promise((resolve, reject) => {
-    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    execFile("powershell.exe", powerShellCommandArgs(script), {
       encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: timeoutMs, signal,
     }, (error, stdout) => (error ? reject(error) : resolve(stdout)));
   });

@@ -18,6 +18,18 @@ function fixture(run) {
   try { return run(base, root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 
+for (const name of ['Joao', 'Jo\u00e3o']) test(`private store preserves paths under ${name}`, windows, () => fixture((_, root) => {
+  const base = path.join(root, name, 'Brisa');
+  const dir = prepareNativeDataStoreSync(base);
+  assert.equal(dir, path.join(base, 'native-data'));
+  assert.doesNotThrow(() => assertPrivateDataTreeSync(dir));
+  const original = Buffer.from([0, 255, 17, 10]);
+  fs.writeFileSync(path.join(base, 'state.json'), original);
+  assert.equal(prepareNativeDataStoreSync(base, { probeLegacyTunnel: () => ({ reliable: true, active: false }) }), dir);
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'state.json')), original);
+  assert.equal(fs.existsSync(path.join(base, 'state.json')), false);
+}));
+
 test('fresh broad base creates a private NTFS child without traversing installer payload', windows, () => fixture((base, root) => {
   execFileSync('icacls.exe', [base, '/grant', '*S-1-5-32-545:(OI)(CI)M'], { encoding: 'utf8', windowsHide: true });
   assert.throws(() => assertPrivateDataTreeSync(base), /not private/i);

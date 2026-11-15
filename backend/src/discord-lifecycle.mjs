@@ -1,5 +1,6 @@
 import { execFile as nodeExecFile, spawn as nodeSpawn } from "node:child_process";
 import path from "node:path";
+import { powerShellCommandArgs } from "./network/powershell.ts";
 
 const win = path.win32;
 const INSPECT_SCRIPT = "$ErrorActionPreference='Stop'; ConvertTo-Json -InputObject @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath) -Compress";
@@ -65,7 +66,7 @@ export function createDiscordLifecycle(options = {}) {
   const powershell = options.powershell ?? "powershell.exe";
 
   const run = (script, extra = [], signal) => new Promise((resolve, reject) => {
-    execFile(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", extra.length ? `& { ${script} } ${extra.join(" ")}` : script],
+    execFile(powershell, ["-NoLogo", ...powerShellCommandArgs(extra.length ? `& { ${script} } ${extra.join(" ")}` : script)],
       { windowsHide: true, encoding: "utf8", maxBuffer: 1024 * 1024, timeout: 10_000, signal },
       (error, stdout) => error ? reject(error) : resolve(stdout));
   });

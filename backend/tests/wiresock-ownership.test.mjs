@@ -1,7 +1,12 @@
 import { build } from "esbuild";
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
-import { test } from "node:test";
+import { mock, test } from "node:test";
+import workerThreads from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 
 // `vpn-windows.ts` cannot be imported directly by Node's test runner (extensionless TS
@@ -13,13 +18,46 @@ const bundled = await build({
   entryPoints: [path.join(here, "..", "src", "network", "vpn-windows.ts")],
   bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent",
 });
-const { inspectWireSock } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+const { inspectWireSock, inspectWireSockAsync } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 
 const config = String.raw`C:\native-data\native-wiresock.conf`;
 const guiConfig = String.raw`C:\Users\someone\AppData\Roaming\ProtonVPN\proton.conf`;
 const client = String.raw`C:\Program Files\WireSock\wiresock-client.exe`;
 const nativeLine = `"${client}" -config "${config}"`;
 const service = (command, processId = 10) => ({ name: "wiresock-client-service", running: true, command, processId });
+
+for (const threaded of [false, true]) test(`real PowerShell preserves accented snapshot ownership (${threaded ? "worker" : "sync"})`, { skip: process.platform !== "win32" }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-snapshot-encoding-"));
+  const workers = [];
+  const execute = childProcess.execFileSync;
+  const Worker = workerThreads.Worker;
+  try {
+    const ownedConfig = path.join(root, "Jo\u00e3o", "native-wiresock.conf");
+    fs.mkdirSync(path.dirname(ownedConfig));
+    fs.writeFileSync(ownedConfig, "synthetic fixture");
+    const literal = `'${ownedConfig.replaceAll("'", "''")}'`;
+    const fixture = `function Get-CimInstance { param($ClassName,$Filter) if($ClassName -eq 'Win32_Process'){ [pscustomobject]@{ProcessId=42;CommandLine=('wiresock-client.exe -config "'+(Get-Item -LiteralPath ${literal}).FullName+'"')} } }; `;
+    mock.method(childProcess, "execFileSync", (file, args, options) => execute(file, [...args.slice(0, -1), fixture + args.at(-1)], options));
+    mock.method(workerThreads, "Worker", function (...args) {
+      const worker = new Worker(...args);
+      const postMessage = worker.postMessage.bind(worker);
+      worker.postMessage = request => postMessage({ ...request, script: fixture + request.script });
+      workers.push(worker);
+      return worker;
+    });
+    syncBuiltinESMExports();
+    const result = threaded ? await inspectWireSockAsync(ownedConfig) : inspectWireSock(ownedConfig);
+    assert.equal(workers.length, threaded ? 1 : 0);
+    assert.equal(result.reliable, true);
+    assert.equal(result.owned, true);
+    assert.deepEqual(result.ownProcessIds, [42]);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    await Promise.all(workers.map(worker => worker.terminate()));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("a native tunnel next to a foreign one reports only the native resources as owned", () => {
   const result = inspectWireSock(config, guiConfig, {
