@@ -8,6 +8,7 @@ import { DiscordCompatibilityError, discordCompatibilityFailure } from "./discor
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
 const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
 const USERNAME_CACHE_TTL_MS = 60_000;
+const EMPTY_USERNAME_CACHE_TTL_MS = 15_000;
 
 // Helper and vendor prose is untrusted. No pattern-based redactor can reliably
 // recognize a bare credential, path, username, or token URL in that prose.
@@ -353,7 +354,8 @@ export function createBackend(deps, paths) {
   const username = async () => {
     if (!deps.helperAvailable()) return "";
     const time = now();
-    if (usernameCache && time >= usernameCache.loadedAt && time - usernameCache.loadedAt < USERNAME_CACHE_TTL_MS)
+    const cacheTtl = usernameCache?.value ? USERNAME_CACHE_TTL_MS : EMPTY_USERNAME_CACHE_TTL_MS;
+    if (usernameCache && time >= usernameCache.loadedAt && time - usernameCache.loadedAt < cacheTtl)
       return usernameCache.value;
     if (usernameRead) return usernameRead.promise;
     const entry = { epoch: usernameEpoch, promise: null };

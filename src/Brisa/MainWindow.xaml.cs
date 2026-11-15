@@ -251,7 +251,7 @@ public partial class MainWindow : Window
         else if (_operation.CurrentCount != 0 && state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Blocked
             && state.Snapshot is { Reliable: true, HasOwnedTunnel: false, Stage: "idle" }) _nativeOperationMayBeActive = false;
         _state = state; RenderStatusText(state.StatusText); DetailText.Text = state.Detail ?? "";
-        if (state.Phase == ConnectionPhase.Error && StartupDiagnostics.IsKnownCode(_backend.StartupCode))
+        if (state.Phase == ConnectionPhase.Error && _backend.StartupCode != "INIT_UNKNOWN" && StartupDiagnostics.IsKnownCode(_backend.StartupCode))
             DetailText.Text += $" ({_backend.StartupCode})";
         // Missing SDK is a prerequisite state, not a connection error: one red line above the
         // primary action, only while the probe stands behind it. It disappears once a tunnel

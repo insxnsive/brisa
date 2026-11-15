@@ -54,6 +54,10 @@ internal static class Program
             var unavailable = new MainWindow(new UnavailableBackendClient(), store,
                 updates: new OrderedUpdateService(unavailableOrder));
             unavailable.Show(); unavailable.InitializeAsync().GetAwaiter().GetResult();
+            Check(!((TextBlock)unavailable.FindName("DetailText")).Text.Contains("INIT_UNKNOWN"),
+                "an unknown startup code stays out of the user-facing error detail");
+            Check(new UnavailableBackendClient().DiagnosticsAsync().GetAwaiter().GetResult().Contains("Startup code: INIT_UNKNOWN"),
+                "unknown startup codes remain available in the generated support log");
             Click((Button)unavailable.FindName("SettingsButton"));
             var failedHost = (ContentControl)unavailable.FindName("PageHost");
             Click((Button)((SettingsView)failedHost.Content).FindName("SaveButton"));

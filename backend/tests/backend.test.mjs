@@ -62,6 +62,21 @@ function harness(overrides = {}) {
   return { backend, calls, files, setInspection(value) { inspection = value; } };
 }
 
+test("an empty username from a helper hiccup expires after fifteen seconds", async () => {
+  let time = 100, reads = 0;
+  const { backend } = harness({ now: () => time, getSavedSessionUsername: async () => ++reads === 1 ? "" : "recovered-user" });
+  assert.equal((await backend.execute("snapshot", {})).username, "");
+  time += 14_999;
+  assert.equal((await backend.execute("snapshot", {})).username, "");
+  assert.equal(reads, 1);
+  time++;
+  assert.equal((await backend.execute("snapshot", {})).username, "recovered-user");
+  assert.equal(reads, 2);
+  time += 59_999;
+  assert.equal((await backend.execute("snapshot", {})).username, "recovered-user");
+  assert.equal(reads, 2, "recovered non-empty usernames retain the normal sixty-second TTL");
+});
+
 test("username snapshots share a cached read until its bounded TTL expires", async () => {
   let time = 100, reads = 0;
   const { backend } = harness({ now: () => time, getSavedSessionUsername: async () => { reads++; return " cached-user "; } });
