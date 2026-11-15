@@ -7,6 +7,7 @@ import { DiscordCompatibilityError, discordCompatibilityFailure } from "./discor
 
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
 const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
+const USERNAME_CACHE_TTL_MS = 60_000;
 
 // Helper and vendor prose is untrusted. No pattern-based redactor can reliably
 // recognize a bare credential, path, username, or token URL in that prose.
@@ -345,10 +346,26 @@ export function createBackend(deps, paths) {
   const finish = operation => { if (operation.isCurrent()) activeOperation = null; };
   const cancelled = () => ({ success: false, code: "CAPTCHA_CANCELLED", message: "Operation cancelled." });
 
+  let usernameCache = null;
+  let usernameRead = null;
+  let usernameEpoch = 0;
+  const invalidateUsername = () => { usernameEpoch++; usernameCache = null; usernameRead = null; };
   const username = async () => {
     if (!deps.helperAvailable()) return "";
-    const value = await deps.getSavedSessionUsername(paths.dataDir);
-    return typeof value === "string" ? value.trim().slice(0, 320) : "";
+    const time = now();
+    if (usernameCache && time >= usernameCache.loadedAt && time - usernameCache.loadedAt < USERNAME_CACHE_TTL_MS)
+      return usernameCache.value;
+    if (usernameRead) return usernameRead.promise;
+    const entry = { epoch: usernameEpoch, promise: null };
+    entry.promise = (async () => {
+      const raw = await deps.getSavedSessionUsername(paths.dataDir);
+      if (entry.epoch !== usernameEpoch) return username();
+      const value = typeof raw === "string" ? raw.trim().slice(0, 320) : "";
+      usernameCache = { loadedAt: now(), value };
+      return value;
+    })().finally(() => { if (usernameRead === entry) usernameRead = null; });
+    usernameRead = entry;
+    return entry.promise;
   };
 
   const discordApps = async () => {
@@ -566,6 +583,8 @@ export function createBackend(deps, paths) {
       if (mutationBusy) return { success: false, message: APP_MESSAGES.MUTATION_BUSY, code: "MUTATION_BUSY" };
       mutationBusy = true;
       mutationSeq += 1;
+      const refreshUsername = ["login", "logout", "importConfig", "connect"].includes(command);
+      if (refreshUsername) invalidateUsername();
       mutationDone = new Promise(resolve => { releaseMutation = resolve; });
       const connectOperation = command === "connect" ? begin() : null;
       try {
@@ -802,6 +821,7 @@ export function createBackend(deps, paths) {
 
         throw new Error("Unknown command.");
       } finally {
+        if (refreshUsername) invalidateUsername();
         if (connectOperation) finish(connectOperation);
         mutationBusy = false;
         // Também no fim: uma inspeção que atravessou qualquer parte da mutação não pode

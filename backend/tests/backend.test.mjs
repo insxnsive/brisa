@@ -62,6 +62,52 @@ function harness(overrides = {}) {
   return { backend, calls, files, setInspection(value) { inspection = value; } };
 }
 
+test("username snapshots share a cached read until its bounded TTL expires", async () => {
+  let time = 100, reads = 0;
+  const { backend } = harness({ now: () => time, getSavedSessionUsername: async () => { reads++; return " cached-user "; } });
+  assert.equal((await backend.execute("snapshot", {})).username, "cached-user");
+  await Promise.all([backend.execute("snapshot", {}), backend.execute("snapshot", {})]);
+  assert.equal(reads, 1);
+  time += 60_000 - 1;
+  await backend.execute("snapshot", {});
+  assert.equal(reads, 1);
+  time++;
+  await backend.execute("snapshot", {});
+  assert.equal(reads, 2);
+});
+
+for (const [command, payload] of [
+  ["login", { username: "new-user", password: "synthetic" }],
+  ["logout", {}], ["importConfig", { path: "C:\\picked\\route.conf" }], ["connect", {}],
+]) test(`${command} invalidates the username cache`, async () => {
+  let reads = 0, current = "old-user";
+  const { backend } = harness({ getSavedSessionUsername: async () => { reads++; return current; } });
+  await backend.execute("snapshot", {});
+  current = "new-user";
+  await backend.execute(command, payload);
+  const before = reads;
+  assert.equal((await backend.execute("snapshot", {})).username, "new-user");
+  assert.equal(reads, before + 1);
+});
+
+test("a username read from before logout cannot repopulate the cache", async () => {
+  let finish, entered;
+  const ready = new Promise(resolve => { entered = resolve; });
+  let reads = 0;
+  const { backend } = harness({ getSavedSessionUsername: () => {
+    reads++;
+    if (reads === 1) { entered(); return new Promise(resolve => { finish = resolve; }); }
+    return Promise.resolve("");
+  } });
+  const pending = backend.execute("snapshot", {});
+  await ready;
+  await backend.execute("logout", {});
+  finish("old-user");
+  assert.equal((await pending).username, "");
+  assert.equal((await backend.execute("snapshot", {})).username, "");
+  assert.equal(reads, 2);
+});
+
 test("missing Discord gives update guidance before profile generation or any process change", async () => {
   const { backend, calls } = harness({ discoverDiscord: async () => [] });
   const result = await backend.execute("connect", {});
