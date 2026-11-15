@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("a production data-directory failure emits the same safe startup code on both streams", () => {
+  const result = spawnSync(process.execPath, [path.join(root, "dist", "backend.cjs")], {
+    env: { ...process.env, BRISA_DATA_DIR: "relative-fixture" }, encoding: "utf8", timeout: 10000, windowsHide: true,
+  });
+  assert.equal(result.status, 1);
+  const frame = JSON.parse(result.stdout.trim());
+  assert.equal(frame.id, "");
+  assert.equal(frame.ok, false);
+  assert.equal(frame.code, "INIT_DATA_DIR_INVALID");
+  assert.equal(result.stderr, result.stdout);
+  assert.doesNotMatch(result.stdout, /relative-fixture/);
+});
 
 function runFrames(frames) {
   return new Promise((resolve, reject) => {

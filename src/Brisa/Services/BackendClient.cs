@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text;
 using Brisa.Models;
 
 namespace Brisa.Services;
@@ -23,6 +24,10 @@ public sealed class BackendClient : IBackendClient
     private int _disposed;
     private readonly object _transportLock = new();
     private Exception? _terminalError;
+    private string? _startupCode;
+    private readonly Queue<string> _stderrTail = new();
+    public string? StartupCode { get { lock (_transportLock) return _startupCode; } }
+    public IReadOnlyList<string> StandardErrorTail { get { lock (_transportLock) return _stderrTail.ToArray(); } }
     // A caller that supplies its own cancellable token owns its deadline. Only a default
     // token falls back to this bound, so a three-minute command budget is never shortened.
     private readonly TimeSpan _requestTimeout;
@@ -91,8 +96,20 @@ public sealed class BackendClient : IBackendClient
 
     public async Task<string> DiagnosticsAsync(CancellationToken cancellationToken = default)
     {
-        var envelope = await SendEnvelopeAsync("diagnostics", new { }, cancellationToken);
-        return envelope.Result.TryGetProperty("text", out var text) ? text.GetString() ?? "" : "";
+        bool terminal;
+        lock (_transportLock) terminal = _terminalError is not null;
+        if (!terminal)
+        {
+            try
+            {
+                var envelope = await SendEnvelopeAsync("diagnostics", new { }, cancellationToken);
+                return envelope.Result.TryGetProperty("text", out var text) ? text.GetString() ?? "" : "";
+            }
+            catch (BackendUnavailableException) { }
+        }
+        try { await Task.WhenAll(_reader, _errorReader).WaitAsync(TimeSpan.FromSeconds(2), cancellationToken); }
+        catch (TimeoutException) { }
+        return StartupDiagnostics.Render(StartupCode, StandardErrorTail);
     }
 
     private async Task<T> SendAsync<T>(string command, object payload, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo, CancellationToken token)
@@ -161,6 +178,12 @@ public sealed class BackendClient : IBackendClient
                     FailPending(new BackendUnavailableException());
                     return;
                 }
+                if (response is { Id: "", Ok: false } && StartupDiagnostics.IsKnownCode(response.Code))
+                {
+                    lock (_transportLock) _startupCode = response.Code;
+                    FailPending(new BackendUnavailableException());
+                    continue;
+                }
                 if (response is not null && _pending.TryGetValue(response.Id, out var completion)) completion.TrySetResult(response);
             }
             FailPending(new BackendUnavailableException());
@@ -171,8 +194,32 @@ public sealed class BackendClient : IBackendClient
 
     private async Task DrainErrorsAsync()
     {
-        try { while (!_lifetime.IsCancellationRequested && await _process.StandardError.ReadLineAsync(_lifetime.Token) is not null) { } }
+        var buffer = new char[1024];
+        var line = new StringBuilder(1024);
+        try
+        {
+            int read;
+            while ((read = await _process.StandardError.ReadAsync(buffer.AsMemory(), _lifetime.Token)) > 0)
+            {
+                for (var i = 0; i < read; i++)
+                {
+                    if (buffer[i] == '\n') { KeepErrorLine(line.ToString()); line.Clear(); }
+                    else if (buffer[i] != '\r' && line.Length < 1024) line.Append(buffer[i]);
+                }
+            }
+            KeepErrorLine(line.ToString());
+        }
         catch { }
+    }
+
+    private void KeepErrorLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return;
+        lock (_transportLock)
+        {
+            _stderrTail.Enqueue(line);
+            while (_stderrTail.Count > 20) _stderrTail.Dequeue();
+        }
     }
 
     private void FailPending(Exception ex)

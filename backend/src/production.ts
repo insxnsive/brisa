@@ -28,6 +28,7 @@ import { createDiagnostics } from "./diagnostics.mjs";
 import { startNativeWireSock } from "./native-wiresock-start.ts";
 import { prepareNativeDataStoreSync } from "./native-data-store.mjs";
 import { powerShellCommandArgs } from "./network/powershell.ts";
+import { dataDirectoryFailure } from "./startup-error.mjs";
 
 const MAX_CONFIG_BYTES = 512 * 1024;
 
@@ -81,7 +82,9 @@ function discordExecutables(): string[] {
 }
 
 export function createProductionBackend() {
-  const dataDir = safeDataDir();
+  let dataDir: string;
+  try { dataDir = safeDataDir(); }
+  catch (error) { throw dataDirectoryFailure(error); }
   const resourceDir = safeResourceDir();
   Object.defineProperty(process, "resourcesPath", { value: resourceDir, configurable: true });
   const helperPath = path.join(resourceDir, "extra", "proton-confgen", "proton-confgen.exe");

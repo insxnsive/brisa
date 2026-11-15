@@ -23,7 +23,7 @@ public sealed record NativeSnapshot(
     public bool HasOwnedTunnel => OwnedTunnelPresent || TunnelActive || Connected;
 }
 public sealed record CommandResult(bool Success, string? Code = null, string? Message = null, string? CaptchaUrl = null, RouteInfo? Route = null, string? Stage = null);
-public sealed record BackendEnvelope(string Id, bool Ok, JsonElement Result, string? Error = null);
+public sealed record BackendEnvelope(string Id, bool Ok, JsonElement Result, string? Error = null, string? Code = null);
 public sealed record BackendRequest(string Id, string Command, object Payload);
 
 [JsonSerializable(typeof(NativeSnapshot))]

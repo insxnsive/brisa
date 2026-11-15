@@ -43,6 +43,13 @@ internal static class Program
             File.WriteAllText(Path.Combine(root, "settings.json"), "{\"Theme\":2,\"CloseToTray\":false}");
             var store = new SettingsStore(root, false);
             LanguageSwitchWhileConnected(store, Check);
+            var startupFailure = new StartupProbeBackend { StartupCode = "INIT_DATA_DIR_INVALID" };
+            startupFailure.Release.TrySetException(new BackendUnavailableException());
+            var startupFailureMain = new MainWindow(startupFailure, store);
+            startupFailureMain.Show(); startupFailureMain.InitializeAsync().GetAwaiter().GetResult();
+            Check(((TextBlock)startupFailureMain.FindName("DetailText")).Text.Contains("INIT_DATA_DIR_INVALID"),
+                "startup failure detail appends its fixed diagnostic code");
+            startupFailureMain.RequestExit(); Pump(() => app.Windows.Count == 0);
             var unavailableOrder = new List<string>();
             var unavailable = new MainWindow(new UnavailableBackendClient(), store,
                 updates: new OrderedUpdateService(unavailableOrder));
@@ -451,6 +458,7 @@ internal static class Program
 
     private sealed class StartupProbeBackend : IBackendClient
     {
+        public string? StartupCode { get; set; }
         private int reads;
         public CancellationToken StartupToken;
         public TaskCompletionSource<NativeSnapshot> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -22,6 +22,7 @@ public static class NdjsonProtocol
         BackendEnvelope? response;
         try { response = JsonSerializer.Deserialize(line, NativeJsonContext.Default.BackendEnvelope); }
         catch (JsonException ex) { throw new InvalidDataException("Invalid backend response JSON.", ex); }
+        if (response is { Id: "", Ok: false } && StartupDiagnostics.IsKnownCode(response.Code)) return response;
         if (response is null || string.IsNullOrWhiteSpace(response.Id) || response.Result.ValueKind is JsonValueKind.Undefined)
             throw new InvalidDataException("Incomplete backend response.");
         return response;

@@ -9,6 +9,13 @@ var node = Environment.GetEnvironmentVariable("NATIVE_TEST_NODE") ?? throw new I
 File.Copy(node, Path.Combine(root, "runtime", "node.exe"));
 File.WriteAllText(Path.Combine(root, "backend", "backend.cjs"), """
 const readline = require('node:readline');
+if(process.env.BRISA_DATA_DIR.endsWith('startup-code')) {
+ const frame=JSON.stringify({id:'',ok:false,code:'INIT_DATA_DIR_INVALID',error:'safe fixture'});
+ process.stdout.write(frame+'\n');
+ for(let i=0;i<25;i++) process.stderr.write('synthetic-hostile-text '+i+'\n\n');
+ process.stderr.write('synthetic-secret'.repeat(10000)+'\n'+frame+'\n');
+ process.exitCode=1;
+} else {
 readline.createInterface({input:process.stdin}).on('line', line => {
  const q=JSON.parse(line);
  if(q.command==='closeOutput'){ process.exit(17); }
@@ -29,6 +36,7 @@ readline.createInterface({input:process.stdin}).on('line', line => {
  const valid=q.command==='login' && q.payload.username==='fixture-user' && q.payload.password==='synthetic-password' && !containsNull;
  process.stdout.write(JSON.stringify({id:q.id,ok:true,result:{success:valid,message:valid?'Fixture accepted':'Optional fields must be omitted, not null'}})+'\n');
 });
+}
 """);
 try
 {
@@ -61,6 +69,20 @@ try
 
     VerifyConcurrentDisposal(root);
     await VerifyBoundedRequests(root);
+    await using (var startup = new BackendClient(root, Path.Combine(root, "startup-code")))
+    {
+        await ExpectTerminalFailure(startup.SnapshotAsync());
+        var log = await startup.DiagnosticsAsync();
+        IBackendClient exposed = startup;
+        if (exposed.StartupCode != "INIT_DATA_DIR_INVALID") throw new Exception("Startup code was lost by the transport.");
+        if (exposed.StandardErrorTail.Count != 20 || exposed.StandardErrorTail.Any(line => line.Length > 1024))
+            throw new Exception("Stderr tail must retain only twenty bounded non-empty lines.");
+        if (!log.Contains("Startup code: INIT_DATA_DIR_INVALID") || !log.Contains("Stderr tail (safe codes):")
+            || !log.Contains("Startup stderr: 20 retained lines, 19 unclassified.") || !log.Contains("STDERR_UNCLASSIFIED"))
+            throw new Exception("Dead-client diagnostics must include the startup code and safe stderr tail.");
+        if (log.Contains("synthetic-secret") || log.Contains("synthetic-hostile-text")) throw new Exception("Raw stderr must never reach a support log.");
+        Console.WriteLine("PASS startup code survives process exit and dead-client diagnostics retain a bounded safe stderr tail");
+    }
     await using var closedOutput = new BackendClient(root, Path.Combine(root, "closed-output"));
     await ExpectTerminalFailure(closedOutput.CommandAsync("closeOutput", new { }));
     await ExpectTerminalFailure(closedOutput.SnapshotAsync());

@@ -6,6 +6,11 @@ using Brisa.Services;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("idless startup failures remain readable", () =>
+    {
+        var frame = NdjsonProtocol.ParseResponse("{\"id\":\"\",\"ok\":false,\"code\":\"INIT_DATA_DIR_INVALID\",\"result\":{},\"error\":\"safe fixture\"}");
+        Assert(frame.Id == "" && !frame.Ok);
+    }),
     ("connected state disconnects", () =>
     {
         var state = HomeState.FromSnapshot(new(true, false, true, true, "u", new("s", "BR")));
@@ -340,6 +345,8 @@ var tests = new (string Name, Action Run)[]
         }
         // Códigos de plataforma que nunca chegam a uma mensagem do produto.
         codes.Remove("ABORT_ERR");
+        // Startup codes accompany the existing localized service message as diagnostic ids.
+        codes.ExceptWith(StartupDiagnostics.Codes);
         Assert(codes.Count > 50);
         // Os dois códigos que a varredura anterior perdia: eles existem só na tabela sem nome e no
         // construtor do erro de compatibilidade, então a cobertura precisa provar que os achou.
