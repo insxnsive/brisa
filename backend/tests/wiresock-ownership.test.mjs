@@ -8,6 +8,7 @@ import path from "node:path";
 import { mock, test } from "node:test";
 import workerThreads from "node:worker_threads";
 import { fileURLToPath } from "node:url";
+import { parseWireSockSnapshot } from "../src/network/vpn-snapshot.ts";
 
 // `vpn-windows.ts` cannot be imported directly by Node's test runner (extensionless TS
 // imports), so it is bundled in memory once and imported through a data URL. The ownership
@@ -25,6 +26,37 @@ const guiConfig = String.raw`C:\Users\someone\AppData\Roaming\ProtonVPN\proton.c
 const client = String.raw`C:\Program Files\WireSock\wiresock-client.exe`;
 const nativeLine = `"${client}" -config "${config}"`;
 const service = (command, processId = 10) => ({ name: "wiresock-client-service", running: true, command, processId });
+
+for (const failedQuery of ["Win32_Service", "Win32_Process"]) test(`a failed ${failedQuery} query never proves tunnel absence`, { skip: process.platform !== "win32" }, () => {
+  const execute = childProcess.execFileSync;
+  try {
+    const fixture = `function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) if($ClassName -eq '${failedQuery}'){Write-Error 'FIXTURE_CIM_FAILURE'} }; `;
+    mock.method(childProcess, "execFileSync", (file, args, options) => {
+      assert.equal(file, "powershell.exe");
+      return execute(file, [...args.slice(0, -1), fixture + args.at(-1)], options);
+    });
+    syncBuiltinESMExports();
+    const result = inspectWireSock(config);
+    assert.equal(result.reliable, false);
+    assert.equal(result.owned, false);
+    assert.equal(result.origin, "unknown");
+  } finally { mock.restoreAll(); syncBuiltinESMExports(); }
+});
+
+test("unknown service or process reads remain unknown while successful empty reads prove absence", () => {
+  const names = ["wiresock-client-service"];
+  const raw = { services: [{ name: names[0], state: "Missing" }], processes: [], processesReliable: true };
+  assert.equal(inspectWireSock(config, undefined, parseWireSockSnapshot(JSON.stringify(raw), names)).reliable, true);
+  for (const changed of [
+    { ...raw, services: [{ name: names[0], state: "Unknown" }] },
+    { ...raw, processesReliable: false },
+    { ...raw, processes: null },
+  ]) {
+    const snapshot = parseWireSockSnapshot(JSON.stringify(changed), names);
+    assert.ok(snapshot);
+    assert.equal(inspectWireSock(config, undefined, snapshot).reliable, false);
+  }
+});
 
 for (const threaded of [false, true]) test(`real PowerShell preserves accented snapshot ownership (${threaded ? "worker" : "sync"})`, { skip: process.platform !== "win32" }, async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-snapshot-encoding-"));

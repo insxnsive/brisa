@@ -21,6 +21,7 @@ export interface WireSockServiceSnapshot {
 export interface WireSockSnapshot {
     services: WireSockServiceSnapshot[];
     processes: Array<{ pid: number; commandLine: string | null }>;
+    processesReliable?: boolean;
 }
 
 // `ConvertTo-Json` do PowerShell 5.1 não garante array para uma propriedade com um único
@@ -41,7 +42,7 @@ export function parseWireSockSnapshot(raw: string, expectedServices: readonly st
         return null;
     }
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const value = parsed as { services?: unknown; processes?: unknown };
+    const value = parsed as { services?: unknown; processes?: unknown; processesReliable?: unknown };
     const serviceRows = snapshotRows(value.services);
     const processRows = snapshotRows(value.processes);
     if (serviceRows === null || processRows === null) return null;
@@ -72,5 +73,7 @@ export function parseWireSockSnapshot(raw: string, expectedServices: readonly st
         if (!Number.isInteger(pid) || pid <= 0) return [];
         return [{ pid, commandLine: typeof item.commandLine === "string" ? item.commandLine : null }];
     });
-    return { services, processes };
+    const processesReliable = (value.processesReliable === undefined || value.processesReliable === true)
+        && value.processes !== undefined && value.processes !== null;
+    return { services, processes, processesReliable };
 }

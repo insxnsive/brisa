@@ -183,12 +183,16 @@ function wireSockSnapshotScript(names: readonly string[]): string {
     return `$names=@(${list})
 $svc=@()
 foreach($n in $names){
-  $s=Get-CimInstance Win32_Service -Filter "Name='$n'" -ErrorAction SilentlyContinue
-  if($s){ $svc += [PSCustomObject]@{ name=$s.Name; state=$s.State; command=$s.PathName; processId=[int]$s.ProcessId } }
-  else { $svc += [PSCustomObject]@{ name=$n; state='Missing'; command=$null; processId=0 } }
+  try {
+    $s=Get-CimInstance Win32_Service -Filter "Name='$n'" -ErrorAction Stop
+    if($s){ $svc += [PSCustomObject]@{ name=$s.Name; state=$s.State; command=$s.PathName; processId=[int]$s.ProcessId } }
+    else { $svc += [PSCustomObject]@{ name=$n; state='Missing'; command=$null; processId=0 } }
+  } catch { $svc += [PSCustomObject]@{ name=$n; state='Unknown'; command=$null; processId=0 } }
 }
-$procs=@(Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" -ErrorAction SilentlyContinue | ForEach-Object { [PSCustomObject]@{ pid=[int]$_.ProcessId; commandLine=$_.CommandLine } })
-[PSCustomObject]@{ services=$svc; processes=$procs } | ConvertTo-Json -Compress -Depth 4`;
+$processesReliable=$true
+try { $procs=@(Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" -ErrorAction Stop | ForEach-Object { [PSCustomObject]@{ pid=[int]$_.ProcessId; commandLine=$_.CommandLine } }) }
+catch { $procs=@(); $processesReliable=$false }
+[PSCustomObject]@{ services=$svc; processes=$procs; processesReliable=$processesReliable } | ConvertTo-Json -Compress -Depth 4`;
 }
 
 function readWireSockSnapshot(names: readonly string[]): WireSockSnapshot | null {
@@ -280,9 +284,7 @@ export function inspectWireSock(configPath?: string, guiConfigPath?: string, sna
     const ownProcessIds = configPath
         ? processes.filter(process => classify(process.commandLine) === "plugin" || pluginServicePids.has(process.pid)).map(process => process.pid)
         : [];
-    // A lista de processos veio do mesmo snapshot: se ela não existisse, `readWireSockSnapshot`
-    // teria devolvido null. Sobra saber se cada nome de serviço respondeu um estado definitivo.
-    const reliable = serviceStates.every(service => service.running !== null);
+    const reliable = snapshot.processesReliable !== false && serviceStates.every(service => service.running !== null);
     if (!reliable) {
         return {
             active: false,
@@ -1241,4 +1243,3 @@ export interface RouteProbeCleanupResult {
     invalid: number;
     busy: number;
 }
-
