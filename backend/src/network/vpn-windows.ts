@@ -73,6 +73,19 @@ export interface WireSockInspection {
 export type WireSockOrigin = "plugin" | "gui" | "managed" | "external" | "mixed" | "unknown";
 
 const UNKNOWN_WIRESOCK_STATE = "Não foi possível confirmar o estado do WireSock; estado desconhecido.";
+export const WIRESOCK_INSPECTION_FAILURE_TTL_MS = 30_000;
+let inspectionFailedAt: number | null = null;
+
+function inspectionCoolingDown(): boolean {
+    const age = inspectionFailedAt === null ? Infinity : Date.now() - inspectionFailedAt;
+    return age >= 0 && age < WIRESOCK_INSPECTION_FAILURE_TTL_MS;
+}
+
+function rememberInspection(snapshot: WireSockSnapshot | null): WireSockSnapshot | null {
+    inspectionFailedAt = snapshot && snapshot.processesReliable !== false && snapshot.services.every(service => service.running !== null)
+        ? null : Date.now();
+    return snapshot;
+}
 
 export interface WireSockCleanupResult {
     stopped: boolean;
@@ -233,7 +246,11 @@ function readWireSockSnapshotInProcessAsync(script: string, names: readonly stri
 export function inspectWireSock(configPath?: string, guiConfigPath?: string, snapshotOverride?: WireSockSnapshot | null): WireSockInspection {
     if (!isWindows())
         return { active: false, owned: false, reliable: true, services: [], processIds: [], reason: null, origin: "unknown", managedServices: [], managedProcessIds: [] };
-    const snapshot = snapshotOverride === undefined ? readWireSockSnapshot(VPN_SERVICE_NAMES) : snapshotOverride;
+    const snapshot = snapshotOverride === undefined
+        ? (inspectionCoolingDown() ? null : rememberInspection(readWireSockSnapshot(VPN_SERVICE_NAMES)))
+        : snapshotOverride;
+    if (snapshotOverride && snapshotOverride.processesReliable !== false && snapshotOverride.services.every(service => service.running !== null))
+        inspectionFailedAt = null;
     if (!snapshot) {
         // Sem o snapshot a leitura já é desconhecida de qualquer forma: os processos não têm
         // fonte barata. O sc.exe (~9ms, sem PowerShell) ainda diz quais serviços estão de pé,
@@ -386,13 +403,14 @@ export function inspectWireSock(configPath?: string, guiConfigPath?: string, sna
 }
 export async function inspectWireSockAsync(configPath?: string, guiConfigPath?: string): Promise<WireSockInspection> {
     if (!isWindows()) return inspectWireSock(configPath, guiConfigPath);
+    if (inspectionCoolingDown()) return inspectWireSock(configPath, guiConfigPath, null);
     const names = VPN_SERVICE_NAMES;
     const run = await runWireSockSnapshotOutsideMainThread(wireSockSnapshotScript(names), 8000);
     if (run.ran) {
-        const snapshot = run.stdout ? parseWireSockSnapshot(run.stdout, names) : null;
+        const snapshot = rememberInspection(run.stdout ? parseWireSockSnapshot(run.stdout, names) : null);
         return inspectWireSock(configPath, guiConfigPath, snapshot);
     }
-    return inspectWireSock(configPath, guiConfigPath, await readWireSockSnapshotInProcessAsync(wireSockSnapshotScript(names), names));
+    return inspectWireSock(configPath, guiConfigPath, rememberInspection(await readWireSockSnapshotInProcessAsync(wireSockSnapshotScript(names), names)));
 }
 
 function compareVersions(left: string, right: string): number {
@@ -942,11 +960,12 @@ function runCommandAsync(file: string, args: string[], timeoutMs: number, signal
 export const defaultStopRuntime: StopRuntime = {
     run: runCommandAsync,
     async snapshot(names, timeoutMs, signal) {
+        if (inspectionCoolingDown()) return null;
         const script = wireSockSnapshotScript(names);
         const result = await runCommandAsync("powershell.exe", powerShellCommandArgs(script), timeoutMs, signal);
         const output = result.stdout.trim();
-        if (!result.ok || !output) return null;
-        try { return parseWireSockSnapshot(output, names); } catch { return null; }
+        if (!result.ok || !output) return rememberInspection(null);
+        try { return rememberInspection(parseWireSockSnapshot(output, names)); } catch { return rememberInspection(null); }
     },
     sleep(ms, signal) {
         const { promise, resolve } = Promise.withResolvers<void>();

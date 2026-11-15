@@ -40,7 +40,41 @@ for (const failedQuery of ["Win32_Service", "Win32_Process"]) test(`a failed ${f
     assert.equal(result.reliable, false);
     assert.equal(result.owned, false);
     assert.equal(result.origin, "unknown");
-  } finally { mock.restoreAll(); syncBuiltinESMExports(); }
+  } finally { mock.restoreAll(); syncBuiltinESMExports(); inspectWireSock(config, undefined, { services: [], processes: [] }); }
+});
+
+test("failed inspections back off for 30 seconds and successful reads are always fresh", { skip: process.platform !== "win32" }, () => {
+  let time = 100, queries = 0, scReads = 0, failed = true;
+  try {
+    mock.method(Date, "now", () => time);
+    mock.method(childProcess, "execFileSync", (file, args) => {
+      if (file === "sc.exe") { scReads++; return "STATE : 1 STOPPED"; }
+      assert.equal(file, "powershell.exe");
+      queries++;
+      if (failed) throw new Error("fixture timeout");
+      return JSON.stringify({ services: ["wiresock-client-service", "wiresock-pro-client-service"].map(name => ({ name, state: "Missing" })), processes: [], processesReliable: true });
+    });
+    syncBuiltinESMExports();
+    assert.equal(inspectWireSock(config).reliable, false);
+    assert.equal(inspectWireSock(config).reliable, false);
+    assert.equal(queries, 1);
+    assert.equal(scReads, 4);
+    time += 29_999;
+    assert.equal(inspectWireSock(config).reliable, false);
+    assert.equal(queries, 1);
+    time++;
+    failed = false;
+    assert.equal(inspectWireSock(config).reliable, true);
+    assert.equal(inspectWireSock(config).reliable, true);
+    assert.equal(queries, 3);
+    failed = true;
+    assert.equal(inspectWireSock(config).reliable, false);
+    assert.equal(queries, 4);
+    inspectWireSock(config, undefined, { services: [], processes: [] });
+    failed = false;
+    assert.equal(inspectWireSock(config).reliable, true);
+    assert.equal(queries, 5, "a successful observation clears the failure window");
+  } finally { mock.restoreAll(); syncBuiltinESMExports(); inspectWireSock(config, undefined, { services: [], processes: [] }); }
 });
 
 test("unknown service or process reads remain unknown while successful empty reads prove absence", () => {
