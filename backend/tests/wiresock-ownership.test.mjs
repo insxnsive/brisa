@@ -93,7 +93,8 @@ test("unknown service or process reads remain unknown while successful empty rea
 });
 
 for (const threaded of [false, true]) test(`real PowerShell preserves accented snapshot ownership (${threaded ? "worker" : "sync"})`, { skip: process.platform !== "win32" }, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-snapshot-encoding-"));
+  // Windows can hand back an 8.3 temp path while PowerShell reports the long form, so compare on the long one.
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "brisa-snapshot-encoding-")));
   const workers = [];
   const execute = childProcess.execFileSync;
   const Worker = workerThreads.Worker;

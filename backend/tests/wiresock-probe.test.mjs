@@ -7,7 +7,8 @@ import test from "node:test";
 import { parseWireSockProbe, probeWireSock, runProbe, wireSockProbeScript } from "../src/wiresock-probe.mjs";
 
 test("PowerShell reports a non-ASCII path byte-for-byte", { skip: process.platform !== "win32" }, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-probe-encoding-"));
+  // Windows can hand back an 8.3 temp path while PowerShell reports the long form, so compare on the long one.
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "brisa-probe-encoding-")));
   try {
     const directory = path.join(root, "Jo\u00e3o's \u6771\u4eac");
     fs.mkdirSync(directory);

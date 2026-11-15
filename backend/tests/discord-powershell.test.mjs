@@ -10,7 +10,8 @@ const app = String.raw`C:\Fixture's Folder\Discord\app-1\Discord.exe`;
 const literal = value => `'${value.replaceAll("'", "''")}'`;
 
 test("real PowerShell preserves Discord ownership under an accented folder", { skip: process.platform !== "win32" }, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-discord-encoding-"));
+  // Windows can hand back an 8.3 temp path while PowerShell reports the long form, so compare on the long one.
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "brisa-discord-encoding-")));
   try {
     const executable = path.join(root, "Jo\u00e3o", "Discord", "app-1", "Discord.exe");
     fs.mkdirSync(path.dirname(executable), { recursive: true });
