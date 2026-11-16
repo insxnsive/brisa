@@ -170,6 +170,7 @@
   <data name="Backend.START_NOT_APPROVED" xml:space="preserve"><value>O Windows não aprovou a etapa de administrador, ou ela não terminou a tempo. Aprove a janela de permissão e tente de novo.</value></data>
   <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>O WireSock iniciou, mas o Brisa não conseguiu confirmar que ele está rodando com o perfil do próprio Brisa. Tente de novo.</value></data>
   <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>Não foi possível iniciar o túnel do Brisa. Confira o WireSock e o seu perfil de VPN e tente de novo.</value></data>
+  <data name="Backend.START_FAILED_UNCLASSIFIED" xml:space="preserve"><value>Não foi possível concluir a conexão. Se o Discord não abriu, abra-o manualmente. Depois vá em Configurações &gt; Avançado &gt; Gerar log e envie o log para o suporte.</value></data>
   <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>O Brisa não conseguiu ler o estado do WireSock com confiança, então não alterou nada. Abra o Brisa como administrador e tente de novo.</value></data>
   <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Digite o código de dois fatores do Proton e tente de novo.</value></data>
   <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>O código de dois fatores do Proton foi recusado ou expirou.</value></data>

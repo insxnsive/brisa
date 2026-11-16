@@ -306,11 +306,30 @@ var tests = new (string Name, Action Run)[]
         // A code the table does not know must not leak the backend's English sentence into pt-BR.
         var unknown = Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.");
         Assert(unknown != "English fallback.");
-        Assert(unknown == loc["BackendUnknown"]);
+        Assert(unknown == loc["BackendUnknown"] + " (NOT_A_REAL_CODE)");
         loc.Apply(Brisa.Localization.LocalizationManager.English);
         Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == "Another native backend operation is still running.");
         Assert(Brisa.Localization.BackendText.For("NOT_A_REAL_CODE", "English fallback.") == "English fallback.");
         loc.Apply(before);
+    }),
+    ("backend fallback displays only safe diagnostic codes and keeps known translations", () =>
+    {
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        var before = loc.Language;
+        try
+        {
+            foreach (var language in new[] { Brisa.Localization.LocalizationManager.PortugueseBrazil, Brisa.Localization.LocalizationManager.English })
+            {
+                loc.Apply(language);
+                Assert(Brisa.Localization.BackendText.For(null, null) == loc["BackendUnknown"] + " (NO_CODE)");
+                Assert(Brisa.Localization.BackendText.For("MUTATION_BUSY", "ignored") == loc["Backend.MUTATION_BUSY"]);
+                foreach (var unsafeCode in new[] { "C:\\private\\fixture", "lowercase", "AB", "UNKNOWN\n", new string('A', 49) })
+                    Assert(Brisa.Localization.BackendText.For(unsafeCode, null) == loc["BackendUnknown"] + " (NO_CODE)");
+            }
+            loc.Apply(Brisa.Localization.LocalizationManager.English);
+            Assert(Brisa.Localization.BackendText.For(null, "English fallback.") == "English fallback.");
+        }
+        finally { loc.Apply(before); }
     }),
     ("every code the backend can emit has a string in both languages", () =>
     {
@@ -350,7 +369,7 @@ var tests = new (string Name, Action Run)[]
         Assert(codes.Count > 50);
         // Os dois códigos que a varredura anterior perdia: eles existem só na tabela sem nome e no
         // construtor do erro de compatibilidade, então a cobertura precisa provar que os achou.
-        foreach (var required in new[] { "DISCORD_UNAVAILABLE", "DISCORD_CHANGED", "DISCORD_CHECK_FAILED" })
+        foreach (var required in new[] { "DISCORD_UNAVAILABLE", "DISCORD_CHANGED", "DISCORD_CHECK_FAILED", "START_FAILED_UNCLASSIFIED" })
             if (!codes.Contains(required)) throw new Exception("the scan must discover " + required);
         var localization = Path.Combine(root!.FullName, "src", "Brisa", "Localization");
         var missing = new List<string>();

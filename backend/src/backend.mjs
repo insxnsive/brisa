@@ -132,6 +132,7 @@ const actionResult = value => {
   if (typeof value?.code === "string" && Object.hasOwn(FAILURE_MESSAGES, value.code)) result.code = value.code;
   if (!result.success) result.message = safeFailure(result.code);
   else if (typeof value?.message === "string") result.message = "Operation completed.";
+  if (!result.success && !result.code) result.code = "UNKNOWN";
   if (result.code === "CAPTCHA_REQUIRED" || result.code === "CAPTCHA_INVALID") {
     const captchaUrl = safeCaptchaUrl(value?.captchaUrl);
     if (captchaUrl) result.captchaUrl = captchaUrl;
@@ -628,7 +629,7 @@ export function createBackend(deps, paths) {
         if (guarded.status.active) return { success: false, message: APP_MESSAGES.ROUTE_CHANGE_ACTIVE, code: "ROUTE_CHANGE_ACTIVE" };
         const operation = begin();
         try { return await generate(payload, operation); }
-        catch { return operation.isCurrent() ? { success: false, message: safeFailure() } : cancelled(); }
+        catch { return operation.isCurrent() ? { success: false, code: "UNKNOWN", message: safeFailure() } : cancelled(); }
         finally { finish(operation); }
       }
 
@@ -679,7 +680,7 @@ export function createBackend(deps, paths) {
           try {
             const result = await generate(payload, operation);
             if (!result.success) return result;
-          } catch { return operation.isCurrent() ? { success: false, message: safeFailure() } : cancelled(); }
+          } catch { return operation.isCurrent() ? { success: false, code: "UNKNOWN", message: safeFailure() } : cancelled(); }
           if (!operation.isCurrent()) return cancelled();
         }
         // Route optimization may outlast a Discord update. Resolve again rather
@@ -764,7 +765,7 @@ export function createBackend(deps, paths) {
             return startFailure(error, cleaned);
           }
           note(failedStage, "START_FAILED_UNCLASSIFIED");
-          return { success: false, message: !cleaned
+          return { success: false, code: "START_FAILED_UNCLASSIFIED", message: !cleaned
             ? "Connection failed. Tunnel cleanup and Discord restoration could not both be confirmed. Check the connection status before retrying."
             : failedStage === "closing-discord" ? "Discord could not be closed within the startup window. No tunnel was started, and Discord was restored. Try again."
             : failedStage === "starting-discord" ? "Discord could not be restarted on the VPN. Brisa restored the normal connection. Try another route."

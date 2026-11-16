@@ -1062,13 +1062,28 @@ test("a coded start failure keeps its code when cleanup could not be confirmed",
   assert.ok(diag.recent().some(line => line.includes("START_CLIENT_EXITED exitCode=1")));
 });
 
-test("an unclassified start error keeps the generic message and carries no code", async () => {
+for (const command of ["connect", "optimize"]) {
+  for (const throws of [false, true]) {
+    test(`${command} profile generation failures carry UNKNOWN (throws=${throws})`, async () => {
+      const { backend } = harness({ generate: async () => {
+        if (throws) throw new Error("synthetic generation failure");
+        return { success: false };
+      } });
+      const result = await backend.execute(command, {});
+      assert.equal(result.success, false);
+      assert.equal(result.code, "UNKNOWN", `${command}, throws=${throws}`);
+      assert.doesNotMatch(JSON.stringify(result), /synthetic generation failure/);
+    });
+  }
+}
+
+test("an unclassified start error keeps the generic message", async () => {
   const diag = createDiagnostics();
   const { backend, files } = harness({ diag, start: async () => { throw new Error("synthetic failure"); } });
   files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
   const result = await backend.execute("connect", {});
   assert.equal(result.success, false);
-  assert.equal(result.code, undefined);
+  assert.equal(result.code, "START_FAILED_UNCLASSIFIED");
   assert.match(result.message, /The Brisa tunnel could not be started/);
   assert.ok(diag.recent().some(line => line.includes("START_FAILED_UNCLASSIFIED")));
   assert.doesNotMatch(JSON.stringify(diag.recent()), /synthetic failure/);

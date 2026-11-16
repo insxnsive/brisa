@@ -9,6 +9,7 @@ namespace Brisa.Localization;
 /// </summary>
 public static class BackendText
 {
+    private static readonly System.Text.RegularExpressions.Regex SafeCode = new("^[A-Z][A-Z0-9_]{2,47}\\z");
     public static string For(string? code, string? englishFallback, string? unknownFallbackKey = null)
     {
         if (!string.IsNullOrWhiteSpace(code))
@@ -22,7 +23,9 @@ public static class BackendText
         if (LocalizationManager.Current.Language == LocalizationManager.English
             && !string.IsNullOrWhiteSpace(englishFallback))
             return englishFallback;
-        return LocalizationManager.Current[unknownFallbackKey ?? "BackendUnknown"];
+        var generic = LocalizationManager.Current[unknownFallbackKey ?? "BackendUnknown"];
+        var shown = !string.IsNullOrWhiteSpace(code) && SafeCode.IsMatch(code) ? code : "NO_CODE";
+        return $"{generic} ({shown})";
     }
 
     /// <summary>Mostra a falha do backend já traduzida, com o código como último recurso.</summary>
