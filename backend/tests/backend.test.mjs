@@ -278,6 +278,35 @@ test("rollback rediscovers Discord when startup throws without an active tunnel"
   assert.equal(calls.some(c => c[0] === "stop"), false);
 });
 
+for (const rollback of [false, true]) {
+  for (const hasUpdatedPtb of [false, true]) {
+    test(`rediscovery retains the selected Discord flavour (rollback: ${rollback}, updated PTB: ${hasUpdatedPtb})`, async () => {
+      const ptb = String.raw`C:\DiscordPTB\app-1.0.1\DiscordPTB.exe`;
+      const updatedPtb = String.raw`C:\DiscordPTB\app-1.0.2\DiscordPTB.exe`;
+      const stable = String.raw`C:\Discord\app-1.0.2\Discord.exe`;
+      const expected = hasUpdatedPtb ? updatedPtb : ptb;
+      let started = false;
+      const { backend, calls, files, setInspection } = harness({
+        discoverDiscord: async () => started ? (hasUpdatedPtb ? [stable, updatedPtb] : [stable]) : [ptb],
+        start: async () => {
+          started = true;
+          if (rollback) throw new Error("synthetic startup failure");
+          setInspection({ active: true, owned: true, reliable: true });
+        },
+      });
+      files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+      assert.equal((await backend.execute("connect", {})).success, !rollback);
+      assert.deepEqual(calls.find(c => c[0] === "launch")[1], [expected]);
+      if (!rollback) {
+        assert.equal((await backend.execute("disconnect", {})).success, true);
+        assert.deepEqual(calls.filter(c => c[0] === "close-discord").map(c => c[1]), [[ptb], [expected]]);
+      } else {
+        assert.equal(calls.some(c => c[0] === "stop"), false);
+      }
+    });
+  }
+}
+
 test("cancellation during post-start rediscovery restores Discord only after tunnel cleanup", async () => {
   let started = false, cancelled = false;
   const { backend, calls, files, setInspection } = harness({
