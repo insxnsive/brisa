@@ -153,10 +153,13 @@ export function createDiscordLifecycle(options = {}) {
 
   const waitForMain = async (app, signal) => {
     const deadline = clock() + 12_000;
+    let consecutive = 0;
     for (let attempt = 0; attempt < maxAttempts && clock() < deadline; attempt += 1) {
       checkAbort(signal);
-      const processes = await inspect(signal);
-      if (processes.some(process => process.executablePath && key(process.executablePath) === key(win.normalize(app)))) return;
+      const processes = ownership([app], await inspect(signal)).owned;
+      const running = processes.some(process => key(win.basename(process.executablePath)) === key(win.basename(app)));
+      consecutive = running ? consecutive + 1 : 0;
+      if (consecutive >= stableChecks) return;
       if (attempt + 1 < maxAttempts) await sleep(pollIntervalMs, signal);
     }
     throw new Error("Discord did not start within the bounded wait.");

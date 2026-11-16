@@ -224,13 +224,9 @@ for (const timing of ["startup", "connected"]) {
     });
     files.set("C:\\native-data\\wireguard.conf", goodConfig);
     const result = await backend.execute("connect", {});
-    if (timing === "connected") {
-      assert.equal(result.success, true);
-      current = [updated];
-      await backend.execute("disconnect", {});
-    } else {
-      assert.equal(result.code, "DISCORD_CHANGED");
-    }
+    assert.equal(result.success, true);
+    current = [updated];
+    await backend.execute("disconnect", {});
     assert.equal(calls.filter(call => call[0] === "stop").length, 1, "the verified owned tunnel must be removed");
     assert.equal((await backend.execute("snapshot", {})).tunnelActive, false);
   });
@@ -245,6 +241,83 @@ test("connect closes old Discord before changing the route and confirms its rela
   assert.deepEqual(calls.filter(c => ["close-discord", "start", "launch"].includes(c[0])).map(c => c[0]),
     ["close-discord", "start", "launch"]);
 });
+
+test("connect rediscovers Discord after start and retains that version for disconnect", async () => {
+  const old = String.raw`C:\Discord\app-1.0.9258\Discord.exe`;
+  const updated = String.raw`C:\Discord\app-1.0.9259\Discord.exe`;
+  let current = old;
+  const { backend, calls, files, setInspection } = harness({
+    discoverDiscord: async () => [current],
+    start: async (_config, _raw, apps) => {
+      assert.deepEqual(apps, [old]);
+      current = updated;
+      setInspection({ active: true, owned: true, reliable: true });
+    },
+  });
+  files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+  assert.equal((await backend.execute("connect", {})).success, true);
+  assert.deepEqual(calls.find(c => c[0] === "launch")[1], [updated]);
+  current = String.raw`C:\Other\Discord.exe`;
+  assert.equal((await backend.execute("disconnect", {})).success, true);
+  assert.deepEqual(calls.filter(c => c[0] === "close-discord").map(c => c[1]), [[old], [updated]]);
+});
+
+test("rollback rediscovers Discord when startup throws without an active tunnel", async () => {
+  const old = String.raw`C:\Discord\app-1.0.9258\Discord.exe`;
+  const updated = String.raw`C:\Discord\app-1.0.9259\Discord.exe`;
+  let current = old;
+  const { backend, calls, files } = harness({
+    discoverDiscord: async () => [current],
+    start: async () => { current = updated; throw new Error("synthetic startup failure"); },
+  });
+  files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.equal(result.code, "START_FAILED_UNCLASSIFIED");
+  assert.deepEqual(calls.find(c => c[0] === "launch")[1], [updated]);
+  assert.equal(calls.some(c => c[0] === "stop"), false);
+});
+
+test("cancellation during post-start rediscovery restores Discord only after tunnel cleanup", async () => {
+  let started = false, cancelled = false;
+  const { backend, calls, files, setInspection } = harness({
+    discoverDiscord: async () => {
+      if (started && !cancelled) {
+        cancelled = true;
+        await backend.execute("cancel", {});
+      }
+      return [String.raw`C:\Discord\Discord.exe`];
+    },
+    start: async () => { started = true; setInspection({ active: true, owned: true, reliable: true }); },
+    launchDiscord: async (_apps, signal) => {
+      assert.equal(signal, undefined, "only rollback may launch after cancellation");
+      assert.equal(calls.some(c => c[0] === "stop"), true);
+      calls.push(["launch"]);
+    },
+  });
+  files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, false);
+  assert.equal(result.code, "CAPTCHA_CANCELLED");
+  assert.deepEqual(calls.filter(c => c[0] === "stop" || c[0] === "launch").map(c => c[0]), ["stop", "launch"]);
+});
+
+for (const failsStart of [false, true]) {
+  test(`relaunch retains the selected Discord list when rediscovery throws (rollback: ${failsStart})`, async () => {
+    let started = false;
+    const { backend, calls, files, setInspection } = harness({
+      discoverDiscord: async () => { if (started) throw new Error("synthetic discovery failure"); return [String.raw`C:\Discord\Discord.exe`]; },
+      start: async () => {
+        started = true;
+        if (failsStart) throw new Error("synthetic startup failure");
+        setInspection({ active: true, owned: true, reliable: true });
+      },
+    });
+    files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+    assert.equal((await backend.execute("connect", {})).success, !failsStart);
+    assert.deepEqual(calls.find(c => c[0] === "launch")[1], [String.raw`C:\Discord\Discord.exe`]);
+  });
+}
 
 test("Discord launch failure rolls back only the owned tunnel and is not swallowed", async () => {
   const { backend, calls, files, setInspection } = harness({

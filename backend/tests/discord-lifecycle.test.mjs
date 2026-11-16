@@ -158,3 +158,52 @@ test("launch confirmation is bounded when the process never appears", async () =
   await assert.rejects(lifecycle.launch([APP]), /did not start/i);
   assert.equal(sleeps, 2);
 });
+
+function launchSequence(paths, options = {}) {
+  let spawned = false, polls = 0;
+  const execFile = (_file, _args, _options, callback) => {
+    const executablePath = spawned ? paths[polls++] : null;
+    const processes = executablePath ? [{ ProcessId: 20, ExecutablePath: executablePath, Name: executablePath.split("\\").at(-1) }] : [];
+    queueMicrotask(() => callback(null, JSON.stringify(processes), ""));
+  };
+  const lifecycle = createDiscordLifecycle({ execFile, spawn: () => { spawned = true; return childThat(); },
+    sleep: async () => {}, maxAttempts: paths.length, ...options });
+  return { launch: signal => lifecycle.launch([OLD], signal), polls: () => polls };
+}
+
+test("launch confirms consecutive owned polls across a sibling version restart", async () => {
+  const f = launchSequence([OLD, APP, APP], { stableChecks: 3 });
+  await f.launch();
+  assert.equal(f.polls(), 3);
+});
+
+test("launch confirms a sibling version when the spawned version already exited", async () => {
+  const f = launchSequence([null, APP, APP]);
+  await f.launch();
+  assert.equal(f.polls(), 3);
+});
+
+test("launch rejects transient main processes and resets consecutive confirmation", async () => {
+  const f = launchSequence([OLD, null, APP, null]);
+  await assert.rejects(f.launch(), /Discord did not start within the bounded wait/);
+  assert.equal(f.polls(), 4);
+});
+
+test("launch waits for two fresh owned polls after a disappearance", async () => {
+  const f = launchSequence([OLD, null, APP, APP]);
+  await f.launch();
+  assert.equal(f.polls(), 4);
+});
+
+for (const candidate of [UPDATE, String.raw`C:\Unrelated\app-1.2.3\Discord.exe`]) {
+  test(`launch does not confirm an updater or another installation: ${candidate}`, async () => {
+    const f = launchSequence([candidate, candidate]);
+    await assert.rejects(f.launch(), /did not start/);
+  });
+}
+
+test("launch still honors cancellation during sibling version confirmation", async () => {
+  const controller = new AbortController();
+  const running = launchSequence([APP, APP], { sleep: async () => { if (running.polls()) controller.abort(); } });
+  await assert.rejects(running.launch(controller.signal), error => error.name === "AbortError");
+});

@@ -444,6 +444,7 @@ export function createBackend(deps, paths) {
       const restored = await inspect();
       if (!restored.reliable || restored.active) return false;
       // Rollback must restore the application as well as its normal route.
+      try { apps = await discordApps(); } catch {}
       await deps.launchDiscord(apps);
       return true;
     } catch { return false; }
@@ -722,6 +723,8 @@ export function createBackend(deps, paths) {
           sdkProven = true;
           sdkMissingFlag = false;
           stage = "starting-discord";
+          try { apps = await discordApps(); } catch {}
+          if (!operation.isCurrent()) return await cancelledStart(apps);
           await deps.launchDiscord(apps, operation.controller.signal);
           if (!operation.isCurrent()) return await cancelledStart(apps);
           sessionApps = apps;
