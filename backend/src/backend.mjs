@@ -9,8 +9,13 @@ const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
 const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
 const USERNAME_CACHE_TTL_MS = 60_000;
 const EMPTY_USERNAME_CACHE_TTL_MS = 15_000;
+const installRoot = app => {
+  const dir = path.win32.dirname(app);
+  return (/^app-[^\\/]+$/i.test(path.win32.basename(dir)) ? path.win32.dirname(dir) : dir).toLowerCase();
+};
 const refreshApps = (apps, fresh) => apps.map(app => fresh.find(candidate =>
-  path.win32.basename(candidate).toLowerCase() === path.win32.basename(app).toLowerCase()) ?? app);
+  path.win32.basename(candidate).toLowerCase() === path.win32.basename(app).toLowerCase()
+  && installRoot(candidate) === installRoot(app)) ?? app);
 
 // Helper and vendor prose is untrusted. No pattern-based redactor can reliably
 // recognize a bare credential, path, username, or token URL in that prose.
