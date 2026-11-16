@@ -207,3 +207,22 @@ test("launch still honors cancellation during sibling version confirmation", asy
   const running = launchSequence([APP, APP], { sleep: async () => { if (running.polls()) controller.abort(); } });
   await assert.rejects(running.launch(controller.signal), error => error.name === "AbortError");
 });
+
+for (const unreadableOnlyFirst of [false, true]) {
+  test(`launch confirms readable main evidence despite unreadable exiting rows (unreadable only first: ${unreadableOnlyFirst})`, async () => {
+    const readable = { ProcessId: 20, ExecutablePath: APP, Name: "Discord.exe" };
+    const unreadable = { ProcessId: 21, ExecutablePath: null, Name: "Discord.exe" };
+    let spawned = false, polls = 0;
+    const execFile = (_file, _args, _options, callback) => {
+      let rows = [];
+      if (spawned) {
+        polls++;
+        rows = unreadableOnlyFirst ? (polls === 1 ? [unreadable] : [readable]) : [readable, unreadable];
+      }
+      queueMicrotask(() => callback(null, JSON.stringify(rows), ""));
+    };
+    await createDiscordLifecycle({ execFile, spawn: () => { spawned = true; return childThat(); },
+      sleep: async () => {}, maxAttempts: 3 }).launch([OLD]);
+    assert.equal(polls, unreadableOnlyFirst ? 3 : 2);
+  });
+}

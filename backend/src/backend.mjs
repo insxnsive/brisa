@@ -9,10 +9,8 @@ const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
 const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
 const USERNAME_CACHE_TTL_MS = 60_000;
 const EMPTY_USERNAME_CACHE_TTL_MS = 15_000;
-const sameFlavour = (fresh, current) => {
-  const wanted = new Set(current.map(app => path.win32.basename(app).toLowerCase()));
-  return fresh.filter(app => wanted.has(path.win32.basename(app).toLowerCase()));
-};
+const refreshApps = (apps, fresh) => apps.map(app => fresh.find(candidate =>
+  path.win32.basename(candidate).toLowerCase() === path.win32.basename(app).toLowerCase()) ?? app);
 
 // Helper and vendor prose is untrusted. No pattern-based redactor can reliably
 // recognize a bare credential, path, username, or token URL in that prose.
@@ -448,10 +446,7 @@ export function createBackend(deps, paths) {
       const restored = await inspect();
       if (!restored.reliable || restored.active) return false;
       // Rollback must restore the application as well as its normal route.
-      try {
-        const same = sameFlavour(await discordApps(), apps);
-        if (same.length) apps = same;
-      } catch {}
+      try { apps = refreshApps(apps, await discordApps()); } catch {}
       await deps.launchDiscord(apps);
       return true;
     } catch { return false; }
@@ -730,10 +725,7 @@ export function createBackend(deps, paths) {
           sdkProven = true;
           sdkMissingFlag = false;
           stage = "starting-discord";
-          try {
-            const same = sameFlavour(await discordApps(), apps);
-            if (same.length) apps = same;
-          } catch {}
+          try { apps = refreshApps(apps, await discordApps()); } catch {}
           if (!operation.isCurrent()) return await cancelledStart(apps);
           await deps.launchDiscord(apps, operation.controller.signal);
           if (!operation.isCurrent()) return await cancelledStart(apps);

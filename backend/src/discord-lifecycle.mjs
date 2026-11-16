@@ -156,7 +156,8 @@ export function createDiscordLifecycle(options = {}) {
     let consecutive = 0;
     for (let attempt = 0; attempt < maxAttempts && clock() < deadline; attempt += 1) {
       checkAbort(signal);
-      const processes = ownership([app], await inspect(signal)).owned;
+      const rows = await inspect(signal);
+      const processes = ownership([app], rows.filter(row => row.executablePath)).owned;
       const running = processes.some(process => key(win.basename(process.executablePath)) === key(win.basename(app)));
       consecutive = running ? consecutive + 1 : 0;
       if (consecutive >= stableChecks) return;
