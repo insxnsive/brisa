@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { elevatedPowerShellFileArgs } from "./network/wiresock-service.ts";
 import { quotePowerShell } from "./network/powershell.ts";
@@ -72,7 +73,11 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
   if (!before.reliable) throw new WireSockStartError("START_STATE_UNRELIABLE");
   if (before.active && !before.owned) throw new WireSockStartError("START_EXTERNAL_ACTIVE");
-  if (before.active && before.owned) return { configPath };
+  if (before.active && before.owned) {
+    // Preserve production's settling guarantee for an already-running owned client.
+    await delay(2_000, undefined, { signal });
+    return { configPath };
+  }
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
   // Um único preparo do SDK devolve o par inteiro; descobrir de novo aqui só repetia o
   // registry/CIM e podia escolher um par diferente do que acabou de ser validado.
@@ -101,6 +106,8 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   const cancelPath = `${target}.${nonce}.cancel`;
   let cancellationMarked = false;
   let execFailure: ExecFailure | null = null;
+  const settleController = new AbortController();
+  let settled: Promise<void> | undefined;
   const markCancelled = () => {
     cancellationMarked = true;
     try { fs.writeFileSync(cancelPath, "cancelled", { encoding: "utf8", mode: 0o600, flag: "wx" }); } catch {}
@@ -135,6 +142,10 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
     if (signal?.aborted) throw new Error("WireSock start was cancelled.");
     const verdict = classifyStartResult(result, execFailure);
     if (!verdict.ok) throw new WireSockStartError(verdict.code, verdict.data);
+    // Begin the same two-second settling interval as soon as DIRECT_RUNNING is accepted.
+    settled = delay(2_000, undefined, { signal: signal ? AbortSignal.any([signal, settleController.signal]) : settleController.signal });
+    // Confirmation can still be pending when cancellation rejects the timer.
+    settled.catch(() => {});
   } finally {
     signal?.removeEventListener("abort", markCancelled);
     for (const file of [staging, scriptPath, resultPath, `${resultPath}.tmp`, cancelPath, `${resultPath}.stdout`, `${resultPath}.stderr`]) {
@@ -142,9 +153,15 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
       try { fs.rmSync(file, { force: true }); } catch {}
     }
   }
-  const after = await inspectWireSockAsync(target);
-  if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-  if (!after.reliable) throw new WireSockStartError("START_NOT_CONFIRMED", { reliable: false });
-  if (!after.active || !after.owned) throw new WireSockStartError("START_NOT_CONFIRMED", { active: after.active === true, owned: after.owned === true });
-  return { configPath: target, candidate };
+  try {
+    const after = await inspectWireSockAsync(target);
+    if (signal?.aborted) throw new Error("WireSock start was cancelled.");
+    if (!after.reliable) throw new WireSockStartError("START_NOT_CONFIRMED", { reliable: false });
+    if (!after.active || !after.owned) throw new WireSockStartError("START_NOT_CONFIRMED", { active: after.active === true, owned: after.owned === true });
+    await settled;
+    return { configPath: target, candidate };
+  } finally {
+    // Do not leave a timer alive after inspection rejects or ownership is unconfirmed.
+    settleController.abort();
+  }
 }

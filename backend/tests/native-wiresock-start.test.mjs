@@ -3,13 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { transformSync } from "esbuild";
 
 const source = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/native-wiresock-start.ts"), "utf8");
 const production = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/production.ts"), "utf8");
 
 test("production blocks mutations when the current Windows token is not elevated", () => {
   assert.ok(production.includes("let elevated = false"));
-  assert.ok(production.includes("WindowsBuiltInRole]::Administrator"));
+  // Elevation now uses the locale-independent integrity SID, avoiding PowerShell startup.
+  assert.ok(production.includes('execFileSync("whoami.exe", ["/groups", "/fo", "csv", "/nh"]'));
+  assert.doesNotMatch(production, /WindowsBuiltInRole/);
   assert.ok(production.includes("elevated ? inspectWireSockAsync(configPath)"));
   assert.ok(production.includes('reason: "Run Brisa as administrator'));
   assert.ok(production.includes("active: false, owned: false, reliable: false"));
@@ -23,7 +26,10 @@ test("production wires scoped Discord restart, route proof and post-start settli
   assert.match(production, /discordRunning:/);
   assert.match(production, /verifyRoute:/);
   assert.match(production, /discordAllowedApps\(apps\)/);
-  assert.match(production, /await delay\(2_000/);
+  // Settling moved into native start so the timer overlaps ownership inspection.
+  assert.doesNotMatch(production, /await delay\(2_000/);
+  assert.match(source, /settled = delay\(2_000/);
+  assert.match(production, /await startNativeWireSock\(/);
   assert.doesNotMatch(production, /detached: true/);
 });
 
@@ -70,4 +76,148 @@ test("production persists diagnostics inside the private data directory", () => 
   assert.match(production, /createDiagnostics\(\{ file: path\.join\(dataDir, "diagnostics\.log"\) \}\)/);
   assert.match(production, /diag: diagnostics/);
   assert.match(production, /if \(!elevated\) diagnostics\.record\("startup", "NOT_ELEVATED"\)/);
+});
+
+
+// Evaluate only the production token-check block with a fake child process; no startup I/O.
+function tokenCheck(output, failure = null) {
+  const block = production.slice(production.indexOf("  let elevated = false;"), production.indexOf("  // Every mutation refuses"));
+  const calls = [];
+  const elevated = new Function("execFileSync", "powerShellCommandArgs", `${block}\nreturn elevated;`)((...args) => {
+    calls.push(args);
+    if (failure) throw failure;
+    return output;
+  }, () => []);
+  return { elevated, calls };
+}
+
+test("speed K2 accepts the exact high-integrity SID and whoami arguments", () => {
+  const result = tokenCheck('"Rótulo obrigatório\\Nível alto","Rótulo","S-1-16-12288",""\r\n');
+  assert.equal(result.elevated, true);
+  assert.deepEqual(result.calls[0].slice(0, 2), ["whoami.exe", ["/groups", "/fo", "csv", "/nh"]]);
+  assert.equal(result.calls[0][2].timeout, 5000);
+  assert.equal(result.calls[0][2].windowsHide, true);
+});
+
+for (const [label, output] of [
+  ["medium", '"Medium","Label","S-1-16-8192",""'],
+  ["admin-group-only", '"Administrators","Alias","S-1-5-32-544","Deny only"'],
+  ["longer-SID", '"High","Label","S-1-16-122880",""'],
+  ["prefix-SID", '"High","Label","X-S-1-16-12288",""'],
+  ["name-only", '"S-1-16-12288","Label","S-1-16-8192",""'],
+  ["empty", ""],
+]) test(`speed K2 fails closed for ${label}`, () => assert.equal(tokenCheck(output).elevated, false));
+
+test("speed K2 fails closed when whoami throws", () => {
+  assert.equal(tokenCheck("", new Error("synthetic spawn failure")).elevated, false);
+});
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+// Compile the real function, replacing every imported dependency with fakes.
+// Never import or invoke the production backend, PowerShell, SDK, or real filesystem.
+function nativeHarness({ after = deferred(), beforeActive = false, verdictOk = true } = {}) {
+  const events = [], timer = deferred(), wrapper = deferred();
+  let timerSignal, inspections = 0, completed = false;
+  const candidate = { executable: "sdk.exe", booster: "booster.dll", executableVersion: "1", boosterVersion: "1" };
+  const fakeFs = {
+    mkdirSync() {}, readdirSync() { return []; }, writeFileSync() {}, rmSync() {}, renameSync() {},
+    readFileSync() { return "0\nDIRECT_RUNNING: pid=7\n"; },
+  };
+  const deps = {
+    process: { platform: "win32", arch: "x64", pid: 123, env: {} }, fs: fakeFs, path: path.win32,
+    execFile: (_file, _args, _options, callback) => { wrapper.promise.then(() => callback(null)); },
+    elevatedPowerShellFileArgs: () => [], quotePowerShell: value => `'${value}'`,
+    WireSockSetupError: class extends Error {},
+    WireSockStartError: class extends Error { constructor(code) { super(code); this.code = code; } },
+    classifyStartResult: () => verdictOk ? { ok: true } : { ok: false, code: "START_NOT_APPROVED" },
+    ensureWireSockCandidate: async () => candidate, findWireSockCandidate: async () => candidate,
+    learnCandidateLease: async () => null,
+    inspectWireSockAsync: async () => {
+      if (++inspections === 1) return { reliable: true, active: beforeActive, owned: beforeActive };
+      events.push("inspect-after"); return after.promise;
+    },
+    formatAllowedApps: () => "Discord.exe", sanitizeWireGuardConfig: raw => raw,
+    validateWireGuardConfig: () => ({ valid: true }),
+    delay: (ms, value, { signal } = {}) => {
+      events.push(["settle", ms]); timerSignal = signal;
+      const reject = () => timer.reject(new Error("synthetic aborted timer"));
+      if (signal?.aborted) reject(); else signal?.addEventListener("abort", reject, { once: true });
+      return timer.promise;
+    },
+  };
+  const runnable = transformSync(source.replace(/^import .*;\r?$/gm, "").replace(/^export /gm, ""), { loader: "ts", format: "esm" }).code;
+  const start = new Function(...Object.keys(deps), `${runnable}\nreturn startNativeWireSock;`)(...Object.values(deps));
+  const controller = new AbortController();
+  const pending = start(String.raw`C:\fixture\owned.conf`, "fixture", [String.raw`C:\Discord\Discord.exe`], controller.signal);
+  pending.then(() => { completed = true; }, () => { completed = true; });
+  return { events, timer, wrapper, after, pending, controller, get timerSignal() { return timerSignal; }, get completed() { return completed; } };
+}
+const turn = () => new Promise(resolve => setImmediate(resolve));
+const confirmed = { reliable: true, active: true, owned: true };
+
+test("speed N3 starts settling only after successful wrapper and overlaps inspection", async () => {
+  const h = nativeHarness();
+  await turn();
+  assert.deepEqual(h.events, [], "no settling before the elevated result");
+  h.wrapper.resolve(); await turn();
+  const overlapped = JSON.stringify(h.events);
+  h.after.resolve(confirmed); await turn();
+  const waitedForTimer = !h.completed;
+  h.timer.resolve(); await h.pending;
+  assert.equal(overlapped, JSON.stringify([["settle", 2000], "inspect-after"]));
+  assert.equal(waitedForTimer, true, "fast inspection cannot skip two-second settling");
+});
+
+test("speed N3 expired settle still waits for ownership inspection", async () => {
+  const h = nativeHarness(); h.wrapper.resolve(); await turn();
+  h.timer.resolve(); await turn();
+  assert.equal(h.completed, false);
+  h.after.resolve(confirmed); await h.pending;
+});
+
+for (const after of [{ reliable: false }, { reliable: true, active: false, owned: false }, { reliable: true, active: true, owned: false }]) {
+  test(`speed N3 rejects unconfirmed ownership ${JSON.stringify(after)}`, async () => {
+    const h = nativeHarness();
+    const checked = assert.rejects(h.pending, error => error.code === "START_NOT_CONFIRMED");
+    h.wrapper.resolve(); await turn(); h.after.resolve(after); await checked;
+    assert.equal(h.timerSignal?.aborted, true, "failed confirmation cancels the unused timer");
+  });
+}
+
+test("speed N3 cancels timer when inspection throws", async () => {
+  const h = nativeHarness(); const failure = new Error("synthetic inspection failure");
+  const checked = assert.rejects(h.pending, error => error === failure);
+  h.wrapper.resolve(); await turn(); h.after.reject(failure); await checked;
+  assert.equal(h.timerSignal?.aborted, true);
+});
+
+for (const duringInspection of [false, true]) {
+  test(`speed N3 aborts cleanly with inspection pending=${duringInspection}`, async () => {
+    const h = nativeHarness(); const checked = assert.rejects(h.pending); checked.catch(() => {});
+    h.wrapper.resolve(); await turn();
+    if (!duringInspection) { h.after.resolve(confirmed); await turn(); }
+    h.controller.abort(); await turn();
+    h.after.resolve(confirmed); await checked;
+    assert.equal(h.timerSignal?.aborted, true);
+  });
+}
+
+test("speed N3 rejected wrapper never begins settling", async () => {
+  const h = nativeHarness({ verdictOk: false });
+  const checked = assert.rejects(h.pending, error => error.code === "START_NOT_APPROVED");
+  h.wrapper.resolve(); await checked;
+  assert.deepEqual(h.events, []);
+});
+
+test("speed N3 already-owned shortcut retains production settling", async () => {
+  const h = nativeHarness({ beforeActive: true }); await turn();
+  const waited = !h.completed;
+  h.timer.resolve(); await h.pending;
+  assert.equal(waited, true);
+  assert.deepEqual(h.events, [["settle", 2000]]);
 });

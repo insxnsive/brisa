@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { createDiscordLifecycle, discordAllowedApps } from "./discord-lifecycle.mjs";
 import { createDiscordSelectionGuard } from "./discord-compatibility.mjs";
 import { createRouteVerifier } from "./route-verification.mjs";
@@ -27,7 +26,6 @@ import { createBackend } from "./backend.mjs";
 import { createDiagnostics } from "./diagnostics.mjs";
 import { startNativeWireSock } from "./native-wiresock-start.ts";
 import { prepareNativeDataStoreSync } from "./native-data-store.mjs";
-import { powerShellCommandArgs } from "./network/powershell.ts";
 import { dataDirectoryFailure } from "./startup-error.mjs";
 
 const MAX_CONFIG_BYTES = 512 * 1024;
@@ -115,10 +113,11 @@ export function createProductionBackend() {
   // unreadable. Check the current token only; never request elevation here.
   let elevated = false;
   try {
-    const script = "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)";
-    elevated = execFileSync("powershell.exe", powerShellCommandArgs(script), {
+    const groups = execFileSync("whoami.exe", ["/groups", "/fo", "csv", "/nh"], {
       encoding: "utf8", windowsHide: true, timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
-    }).trim().toLowerCase() === "true";
+    });
+    // Match the exact SID column; group names and attributes may be localized.
+    elevated = groups.split(/\r?\n/).some(row => /^"(?:[^"]|"")*","(?:[^"]|"")*","S-1-16-12288",/.test(row));
   } catch { /* Unknown privilege fails closed, just like unknown ownership. */ }
   // Every mutation refuses while unelevated; record why so the refusal is diagnosable.
   if (!elevated) diagnostics.record("startup", "NOT_ELEVATED");
@@ -172,9 +171,8 @@ export function createProductionBackend() {
       // A lease é publicada antes do lançamento: o rollback e o stop de uma sessão que falhou
       // também precisam da linha de base, e aprender depois carimbaria bytes não validados.
       const onLease = (lease: WireSockCandidateLease) => { sessionLease = lease; };
-      const started = await startNativeWireSock(configPath, raw, allowed, signal, { ...options, onEvent, onLease });
-      // Keep the proven Windows settling interval before opening fresh sockets.
-      await delay(2_000, undefined, { signal });
+      // Native start overlaps its proven settling interval with ownership confirmation.
+      await startNativeWireSock(configPath, raw, allowed, signal, { ...options, onEvent, onLease });
     },
     stop: async (configPath: string, options?: { signal?: AbortSignal; timeoutMs?: number; candidateLease?: WireSockCandidateLease | null }) => {
       const result = await stopOwnedWireSock(configPath, noLog, { ...options, candidateLease: options?.candidateLease ?? sessionLease });
