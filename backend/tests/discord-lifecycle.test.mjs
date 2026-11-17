@@ -14,6 +14,7 @@ function fixture(initial = []) {
   const killed = [];
   const execFile = (_file, args, _options, callback) => {
     const script = args[args.indexOf("-Command") + 1];
+    if (script.includes("$paths=@()")) return queueMicrotask(() => callback(null, JSON.stringify(processes.map(row => row.ExecutablePath).filter(value => typeof value === "string")), ""));
     if (script.includes("ConvertTo-Json")) return queueMicrotask(() => callback(null, JSON.stringify(processes), ""));
     const pid = Number(/-TargetPid (\d+)/.exec(script)?.[1]);
     killed.push(pid);
@@ -226,3 +227,37 @@ for (const unreadableOnlyFirst of [false, true]) {
     assert.equal(polls, unreadableOnlyFirst ? 3 : 2);
   });
 }
+
+
+test("speed T1 status queries unique extensionless names and exact normalized paths", async () => {
+  let script;
+  const lifecycle = createDiscordLifecycle({ execFile: (_file, args, options, cb) => {
+    script = args.at(-1);
+    assert.equal(options.timeout, 10000);
+    cb(null, JSON.stringify([APP.toUpperCase(), String.raw`C:\Unused\Equibop.exe`]));
+  } });
+  assert.equal(await lifecycle.isRunning([APP, APP.toUpperCase(), String.raw`C:\Unused\Equibop.exe`]), true);
+  assert.ok(script.includes("Get-Process -Name $n -ErrorAction Stop"));
+  assert.ok(script.includes("@('discord','equibop')"));
+  assert.doesNotMatch(script, /MainWindowTitle|ExecutablePath|Get-CimInstance|MainModule|[.]Kill\(/);
+});
+
+test("speed T1 status requires every exact installation and does not accept a sibling version", async () => {
+  const lifecycle = createDiscordLifecycle({ execFile: (_file, _args, _options, cb) => cb(null, JSON.stringify([OLD])) });
+  assert.equal(await lifecycle.isRunning([APP]), false);
+});
+
+for (const output of ["", "not json", "{}", '[null]']) {
+  test(`speed T1 unreadable transport remains an error: ${output}`, async () => {
+    const lifecycle = createDiscordLifecycle({ execFile: (_file, _args, _options, cb) => cb(null, output) });
+    await assert.rejects(lifecycle.isRunning([APP]), /inspection/);
+  });
+}
+
+test("speed T1 process errors preserve their code and cancellation is checked after reading", async () => {
+  const failure = Object.assign(new Error("fixture query failed"), { code: "FIXTURE_CODE" });
+  await assert.rejects(createDiscordLifecycle({ execFile: (_file, _args, _options, cb) => cb(failure) }).isRunning([APP]), error => error === failure);
+  const controller = new AbortController();
+  const lifecycle = createDiscordLifecycle({ execFile: (_file, _args, _options, cb) => { controller.abort(); cb(null, JSON.stringify([APP])); } });
+  await assert.rejects(lifecycle.isRunning([APP], controller.signal), error => error.name === "AbortError");
+});

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execFile as execute } from "node:child_process";
+import { execFile as execute, spawn as spawnProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,9 +19,9 @@ test("real PowerShell preserves Discord ownership under an accented folder", { s
     fs.writeFileSync(executable, "synthetic fixture");
     let reported;
     const execFile = (file, args, options, callback) => {
-      const fixture = `function Get-CimInstance { [pscustomobject]@{ProcessId=42;ParentProcessId=1;Name='Discord.exe';ExecutablePath=(Get-Item -LiteralPath ${literal(executable)}).FullName} }; `;
+      const fixture = `function Get-Process { [CmdletBinding()] param($Name) [pscustomobject]@{Path=(Get-Item -LiteralPath ${literal(executable)}).FullName} }; function Get-CimInstance { [pscustomobject]@{ProcessId=42;ParentProcessId=1;Name='Discord.exe';ExecutablePath=(Get-Item -LiteralPath ${literal(executable)}).FullName} }; `;
       return execute(file, [...args.slice(0, -1), fixture + args.at(-1)], options, (error, stdout) => {
-        if (!error) reported = JSON.parse(stdout)[0].ExecutablePath;
+        if (!error) { const first = JSON.parse(stdout)[0]; reported = typeof first === "string" ? first : first.ExecutablePath; }
         callback(error, stdout);
       });
     };
@@ -103,4 +104,100 @@ test("a child that exits during parent shutdown is not an identity violation", {
   };
   await createDiscordLifecycle({ execFile, sleep: async () => {}, maxAttempts: 3 }).stop([app]);
   assert.equal(active, false);
+});
+
+
+function statusFixture(prelude, requested = app) {
+  const execFile = (file, args, options, callback) => execute(file, [...args.slice(0, -1), prelude + args.at(-1)], options, callback);
+  return createDiscordLifecycle({ execFile }).isRunning([requested]);
+}
+
+test("speed T1 real PowerShell reads only Path for named status", { skip: process.platform !== "win32" }, async () => {
+  const prelude = `function Get-Process { [CmdletBinding()] param($Name) if($Name -ne 'discord'){throw 'BAD_NAME'}; $p=[pscustomobject]@{Path=${literal(app)}}; $p | Add-Member ScriptProperty ExecutablePath {throw 'MUST_NOT_READ'}; $p | Add-Member ScriptProperty MainWindowTitle {throw 'MUST_NOT_READ'}; $p }; function Get-CimInstance {throw 'MUST_NOT_USE_CIM'}; `;
+  assert.equal(await statusFixture(prelude), true);
+});
+
+test("speed T1 real missing process is false and access failure is an error", { skip: process.platform !== "win32" }, async () => {
+  assert.equal(await statusFixture("function Get-CimInstance {throw 'MUST_NOT_USE_CIM'}; ", String.raw`C:\fixture\brisa-definitely-not-a-process.exe`), false);
+  await assert.rejects(statusFixture("function Get-Process { [CmdletBinding()] param($Name) Write-Error 'FIXTURE_QUERY_DENIED' }; "), /FIXTURE_QUERY_DENIED/);
+});
+
+for (const path of ["$null", "{throw 'FIXTURE_PATH_UNREADABLE'}"]) {
+  test(`speed T1 unreadable Path cannot prove running: ${path}`, { skip: process.platform !== "win32" }, async () => {
+    const member = path.startsWith("{") ? `ScriptProperty Path ${path}` : `NoteProperty Path ${path}`;
+    assert.equal(await statusFixture(`function Get-Process { [CmdletBinding()] param($Name) $p=[pscustomobject]@{}; $p | Add-Member ${member}; $p }; function Get-CimInstance {throw 'MUST_NOT_USE_CIM'}; `), false);
+  });
+}
+
+
+function spawnedChild() {
+  const child = new EventEmitter(); child.unref = () => {};
+  queueMicrotask(() => child.emit("spawn")); return child;
+}
+
+const forbidOneShot = (_file, _args, _options, callback) => callback(new Error("PERSISTENT_RUNNER_REQUIRED"));
+function persistentFixture({ initial = [], polls = null, failKill = false, maxAttempts = 4, stableChecks = 2, malformed = false } = {}) {
+  let sessions = 0, spawned = false, inspections = 0;
+  const sessionSpawn = (file, args, options) => {
+    sessions++;
+    const rows = spawned && polls ? polls : null;
+    const prelude = `$global:rows=ConvertFrom-Json ${literal(JSON.stringify(initial))}; $global:poll=0; $global:samples=ConvertFrom-Json ${literal(JSON.stringify(rows))};
+function Get-CimInstance { [CmdletBinding()] param($ClassName) if($null -ne $global:samples){ $index=[Math]::Min($global:poll,$global:samples.Count-1); $global:poll++; @($global:samples[$index]) }else{@($global:rows)} }
+function Get-Process { param($Id) $row=@($global:rows|Where-Object {$_.ProcessId -eq $Id})[0]; if(-not $row){return $null}; $p=[pscustomobject]@{Handle=1;HasExited=$false;MainModule=[pscustomobject]@{FileName=$row.ExecutablePath};FixtureId=$Id}; $p | Add-Member ScriptMethod Kill { ${failKill ? "throw 'FIXTURE_TERMINATION_DENIED'" : "$global:rows=@($global:rows|Where-Object {$_.ProcessId -ne $this.FixtureId})"} }; $p | Add-Member ScriptMethod WaitForExit {param($ms) return $false}; $p | Add-Member ScriptMethod Dispose {}; $p }
+${malformed ? "[Console]::Out.WriteLine('malformed-frame')" : ""}
+`;
+    return spawnProcess(file, [...args.slice(0, -1), prelude + args.at(-1)], options);
+  };
+  const lifecycle = createDiscordLifecycle({ execFile: forbidOneShot, sessionSpawn, spawn: () => { spawned = true; return spawnedChild(); }, sleep: async () => { inspections++; }, maxAttempts, stableChecks });
+  return { lifecycle, get sessions() { return sessions; }, get inspections() { return inspections; } };
+}
+
+test("speed N1 persistent stop uses one helper for checked kill and two empty polls", { skip: process.platform !== "win32" }, async () => {
+  const f = persistentFixture({ initial: [{ ProcessId: 900001, ParentProcessId: 1, Name: "Discord.exe", ExecutablePath: app }] });
+  await f.lifecycle.stop([app]);
+  assert.equal(f.sessions, 1);
+  assert.equal(f.inspections, 2, "kill poll then two empty reads");
+});
+
+test("speed N1 persistent stop refuses unreadable owned evidence", { skip: process.platform !== "win32" }, async () => {
+  const f = persistentFixture({ initial: [{ ProcessId: 900001, Name: "Discord.exe", ExecutablePath: null }] });
+  await assert.rejects(f.lifecycle.stop([app]), /ownership/); assert.equal(f.sessions, 1);
+});
+
+test("speed N1 persistent stop preserves checked termination failure", { skip: process.platform !== "win32" }, async () => {
+  const f = persistentFixture({ initial: [{ ProcessId: 900001, Name: "Discord.exe", ExecutablePath: app }], failKill: true });
+  await assert.rejects(f.lifecycle.stop([app]), /FIXTURE_TERMINATION_DENIED/);
+});
+
+test("speed N1 launch uses one prelaunch check and one persistent confirmation helper", { skip: process.platform !== "win32" }, async () => {
+  const sibling = app.replace("app-1", "app-2");
+  const row = { ProcessId: 900001, Name: "DISCORD.EXE", ExecutablePath: sibling.toUpperCase() };
+  const f = persistentFixture({ polls: [[row], [row]], maxAttempts: 2 });
+  await f.lifecycle.launch([app]); assert.equal(f.sessions, 2);
+  assert.equal(f.inspections, 1, "one delay between two positive confirmation polls, none before spawn");
+});
+
+test("speed N1 persistent confirmation filters unreadable rows and resets stability", { skip: process.platform !== "win32" }, async () => {
+  const readable = { ProcessId: 900001, Name: "Discord.exe", ExecutablePath: app.replace("app-1", "app-2") };
+  const unreadable = { ProcessId: 900002, Name: "Discord.exe", ExecutablePath: null };
+  const f = persistentFixture({ polls: [[readable, unreadable], [], [readable], [readable]], maxAttempts: 4 });
+  await f.lifecycle.launch([app]); assert.equal(f.sessions, 2); assert.equal(f.inspections, 3);
+});
+
+test("speed N1 persistent helper rejects malformed transport instead of proving absence", { skip: process.platform !== "win32" }, async () => {
+  const f = persistentFixture({ malformed: true });
+  await assert.rejects(f.lifecycle.stop([app]), /response.*unreadable/);
+});
+
+test("speed N1 persistent helper preserves spawn failure code", async () => {
+  const lifecycle = createDiscordLifecycle({ execFile: forbidOneShot, sessionSpawn: (_file, args, options) => spawnProcess("brisa-missing-helper-fixture.exe", args, options) });
+  await assert.rejects(lifecycle.stop([app]), error => error.code === "ENOENT");
+});
+
+test("speed N1 persistent confirmation cancellation preserves AbortError", { skip: process.platform !== "win32" }, async () => {
+  const controller = new AbortController(); let spawned = false;
+  const f = persistentFixture({ polls: [[], []], maxAttempts: 4 });
+  const sessionSpawn = (file, args, options) => spawnProcess(file, [...args.slice(0, -1), "function Get-CimInstance {param($ClassName)}; " + args.at(-1)], options);
+  const lifecycle = createDiscordLifecycle({ execFile: forbidOneShot, sessionSpawn, spawn: () => { spawned = true; return spawnedChild(); }, sleep: async () => { if (spawned) controller.abort(); } });
+  await assert.rejects(lifecycle.launch([app], controller.signal), error => error.name === "AbortError" && error.code === "ABORT_ERR");
 });

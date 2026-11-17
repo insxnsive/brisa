@@ -26,6 +26,27 @@ try {
 const psLiteral = value => `'${value.replaceAll("'", "''")}'`;
 
 const key = value => value.toLowerCase();
+
+// Status needs only readable paths of named clients; it never authorizes termination.
+function runningPathsScript(apps) {
+  const names = [...new Set(apps.map(app => key(win.basename(app).slice(0, -4))))];
+  return `$ErrorActionPreference='Stop'; $paths=@()
+foreach($n in @(${names.map(psLiteral).join(",")})){
+  try { $found=@(Get-Process -Name $n -ErrorAction Stop) }
+  catch {
+    $missing=($_.FullyQualifiedErrorId.Split(',')[0] -eq 'NoProcessFoundForGivenName') -and
+      ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.ProcessCommandException') -and
+      ($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound) -and
+      ([string]$_.TargetObject -eq $n)
+    if($missing){continue}; throw
+  }
+  foreach($p in $found){
+    try { $actual=$p.Path; if(-not [string]::IsNullOrWhiteSpace($actual)){ $paths += [string]$actual } } catch {}
+  }
+}
+ConvertTo-Json -InputObject @($paths) -Compress`;
+}
+
 const abortError = () => Object.assign(new Error("Operation cancelled."), { name: "AbortError", code: "ABORT_ERR" });
 const checkAbort = signal => { if (signal?.aborted) throw abortError(); };
 
@@ -55,6 +76,74 @@ export function discordAllowedApps(apps) {
   };
 }
 
+
+// Reuse one helper for a bounded lifecycle loop; JS still owns all identity decisions.
+const SESSION_SCRIPT = `$ErrorActionPreference='Stop'
+while($null -ne ($line=[Console]::In.ReadLine())){
+  try {
+    $request=$line|ConvertFrom-Json
+    $output=(& ([scriptblock]::Create([string]$request.script)) | Out-String -Width 4096)
+    $response=@{id=$request.id;ok=$true;stdout=[string]$output}
+  } catch { $response=@{id=$request.id;ok=$false;message=[string]$_.Exception.Message} }
+  [Console]::Out.WriteLine(($response|ConvertTo-Json -Compress -Depth 4))
+}`;
+
+function createPowerShellSession(spawn, powershell, signal) {
+  checkAbort(signal);
+  const child = spawn(powershell, ["-NoLogo", ...powerShellCommandArgs(SESSION_SCRIPT)],
+    { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+  let pending = null, sequence = 0, buffer = "", closed = false, lastError = null;
+  const stopChild = () => { try { child.stdin.end(); } catch {} try { child.kill(); } catch {} };
+  const fail = error => {
+    if (closed) return;
+    closed = true; lastError = error;
+    if (pending) { clearTimeout(pending.timer); pending.reject(error); pending = null; }
+    stopChild();
+  };
+  const abort = () => fail(abortError());
+  child.once("error", fail);
+  child.stdin.on("error", fail);
+  child.stderr.on("data", () => {});
+  child.stderr.on("error", fail);
+  child.stdout.on("error", fail);
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", chunk => {
+    if (closed) return;
+    buffer += chunk;
+    if (Buffer.byteLength(buffer, "utf8") > 1024 * 1024) return fail(new Error("Discord process response exceeded its bounded size."));
+    let end;
+    while ((end = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, end).trim(); buffer = buffer.slice(end + 1);
+      if (!line) continue;
+      let response;
+      try { response = JSON.parse(line); } catch { return fail(new Error("Discord process response was unreadable.")); }
+      if (!pending || response?.id !== pending.id || typeof response.ok !== "boolean")
+        return fail(new Error("Discord process response did not match its request."));
+      const current = pending; pending = null; clearTimeout(current.timer);
+      if (!response.ok) current.reject(Object.assign(new Error(typeof response.message === "string" ? response.message.slice(0, 4096) : "Discord process command failed."), { code: 1 }));
+      else if (typeof response.stdout !== "string") { current.reject(new Error("Discord process response was unreadable.")); fail(new Error("Discord process response was unreadable.")); }
+      else current.resolve(response.stdout);
+    }
+  });
+  child.once("close", code => fail(Object.assign(new Error("Discord process helper exited before completion."), { code })));
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
+  return {
+    run: script => new Promise((resolve, reject) => {
+      if (closed) return reject(lastError ?? new Error("Discord process helper is closed."));
+      if (pending) return reject(new Error("Discord process helper already has a request."));
+      const id = ++sequence;
+      const timer = setTimeout(() => fail(new Error("Discord process command timed out.")), 10_000);
+      pending = { id, resolve, reject, timer };
+      try { child.stdin.write(JSON.stringify({ id, script }) + "\n"); } catch (error) { fail(error); }
+    }),
+    close: () => {
+      signal?.removeEventListener("abort", abort);
+      if (!closed) fail(new Error("Discord process helper is closed."));
+    },
+  };
+}
+
 export function createDiscordLifecycle(options = {}) {
   const execFile = options.execFile ?? nodeExecFile;
   const spawn = options.spawn ?? nodeSpawn;
@@ -71,9 +160,18 @@ export function createDiscordLifecycle(options = {}) {
       (error, stdout) => error ? reject(error) : resolve(stdout));
   });
 
-  const inspect = async signal => {
+  const withSession = async (signal, operation) => {
+    // An explicit execFile dependency remains a complete runner override. The sessionSpawn
+    // seam lets tests exercise the production transport with synthetic PowerShell cmdlets.
+    if (options.execFile && !options.sessionSpawn) return operation(run);
+    const session = createPowerShellSession(options.sessionSpawn ?? nodeSpawn, powershell, signal);
+    try { return await operation((script, _extra = [], _signal) => session.run(script)); }
+    finally { session.close(); }
+  };
+
+  const inspect = async (signal, runner = run) => {
     checkAbort(signal);
-    const raw = await run(INSPECT_SCRIPT, [], signal);
+    const raw = await runner(INSPECT_SCRIPT, [], signal);
     checkAbort(signal);
     if (!raw.trim()) throw new Error("Discord process inspection returned no evidence.");
     let parsed;
@@ -111,32 +209,36 @@ export function createDiscordLifecycle(options = {}) {
     return { allowed, owned };
   };
 
-  const killOwned = async (candidates, signal) => {
+  const killOwned = async (candidates, signal, runner = run) => {
     // One PowerShell startup per batch; every PID/path is still re-read at the
     // actual termination point. Missing children may already have exited.
     const commands = candidates.map(candidate =>
       `& { ${KILL_SCRIPT} } -TargetPid ${candidate.pid} -ExpectedPath ${psLiteral(candidate.executablePath)}`);
-    await run(`$ErrorActionPreference='Stop'; ${commands.join("; ")}`, [], signal);
+    await runner(`$ErrorActionPreference='Stop'; ${commands.join("; ")}`, [], signal);
   };
 
-  const stop = async (apps, signal) => {
+  const stopWithChecks = async (apps, signal, requiredChecks) => {
     validateApps(apps);
+    return withSession(signal, async runner => {
     let stable = 0;
     const deadline = clock() + 12_000;
     for (let attempt = 0; attempt < maxAttempts && clock() < deadline; attempt += 1) {
       checkAbort(signal);
-      const { owned } = ownership(apps, await inspect(signal));
+      const { owned } = ownership(apps, await inspect(signal, runner));
       if (owned.length === 0) {
         stable += 1;
-        if (stable >= stableChecks) return;
+        if (stable >= requiredChecks) return;
       } else {
         stable = 0;
-        await killOwned(owned, signal);
+        await killOwned(owned, signal, runner);
       }
       if (attempt + 1 < maxAttempts) await sleep(pollIntervalMs, signal);
     }
     throw new Error("Discord processes did not stop within the bounded wait.");
+    });
   };
+
+  const stop = (apps, signal) => stopWithChecks(apps, signal, stableChecks);
 
   const runningApps = async (apps, signal) => {
     const requested = validateApps(apps);
@@ -147,16 +249,24 @@ export function createDiscordLifecycle(options = {}) {
 
   const isRunning = async (apps, signal) => {
     const requested = validateApps(apps);
-    const processes = ownership(apps, await inspect(signal)).owned;
-    return requested.every(app => processes.some(p => key(p.executablePath) === key(app)));
+    checkAbort(signal);
+    const raw = await run(runningPathsScript(requested), [], signal);
+    checkAbort(signal);
+    if (!raw.trim()) throw new Error("Discord process inspection returned no evidence.");
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch { throw new Error("Discord process inspection returned unreadable data."); }
+    if (!Array.isArray(parsed) || parsed.some(value => typeof value !== "string"))
+      throw new Error("Discord process inspection returned unreadable data.");
+    const paths = new Set(parsed.filter(value => win.isAbsolute(value)).map(value => key(win.normalize(value))));
+    return requested.every(app => paths.has(key(app)));
   };
 
-  const waitForMain = async (app, signal) => {
+  const waitForMain = async (app, signal) => withSession(signal, async runner => {
     const deadline = clock() + 12_000;
     let consecutive = 0;
     for (let attempt = 0; attempt < maxAttempts && clock() < deadline; attempt += 1) {
       checkAbort(signal);
-      const rows = await inspect(signal);
+      const rows = await inspect(signal, runner);
       const processes = ownership([app], rows.filter(row => row.executablePath)).owned;
       const running = processes.some(process => key(win.basename(process.executablePath)) === key(win.basename(app)));
       consecutive = running ? consecutive + 1 : 0;
@@ -164,12 +274,13 @@ export function createDiscordLifecycle(options = {}) {
       if (attempt + 1 < maxAttempts) await sleep(pollIntervalMs, signal);
     }
     throw new Error("Discord did not start within the bounded wait.");
-  };
+  });
 
   const launch = async (apps, signal) => {
     const requested = validateApps(apps);
     checkAbort(signal);
-    await stop(requested, signal);
+    // Launch only needs a fresh empty check; explicit stop still requires two by default.
+    await stopWithChecks(requested, signal, 1);
     for (const app of requested) {
       checkAbort(signal);
       await new Promise((resolve, reject) => {
