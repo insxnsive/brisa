@@ -24,8 +24,19 @@ function Complete([int]$code,[string]$detail){
 function Assert-NotCancelled { if(Test-Path -LiteralPath $cancelPath){ throw 'CANCELLED' } }
 try {
   Assert-NotCancelled
-  $services=@(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object { $_.Name -in @('wiresock-client-service','wiresock-pro-client-service') })
-  if($services | Where-Object { $_.State -ne 'Stopped' -or [int]$_.ProcessId -ne 0 }){ throw 'EXTERNAL_SERVICE_ACTIVE' }
+  foreach($n in @('wiresock-client-service','wiresock-pro-client-service')){
+    try { $gs=Get-Service -Name $n -ErrorAction Stop }
+    catch {
+      $missing=($_.FullyQualifiedErrorId.Split(',')[0] -eq 'NoServiceFoundForGivenName') -and
+      ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.ServiceCommandException') -and
+      ($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound) -and
+      ([string]$_.TargetObject -eq $n)
+      if($missing){ continue }
+      throw 'EXTERNAL_SERVICE_QUERY_FAILED'
+    }
+    if(-not $gs){ throw 'EXTERNAL_SERVICE_QUERY_FAILED' }
+    if($gs.Status -ne 'Stopped'){ throw 'EXTERNAL_SERVICE_ACTIVE' }
+  }
   $processes=@(Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" -ErrorAction Stop)
   if($processes.Count -ne 0){ throw 'EXTERNAL_PROCESS_ACTIVE' }
   Assert-NotCancelled

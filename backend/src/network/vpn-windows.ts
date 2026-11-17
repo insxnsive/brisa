@@ -196,10 +196,29 @@ function wireSockSnapshotScript(names: readonly string[]): string {
     return `$names=@(${list})
 $svc=@()
 foreach($n in $names){
+  try { $gs=Get-Service -Name $n -ErrorAction Stop }
+  catch {
+    $missing=($_.FullyQualifiedErrorId.Split(',')[0] -eq 'NoServiceFoundForGivenName') -and
+      ($_.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.ServiceCommandException') -and
+      ($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound) -and
+      ([string]$_.TargetObject -eq $n)
+    $state=if($missing){'Missing'}else{'Unknown'}
+    $svc += [PSCustomObject]@{ name=$n; state=$state; command=$null; processId=0 }
+    continue
+  }
   try {
-    $s=Get-CimInstance Win32_Service -Filter "Name='$n'" -ErrorAction Stop
-    if($s){ $svc += [PSCustomObject]@{ name=$s.Name; state=$s.State; command=$s.PathName; processId=[int]$s.ProcessId } }
-    else { $svc += [PSCustomObject]@{ name=$n; state='Missing'; command=$null; processId=0 } }
+    if(-not $gs){ throw 'SERVICE_STATE_UNREADABLE' }
+    if($gs.Status -eq 'Stopped'){
+      # Registry provider expands REG_EXPAND_SZ. Do not expand the path a second time.
+      $image=(Get-ItemProperty -LiteralPath "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\$n" -Name ImagePath -ErrorAction Stop).ImagePath
+      if([string]::IsNullOrWhiteSpace([string]$image)){ throw 'SERVICE_PATH_UNREADABLE' }
+      $svc += [PSCustomObject]@{ name=$n; state='Stopped'; command=[string]$image; processId=0 }
+    } else {
+      # Only a non-stopped service needs authoritative CIM state, command and PID.
+      $s=Get-CimInstance Win32_Service -Filter "Name='$n'" -ErrorAction Stop
+      if(-not $s){ throw 'SERVICE_STATE_UNREADABLE' }
+      $svc += [PSCustomObject]@{ name=$s.Name; state=$s.State; command=$s.PathName; processId=[int]$s.ProcessId }
+    }
   } catch { $svc += [PSCustomObject]@{ name=$n; state='Unknown'; command=$null; processId=0 } }
 }
 $processesReliable=$true

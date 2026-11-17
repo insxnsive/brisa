@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { powerShellCommandArgs, quotePowerShell } from "../src/network/powershell.ts";
 import { transformSync } from "esbuild";
 
 const source = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/native-wiresock-start.ts"), "utf8");
@@ -238,4 +240,42 @@ test("speed N2 native start uses the learned lease without another full probe", 
   h.wrapper.resolve(); h.after.resolve(confirmed); h.timer.resolve();
   await h.pending;
   assert.equal(h.discoveries, 0);
+});
+
+
+// Run ONLY the service refusal guard, ending before process inspection and launch.
+const directText = source.slice(source.indexOf("export function nativeDirectScript("), source.indexOf("type ExecFailure"));
+const directScript = new Function("quotePowerShell", `${transformSync(directText.replace("export ", ""), { loader: "ts", format: "esm" }).code}\nreturn nativeDirectScript;`)(quotePowerShell)("fixture.exe", "fixture.conf", "fixture.result", "fixture.cancel");
+const guardStart = directScript.indexOf("  Assert-NotCancelled\n") + "  Assert-NotCancelled\n".length;
+const serviceGuard = directScript.slice(guardStart, directScript.indexOf("  $processes=@("));
+function guardFixture(fixture) {
+  assert.ok(guardStart > 0 && serviceGuard.length > 0);
+  const script = `function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) throw 'FORBIDDEN_CIM_SERVICE' }; ${fixture}; try { ${serviceGuard}; 'ALLOWED' } catch { $_.Exception.Message }`;
+  return execFileSync("powershell.exe", powerShellCommandArgs(script), { encoding: "utf8", windowsHide: true, timeout: 10000 }).trim();
+}
+
+test("speed S1 native guard allows only canonical missing services", { skip: process.platform !== "win32" }, () => {
+  const fixture = String.raw`try { Microsoft.PowerShell.Management\Get-Service -Name 'wiresock-nonexistent-test' -ErrorAction Stop } catch { $script:missingException=$_.Exception }; function Get-Service { [CmdletBinding()] param($Name) $record=New-Object Management.Automation.ErrorRecord($script:missingException,'NoServiceFoundForGivenName',[Management.Automation.ErrorCategory]::ObjectNotFound,$Name); $PSCmdlet.ThrowTerminatingError($record) }`;
+  assert.equal(guardFixture(fixture), "ALLOWED");
+});
+
+test("speed S1 native guard allows stopped services without CIM", { skip: process.platform !== "win32" }, () => {
+  assert.equal(guardFixture("function Get-Service { [CmdletBinding()] param($Name) [pscustomobject]@{Status='Stopped'} }"), "ALLOWED");
+});
+
+for (const status of ["Running", "StartPending", "StopPending", "Paused", "PausePending", "ContinuePending"]) {
+  test(`speed S1 native guard refuses ${status}`, { skip: process.platform !== "win32" }, () => {
+    assert.equal(guardFixture(`function Get-Service { [CmdletBinding()] param($Name) [pscustomobject]@{Status='${status}'} }`), "EXTERNAL_SERVICE_ACTIVE");
+  });
+}
+
+for (const failure of ["Write-Error 'FIXTURE_SERVICE_FAILURE'", "throw (New-Object ComponentModel.Win32Exception(5))", "$null"]) {
+  test(`speed S1 native guard refuses unknown service state: ${failure}`, { skip: process.platform !== "win32" }, () => {
+    assert.equal(guardFixture(`function Get-Service { [CmdletBinding()] param($Name) ${failure} }`), "EXTERNAL_SERVICE_QUERY_FAILED");
+  });
+}
+
+test("speed S1 native guard contains no service CIM or sc parser", () => {
+  assert.doesNotMatch(serviceGuard, /Win32_Service|sc[.]exe|STATE\s*:/);
+  assert.match(directScript, /Get-CimInstance Win32_Process -Filter "Name='wiresock-client.exe'" -ErrorAction Stop/);
 });

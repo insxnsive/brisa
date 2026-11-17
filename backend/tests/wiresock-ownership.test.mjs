@@ -1,4 +1,4 @@
-import { build } from "esbuild";
+import { build, transformSync } from "esbuild";
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import fs from "node:fs";
@@ -9,6 +9,7 @@ import { mock, test } from "node:test";
 import workerThreads from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import { parseWireSockSnapshot } from "../src/network/vpn-snapshot.ts";
+import { powerShellCommandArgs, quotePowerShell } from "../src/network/powershell.ts";
 
 // `vpn-windows.ts` cannot be imported directly by Node's test runner (extensionless TS
 // imports), so it is bundled in memory once and imported through a data URL. The ownership
@@ -27,10 +28,10 @@ const client = String.raw`C:\Program Files\WireSock\wiresock-client.exe`;
 const nativeLine = `"${client}" -config "${config}"`;
 const service = (command, processId = 10) => ({ name: "wiresock-client-service", running: true, command, processId });
 
-for (const failedQuery of ["Win32_Service", "Win32_Process"]) test(`a failed ${failedQuery} query never proves tunnel absence`, { skip: process.platform !== "win32" }, () => {
+for (const failedQuery of ["Get-Service", "Win32_Service", "Win32_Process"]) test(`a failed ${failedQuery} query never proves tunnel absence`, { skip: process.platform !== "win32" }, () => {
   const execute = childProcess.execFileSync;
   try {
-    const fixture = `function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) if($ClassName -eq '${failedQuery}'){Write-Error 'FIXTURE_CIM_FAILURE'} }; `;
+    const fixture = `function Get-Service { [CmdletBinding()] param($Name) if('${failedQuery}' -eq 'Get-Service'){Write-Error 'FIXTURE_SERVICE_FAILURE'}; [pscustomobject]@{Status='Running'} }; function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) if($ClassName -eq '${failedQuery}'){Write-Error 'FIXTURE_CIM_FAILURE'}; if($ClassName -eq 'Win32_Service'){[pscustomobject]@{Name=$Filter.Substring(6,$Filter.Length-7);State='Running';PathName='fixture.exe';ProcessId=10}} }; `;
     mock.method(childProcess, "execFileSync", (file, args, options) => {
       assert.equal(file, "powershell.exe");
       return execute(file, [...args.slice(0, -1), fixture + args.at(-1)], options);
@@ -103,7 +104,7 @@ for (const threaded of [false, true]) test(`real PowerShell preserves accented s
     fs.mkdirSync(path.dirname(ownedConfig));
     fs.writeFileSync(ownedConfig, "synthetic fixture");
     const literal = `'${ownedConfig.replaceAll("'", "''")}'`;
-    const fixture = `function Get-CimInstance { param($ClassName,$Filter) if($ClassName -eq 'Win32_Process'){ [pscustomobject]@{ProcessId=42;CommandLine=('wiresock-client.exe -config "'+(Get-Item -LiteralPath ${literal}).FullName+'"')} } }; `;
+    const fixture = `function Get-Service { param($Name) [pscustomobject]@{Status='Stopped'} }; function Get-ItemProperty { param($LiteralPath,$Name) [pscustomobject]@{ImagePath='fixture.exe'} }; function Get-CimInstance { param($ClassName,$Filter) if($ClassName -eq 'Win32_Process'){ [pscustomobject]@{ProcessId=42;CommandLine=('wiresock-client.exe -config "'+(Get-Item -LiteralPath ${literal}).FullName+'"')} } }; `;
     mock.method(childProcess, "execFileSync", (file, args, options) => execute(file, [...args.slice(0, -1), fixture + args.at(-1)], options));
     mock.method(workerThreads, "Worker", function (...args) {
       const worker = new Worker(...args);
@@ -209,4 +210,71 @@ test("the config flag matches exactly, quoted or not, and never by substring", (
     services: [], processes: [{ pid: 10, commandLine: `${client} -allowed-apps "${config}"` }],
   });
   assert.deepEqual(prefix.ownProcessIds, []);
+});
+
+
+// Compile only the real script generator; no live inspect or mutation is invoked here.
+const vpnSource = fs.readFileSync(path.join(here, "../src/network/vpn-windows.ts"), "utf8");
+const generatorText = vpnSource.slice(vpnSource.indexOf("function wireSockSnapshotScript("), vpnSource.indexOf("function readWireSockSnapshot("));
+const snapshotScript = new Function("quotePowerShell", `${transformSync(generatorText, { loader: "ts", format: "esm" }).code}\nreturn wireSockSnapshotScript;`)(quotePowerShell);
+const fixturePrelude = `$script:queries=@();
+function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) $script:queries += $ClassName; if($ClassName -eq 'Win32_Service'){throw 'UNEXPECTED_SERVICE_CIM'} }
+`;
+function snapshotFixture(prefix, names = ["wiresock-nonexistent-test"]) {
+  const script = fixturePrelude + prefix + `\n$wire = & { ${snapshotScript(names)} }; [pscustomobject]@{snapshot=($wire|ConvertFrom-Json);queries=@($script:queries)} | ConvertTo-Json -Compress -Depth 8`;
+  return JSON.parse(childProcess.execFileSync("powershell.exe", powerShellCommandArgs(script), { encoding: "utf8", windowsHide: true, timeout: 10000 }));
+}
+
+test("speed S1 real missing service is Missing without service CIM", { skip: process.platform !== "win32" }, () => {
+  const result = snapshotFixture("");
+  assert.equal(result.snapshot.services[0].state, "Missing");
+  assert.deepEqual(result.queries, ["Win32_Process"]);
+  assert.equal(result.snapshot.processesReliable, true);
+});
+
+for (const failure of ["Write-Error 'FIXTURE_SERVICE_FAILURE'", "throw (New-Object ComponentModel.Win32Exception(5))"]) {
+  test(`speed S1 Get-Service failure stays Unknown: ${failure}`, { skip: process.platform !== "win32" }, () => {
+    const result = snapshotFixture(`function Get-Service { [CmdletBinding()] param($Name) ${failure} }`);
+    assert.equal(result.snapshot.services[0].state, "Unknown");
+    assert.deepEqual(result.queries, ["Win32_Process"]);
+  });
+}
+
+test("speed S1 stopped service keeps Unicode ImagePath without service CIM", { skip: process.platform !== "win32" }, () => {
+  const command = String.raw`"C:\João's 東京\wiresock-client.exe" -config "C:\fixture\owned.conf"`;
+  const result = snapshotFixture(String.raw`function Get-Service { [CmdletBinding()] param($Name) [pscustomobject]@{Status='Stopped'} }; function Get-ItemProperty { [CmdletBinding()] param($LiteralPath,$Name) if($Name -ne 'ImagePath' -or $LiteralPath -ne 'HKLM:\SYSTEM\CurrentControlSet\Services\wiresock-nonexistent-test'){throw 'BAD_REGISTRY_QUERY'}; [pscustomobject]@{ImagePath=${quotePowerShell(command)}} }`);
+  assert.equal(result.snapshot.services[0].state, "Stopped");
+  assert.equal(result.snapshot.services[0].command, command);
+  assert.equal(result.snapshot.services[0].processId, 0);
+  assert.deepEqual(result.queries, ["Win32_Process"]);
+});
+
+for (const property of ["throw 'FIXTURE_REGISTRY_DENIED'", "[pscustomobject]@{ImagePath=$null}"]) {
+  test(`speed S1 unreadable stopped ImagePath is Unknown: ${property}`, { skip: process.platform !== "win32" }, () => {
+    const result = snapshotFixture(`function Get-Service { [CmdletBinding()] param($Name) [pscustomobject]@{Status='Stopped'} }; function Get-ItemProperty { [CmdletBinding()] param($LiteralPath,$Name) ${property} }`);
+    assert.equal(result.snapshot.services[0].state, "Unknown");
+    assert.deepEqual(result.queries, ["Win32_Process"]);
+  });
+}
+
+for (const status of ["Running", "StartPending", "StopPending", "Paused", "PausePending", "ContinuePending"]) {
+  test(`speed S1 ${status} uses scoped authoritative CIM`, { skip: process.platform !== "win32" }, () => {
+    const result = snapshotFixture(`function Get-Service { [CmdletBinding()] param($Name) $script:queries+='Get-Service'; [pscustomobject]@{Status='${status}'} }; function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) $script:queries += $ClassName; if($ClassName -eq 'Win32_Service'){if($Filter -ne "Name='wiresock-nonexistent-test'"){throw 'UNSCOPED_CIM'}; [pscustomobject]@{Name='wiresock-nonexistent-test';State='${status}';PathName='fixture.exe';ProcessId=42}} }`);
+    assert.equal(result.snapshot.services[0].state, status);
+    assert.equal(result.snapshot.services[0].processId, 42);
+    assert.deepEqual(result.queries, ["Get-Service", "Win32_Service", "Win32_Process"]);
+  });
+}
+
+for (const fallback of ["throw 'FIXTURE_CIM_DENIED'", "$null"]) {
+  test(`speed S1 non-stopped missing CIM evidence is Unknown: ${fallback}`, { skip: process.platform !== "win32" }, () => {
+    const result = snapshotFixture(`function Get-Service { [CmdletBinding()] param($Name) [pscustomobject]@{Status='Running'} }; function Get-CimInstance { [CmdletBinding()] param($ClassName,$Filter) $script:queries += $ClassName; if($ClassName -eq 'Win32_Service'){${fallback}} }`);
+    assert.equal(result.snapshot.services[0].state, "Unknown");
+  });
+}
+
+test("speed S1 keeps the parser contract and adds no sc text fallback", () => {
+  const script = snapshotScript(["fixture"]);
+  assert.ok(script.includes("[PSCustomObject]@{ services=$svc; processes=$procs; processesReliable=$processesReliable } | ConvertTo-Json -Compress -Depth 4"));
+  assert.doesNotMatch(script, /sc[.]exe|STATE\s*:/);
 });
