@@ -898,6 +898,25 @@ test("mutating commands are serialized while cancel remains independently accept
   assert.equal((await login).success, false);
 });
 
+test("a cancel during the optimize guard stops before the scan begins", async () => {
+  let release;
+  let staged;
+  const pending = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { staged = resolve; });
+  const { backend, calls } = harness({
+    inspect: async () => { staged(); await pending; return { active: false, owned: false, reliable: true }; },
+  });
+  const optimize = backend.execute("optimize", {});
+  await started;
+  assert.deepEqual(await backend.execute("cancel", {}), { success: true });
+  release();
+  assert.deepEqual(await optimize, { success: false, code: "CAPTCHA_CANCELLED", message: "Operation cancelled." });
+  assert.equal(calls.some(call => call[0] === "generate"), false, "a cancelled guard never starts the scan");
+  // The slot must be free right away: the user's next command is not answered MUTATION_BUSY.
+  const after = await backend.execute("connect", {});
+  assert.notEqual(after.code, "MUTATION_BUSY");
+});
+
 test("optimization uses own helper identity and freeOnly until a premium plan is known", async () => {
   const { backend, calls } = harness();
   const result = await backend.execute("optimize", { country: "nl" });

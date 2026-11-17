@@ -639,6 +639,10 @@ export function createBackend(deps, paths) {
 
       if (command === "optimize") {
         if (guarded.status.active) return { success: false, message: APP_MESSAGES.ROUTE_CHANGE_ACTIVE, code: "ROUTE_CHANGE_ACTIVE" };
+        // A cancel that lands while the guard is inspecting has no active operation to abort, so
+        // it only bumps the generation. Without this check the scan would begin anyway and hold
+        // the mutation slot past the caller's cancel budget.
+        if (generation !== enteredGeneration) return cancelled();
         const operation = begin();
         try { return await generate(payload, operation); }
         catch { return operation.isCurrent() ? { success: false, code: "UNKNOWN", message: safeFailure() } : cancelled(); }
