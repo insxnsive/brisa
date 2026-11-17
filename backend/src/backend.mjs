@@ -504,6 +504,10 @@ export function createBackend(deps, paths) {
           snapshotInspection = created;
           entry = created;
         }
+        const usernamePromise = username();
+        // Handle an early rejection while inspection is pending; await the original
+        // promise below so username errors still reject the snapshot unchanged.
+        usernamePromise.catch(() => {});
         const status = await entry.promise;
         const tunnelActive = status?.reliable === true && status.active === true && status.owned === true;
         // Uma inspeção antiga não pode reescrever a memória de posse da sessão: só uma leitura
@@ -528,7 +532,7 @@ export function createBackend(deps, paths) {
           else if (observedTunnelKey !== null && observedTunnelKey !== tunnelKey) resetRoute();
           observedTunnelKey = tunnelKey;
         }
-        const currentUsername = await username();
+        const currentUsername = await usernamePromise;
         let discordRunning = false;
         if (tunnelActive && sessionApps.length && !mutationBusy) {
           try { discordRunning = await deps.discordRunning(sessionApps); } catch {}
@@ -594,7 +598,7 @@ export function createBackend(deps, paths) {
       if (mutationBusy) return { success: false, message: APP_MESSAGES.MUTATION_BUSY, code: "MUTATION_BUSY" };
       mutationBusy = true;
       mutationSeq += 1;
-      const refreshUsername = ["login", "logout", "importConfig", "connect"].includes(command);
+      const refreshUsername = ["login", "logout"].includes(command);
       if (refreshUsername) invalidateUsername();
       mutationDone = new Promise(resolve => { releaseMutation = resolve; });
       const connectOperation = command === "connect" ? begin() : null;
@@ -690,12 +694,12 @@ export function createBackend(deps, paths) {
             if (!result.success) return result;
           } catch { return operation.isCurrent() ? { success: false, code: "UNKNOWN", message: safeFailure() } : cancelled(); }
           if (!operation.isCurrent()) return cancelled();
+          // Route optimization may outlast a Discord update. Resolve again rather
+          // than retaining a versioned path captured before profile generation.
+          try { apps = await discordApps(); }
+          catch (error) { return operation.isCurrent() ? discordCompatibilityFailure(error) : cancelled(); }
+          if (!operation.isCurrent()) return cancelled();
         }
-        // Route optimization may outlast a Discord update. Resolve again rather
-        // than retaining a versioned path captured before profile generation.
-        try { apps = await discordApps(); }
-        catch (error) { return operation.isCurrent() ? discordCompatibilityFailure(error) : cancelled(); }
-        if (!operation.isCurrent()) return cancelled();
         const raw = await deps.files.readOwned(profilePath);
         if (!operation.isCurrent()) return cancelled();
         const validation = deps.validateConfig(raw);

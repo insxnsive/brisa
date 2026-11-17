@@ -93,7 +93,7 @@ test("username snapshots share a cached read until its bounded TTL expires", asy
 
 for (const [command, payload] of [
   ["login", { username: "new-user", password: "synthetic" }],
-  ["logout", {}], ["importConfig", { path: "C:\\picked\\route.conf" }], ["connect", {}],
+  ["logout", {}],
 ]) test(`${command} invalidates the username cache`, async () => {
   let reads = 0, current = "old-user";
   const { backend } = harness({ getSavedSessionUsername: async () => { reads++; return current; } });
@@ -1585,4 +1585,104 @@ test("a snapshot is not connected when the generation moves during its awaits", 
   releaseDiscord();
   const result = await snapshot;
   assert.equal(result.connected, false, "a generation change during the awaits must invalidate the snapshot");
+});
+
+
+for (const generated of [false, true]) {
+  test(`speed N4 discovers before close only when generated=${generated}`, async () => {
+    let discoveries = 0, beforeStart = 0;
+    const old = String.raw`C:\Discord\app-1\Discord.exe`;
+    const updated = String.raw`C:\Discord\app-2\Discord.exe`;
+    let current = old;
+    const validated = [];
+    const h = harness({
+      discoverDiscord: async () => { discoveries++; return [current]; },
+      generate: async () => {
+        current = updated;
+        h.files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+        return { success: true };
+      },
+      validateDiscordApps: async apps => { validated.push(apps); },
+      start: async (_path, _raw, apps) => {
+        beforeStart = discoveries;
+        assert.deepEqual(apps, [generated ? updated : old]);
+        h.setInspection({ active: true, owned: true, reliable: true });
+      },
+    });
+    if (!generated) h.files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+    assert.equal((await h.backend.execute("connect", {})).success, true);
+    assert.equal(beforeStart, generated ? 2 : 1, "skip only redundant pre-close discovery");
+    assert.equal(discoveries, generated ? 3 : 2, "retain post-start discovery");
+    assert.deepEqual(validated, [[generated ? updated : old]], "validate the selected executable before stopping Discord");
+    assert.deepEqual(h.calls.find(c => c[0] === "launch")[1], [generated ? updated : old]);
+  });
+}
+
+for (const command of ["connect", "importConfig"]) {
+  test(`speed U1 ${command} retains username cache until existing TTL`, async () => {
+    let reads = 0, time = 100, current = "cached-user";
+    const h = harness({
+      now: () => time,
+      getSavedSessionUsername: async () => { reads++; return current; },
+      start: async () => h.setInspection({ active: true, owned: true, reliable: true }),
+    });
+    h.files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+    assert.equal((await h.backend.execute("snapshot", {})).username, "cached-user");
+    current = "later-user";
+    const payload = command === "importConfig" ? { path: String.raw`C:\picked\route.conf` } : {};
+    assert.equal((await h.backend.execute(command, payload)).success, true);
+    const after = await h.backend.execute("snapshot", {});
+    assert.equal(after.username, "cached-user", "account-neutral mutations retain identity cache");
+    assert.equal(reads, 1, "immediate snapshot must not spawn another username helper");
+    time += 60_000;
+    assert.equal((await h.backend.execute("snapshot", {})).username, "later-user");
+    assert.equal(reads, 2, "normal TTL still refreshes external account changes");
+  });
+}
+
+test("speed U1 cold connect keeps the username it just loaded", async () => {
+  let reads = 0;
+  const h = harness({
+    getSavedSessionUsername: async () => { reads++; return "own-user"; },
+    start: async () => h.setInspection({ active: true, owned: true, reliable: true }),
+  });
+  h.files.set(String.raw`C:\native-data\wireguard.conf`, goodConfig);
+  assert.equal((await h.backend.execute("connect", {})).success, true);
+  assert.equal((await h.backend.execute("snapshot", {})).username, "own-user");
+  assert.equal(reads, 1);
+});
+
+test("speed T3 starts username while inspection is pending", async () => {
+  let releaseInspect, enteredInspect, usernameStarted = false;
+  const ready = new Promise(resolve => { enteredInspect = resolve; });
+  const gate = new Promise(resolve => { releaseInspect = resolve; });
+  const h = harness({
+    inspect: async () => { enteredInspect(); await gate; return { active: false, owned: false, reliable: true }; },
+    getSavedSessionUsername: async () => { usernameStarted = true; return "own-user"; },
+  });
+  const pending = h.backend.execute("snapshot", {});
+  await ready;
+  await new Promise(resolve => setImmediate(resolve));
+  const overlapped = usernameStarted;
+  releaseInspect();
+  assert.equal((await pending).username, "own-user");
+  assert.equal(overlapped, true, "username must start before inspection resolves");
+});
+
+test("speed T3 preserves username rejection while inspection is pending", async () => {
+  let releaseInspect, enteredInspect;
+  const ready = new Promise(resolve => { enteredInspect = resolve; });
+  const gate = new Promise(resolve => { releaseInspect = resolve; });
+  const failure = new Error("synthetic username failure");
+  const h = harness({
+    inspect: async () => { enteredInspect(); await gate; return { active: false, owned: false, reliable: true }; },
+    getSavedSessionUsername: async () => { throw failure; },
+  });
+  const pending = h.backend.execute("snapshot", {});
+  const checked = assert.rejects(pending, error => error === failure);
+  await ready;
+  // An eagerly rejected username promise must already have a rejection handler.
+  await new Promise(resolve => setImmediate(resolve));
+  releaseInspect();
+  await checked;
 });
