@@ -32,6 +32,24 @@ public sealed class BackendClient : IBackendClient
     // token falls back to this bound, so a three-minute command budget is never shortened.
     private readonly TimeSpan _requestTimeout;
     internal const string TimeoutMessage = "The native service did not respond in time. Check the connection status before retrying.";
+    // Tells the backend that this process already ran its storage check for exactly this base.
+    internal const string StorageVerifiedVariable = "BRISA_STORAGE_VERIFIED";
+
+    // The backend's storage check (BrisaStorageTransaction, compiled into Brisa.dll from the same
+    // source the backend otherwise compiles through PowerShell's Add-Type on every launch), run
+    // in-process before node starts. It never migrates: legacy files need a WireSock inspection
+    // only the backend can do, so Run refuses them. Any refusal is left to the backend, which runs
+    // the full check again and reports its own startup code.
+    internal static string? VerifyStorage(string dataDirectory)
+    {
+        try
+        {
+            var full = Path.GetFullPath(dataDirectory);
+            BrisaStorageTransaction.Run(full, false, 0, 0);
+            return full;
+        }
+        catch { return null; }
+    }
 
     public BackendClient(string appDirectory, string dataDirectory) : this(appDirectory, dataDirectory, TimeSpan.FromSeconds(60)) { }
 
@@ -59,6 +77,8 @@ public sealed class BackendClient : IBackendClient
         };
         start.ArgumentList.Add(script);
         start.Environment["BRISA_DATA_DIR"] = dataDirectory;
+        // Always assigned: null removes a value inherited from the user's environment.
+        start.Environment[StorageVerifiedVariable] = VerifyStorage(dataDirectory);
         start.Environment["BRISA_RESOURCE_DIR"] = Path.Combine(appDirectory, "resources");
         start.Environment["ELECTRON_RUN_AS_NODE"] = null;
         _process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the native backend.");

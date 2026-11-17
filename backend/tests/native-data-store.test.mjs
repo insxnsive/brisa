@@ -252,6 +252,58 @@ test('a junction in place of native-data is refused as not private by the helper
   assert.throws(() => prepareNativeDataStoreSync(base), { message: 'Brisa data directory is not private.' });
 }));
 
+function withHostVerified(value, run) {
+  const previous = process.env.BRISA_STORAGE_VERIFIED;
+  if (value === undefined) delete process.env.BRISA_STORAGE_VERIFIED; else process.env.BRISA_STORAGE_VERIFIED = value;
+  try { return run(); }
+  finally { if (previous === undefined) delete process.env.BRISA_STORAGE_VERIFIED; else process.env.BRISA_STORAGE_VERIFIED = previous; }
+}
+
+test('a store the host verified for this exact base starts no PowerShell', windows, () => fixture(base => {
+  const dir = prepareNativeDataStoreSync(base);
+  const spy = powerShellSpy();
+  try { assert.equal(withHostVerified(base, () => prepareNativeDataStoreSync(base)), dir); }
+  finally { spy.restore(); }
+  assert.deepEqual(spy.calls, []);
+}));
+
+test('host verification for another base, without native-data, or with a legacy file still runs the helper', windows, () => fixture((base, root) => {
+  prepareNativeDataStoreSync(base);
+  const probeLegacyTunnel = () => ({ reliable: true, active: false });
+  const cases = [
+    ['another base', path.join(root, 'Other'), () => {}],
+    ['a relative value', 'Brisa', () => {}],
+    ['no native-data', base, () => fs.rmSync(path.join(base, 'native-data'), { recursive: true })],
+    ['a legacy file', base, () => fs.writeFileSync(path.join(base, 'state.json'), 'legacy')],
+  ];
+  for (const [label, value, arrange] of cases) {
+    arrange();
+    const spy = powerShellSpy();
+    try { withHostVerified(value, () => prepareNativeDataStoreSync(base, { probeLegacyTunnel })); }
+    finally { spy.restore(); }
+    assert.deepEqual(spy.calls, ['helper'], label);
+  }
+  assert.equal(fs.readFileSync(path.join(base, 'native-data', 'state.json'), 'utf8'), 'legacy');
+}));
+
+test('host verification never skips the helper when native-data is a junction', windows, () => fixture((base, root) => {
+  fs.symlinkSync(root, path.join(base, 'native-data'), 'junction');
+  const spy = powerShellSpy();
+  try { assert.throws(() => withHostVerified(base, () => prepareNativeDataStoreSync(base)), { message: 'Brisa data directory is not private.' }); }
+  finally { spy.restore(); }
+  assert.deepEqual(spy.calls, ['helper']);
+}));
+
+test('the host compiles the same storage helper source and names the same variable', () => {
+  const repo = path.resolve(import.meta.dirname, '..', '..');
+  const host = fs.readFileSync(path.join(repo, 'src/Brisa/Services/BrisaStorageTransaction.cs'), 'utf8');
+  assert.equal(host.trimEnd(), ('#nullable disable' + helperSource).trimEnd());
+  const client = fs.readFileSync(path.join(repo, 'src/Brisa/Services/BackendClient.cs'), 'utf8');
+  assert.match(client, /StorageVerifiedVariable = "BRISA_STORAGE_VERIFIED"/);
+  assert.match(client, /BrisaStorageTransaction\.Run\(full, false, 0, 0\)/);
+  assert.match(client, /start\.Environment\[StorageVerifiedVariable\] = VerifyStorage\(dataDirectory\);/);
+});
+
 test('rejects legacy reparse points and private-store reparse boundary', windows, () => fixture((base, root) => {
   const outside = path.join(root, 'outside');
   fs.mkdirSync(outside);

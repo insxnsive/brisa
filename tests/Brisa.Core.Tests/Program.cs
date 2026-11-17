@@ -6,6 +6,32 @@ using Brisa.Services;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("the in-process storage check prepares a private store and refuses what it must", () =>
+    {
+        var root = Path.Combine(Path.GetTempPath(), "brisa-host-store-" + Guid.NewGuid().ToString("N"));
+        var store = Path.Combine(root, "Brisa");
+        Directory.CreateDirectory(store);
+        try
+        {
+            Assert(BackendClient.VerifyStorage(store) == Path.GetFullPath(store));
+            var data = new DirectoryInfo(Path.Combine(store, "native-data"));
+            Assert(data.Exists && data.GetAccessControl().AreAccessRulesProtected);
+            // A legacy file needs a WireSock inspection only the backend can do: the host refuses.
+            File.WriteAllText(Path.Combine(store, "state.json"), "legacy");
+            Assert(BackendClient.VerifyStorage(store) is null);
+            Assert(File.ReadAllText(Path.Combine(store, "state.json")) == "legacy");
+            File.Delete(Path.Combine(store, "state.json"));
+            // A junction in place of native-data is a reparse point: refused.
+            data.Delete(true);
+            var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
+            using (var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{data.FullName}\" \"{outside}\"") { CreateNoWindow = true, UseShellExecute = false }))
+                mklink!.WaitForExit();
+            Assert(Directory.Exists(data.FullName) && new DirectoryInfo(data.FullName).LinkTarget is not null);
+            Assert(BackendClient.VerifyStorage(store) is null);
+            Directory.Delete(data.FullName);
+        }
+        finally { Directory.Delete(root, true); }
+    }),
     ("traffic source looks for a tunnel at most every five seconds", () =>
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);

@@ -49,7 +49,8 @@ public static class BrisaStorageTransaction
         return sid.Equals(UserSid) || sid.Equals(SystemSid) || sid.Equals(AdminSid);
     }
     static void CheckAcl(string path, bool directory, bool privateAcl) {
-        FileSystemSecurity acl = directory ? (FileSystemSecurity)System.IO.Directory.GetAccessControl(path) : System.IO.File.GetAccessControl(path);
+        // Instance calls on .NET Framework (PowerShell's Add-Type), extension calls on .NET (Brisa.exe).
+        FileSystemSecurity acl = directory ? (FileSystemSecurity)new DirectoryInfo(path).GetAccessControl() : new System.IO.FileInfo(path).GetAccessControl();
         if (!Allowed(acl.GetOwner(typeof(SecurityIdentifier)))) throw new IOException("Foreign storage owner.");
         var raw = new RawSecurityDescriptor(acl.GetSecurityDescriptorBinaryForm(), 0);
         if (raw.DiscretionaryAcl == null) throw new IOException("Unprotected storage object.");
@@ -164,7 +165,7 @@ public static class BrisaStorageTransaction
             }
             if (entries.Count != 0 && !migrationAllowed) throw new IOException("WireSock migration inspection is unavailable or stale.");
             if (!System.IO.Directory.Exists(dataDir) && !System.IO.File.Exists(dataDir))
-                System.IO.Directory.CreateDirectory(dataDir, PrivateDirectoryAcl());
+                new DirectoryInfo(dataDir).Create(PrivateDirectoryAcl());
             dirs.Add(Open(dataDir, true, false));
             CheckAcl(dataDir, true, true);
             ValidatePrivateTree(dataDir, privateLocks);
@@ -179,9 +180,15 @@ public static class BrisaStorageTransaction
             int published = 0;
             foreach (var entry in entries) {
                 if (entry.Destination != null) continue;
+#if NETCOREAPP
+                entry.Destination = new System.IO.FileInfo(entry.DestinationPath).Create(FileMode.CreateNew,
+                    FileSystemRights.Read | FileSystemRights.Write | FileSystemRights.Delete,
+                    FileShare.Read, 4096, FileOptions.WriteThrough, PrivateFileAcl());
+#else
                 entry.Destination = new FileStream(entry.DestinationPath, FileMode.CreateNew,
                     FileSystemRights.Read | FileSystemRights.Write | FileSystemRights.Delete,
                     FileShare.Read, 4096, FileOptions.WriteThrough, PrivateFileAcl());
+#endif
                 entry.Created = true;
                 CheckAcl(entry.DestinationPath, false, true);
                 entry.Source.Position = 0;

@@ -7,6 +7,7 @@ import { powerShellCommandArgs } from './network/powershell.ts';
 const names = Object.freeze(['state.json', 'proton-session.json', 'native-wiresock.conf', 'imported.conf', 'wireguard.conf']);
 const error = 'Brisa private data migration failed safely.';
 const notPrivate = 'Brisa data directory is not private.';
+const HOST_VERIFIED = 'BRISA_STORAGE_VERIFIED';
 // The storage helper's own refusals of a foreign owner, a missing DACL or a reparse point. The
 // helper checks the base while holding every ancestor open (LockAncestors), which is what the
 // separate ACL read used to check first, so these keep the same startup error.
@@ -33,6 +34,18 @@ function assertNoLinkedAncestor(hostBase) {
   } catch { throw new Error(notPrivate); }
 }
 
+// Brisa.exe ran this same helper in-process for exactly this base, without migration, just before
+// starting node (BackendClient.VerifyStorage). The value comes from the parent, like BRISA_DATA_DIR.
+// Anything else (tests, the startup smoke, another base, a legacy file) runs the helper here.
+function verifiedByHost(hostBase) {
+  const value = process.env[HOST_VERIFIED];
+  if (typeof value !== 'string' || !path.isAbsolute(value) || path.resolve(value).toLowerCase() !== hostBase.toLowerCase()) return false;
+  try {
+    const stat = fs.lstatSync(path.join(hostBase, 'native-data'));
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch { return false; }
+}
+
 function exactLegacyNames(base) {
   const entries = fs.readdirSync(base);
   return names.filter(name => entries.includes(name));
@@ -46,6 +59,7 @@ export function prepareNativeDataStoreSync(base, { probeLegacyTunnel, fixtureFai
   fs.mkdirSync(hostBase, { recursive: true });
   assertNoLinkedAncestor(hostBase);
   const legacy = exactLegacyNames(hostBase);
+  if (!legacy.length && verifiedByHost(hostBase)) return path.join(hostBase, 'native-data');
   let allowed = false;
   if (legacy.length) {
     if (typeof probeLegacyTunnel !== 'function') throw new Error('WireSock migration inspection is unavailable.');
