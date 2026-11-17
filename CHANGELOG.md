@@ -1,5 +1,18 @@
 # Changes
 
+## 1.0.3
+
+- Brisa checks the route once when it opens, when you are signed in and nothing is connected, and moves to a better server if it finds one. The route used to be chosen the first time a profile was generated and reused by every later connect, so one stale pick could sit there for weeks.
+- The quiet check never blocks a button. Connect, Disconnect, Optimize, Import and Exit cancel it first and wait for the backend to go idle, a cancel that lands while the backend is still inspecting now ends the check instead of letting it run, and any failure keeps the route you already had.
+- Startup is lighter. The portable build ships ahead-of-time compiled, the tray icon and updater are created after the window is painted, and the first update check waits 25 seconds instead of competing with the first frame.
+- The storage check at startup runs inside Brisa instead of starting a second helper, and the duplicate ACL read that followed it is gone.
+- Status reads less of the machine. A refresh that lands while the window is minimized is skipped, a snapshot reuses the username and Proton plan it already has instead of generating them again, and a stable flow reading is reused rather than re-read.
+- Looking for stopped or absent WireSock services no longer goes through WMI, so a machine without it finishes the inspection in one pass instead of waiting out a query that cannot answer.
+- A hashed lease confirmation is reused and the SDK pair is revalidated directly, which drops a redundant round trip from each elevated step.
+- Discord detection reads the running process by name and keeps one PowerShell helper per loop instead of starting one per check.
+- A relaunch stays in the installation you picked, keeps the clients you selected, and survives a version change of the Discord client without falling back to a different install.
+- A connect failure that arrives without a specific code now reports a translated reason instead of a bare error.
+
 ## 1.0.2
 
 - Startup works on PCs where the Windows account name has an accented character. Those machines showed "the native service stopped" before the first status and could not generate a log at all.
