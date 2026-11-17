@@ -70,20 +70,29 @@ public sealed class VelopackUpdateClient : IUpdateClient
     public const string RepositoryUrl = "https://github.com/insxnsive/brisa";
     public const string Channel = "win";
 
-    private readonly UpdateManager _manager;
+    // Velopack's UpdateManager is built on first use, not at construction, so creating the client
+    // before the window paints costs nothing. A manager that cannot be built means "no updater":
+    // nothing pending, checks fail into the Error status, and nothing throws into the UI.
+    private readonly Lazy<UpdateManager?> _manager = new(CreateManager);
 
-    public VelopackUpdateClient()
+    private static UpdateManager? CreateManager()
     {
-        var source = new GithubSource(RepositoryUrl, accessToken: null, prerelease: AppVersion.Current.Contains('-'));
-        _manager = new UpdateManager(source, new UpdateOptions
+        try
         {
-            ExplicitChannel = Channel,
-            AllowVersionDowngrade = false
-        });
+            var source = new GithubSource(RepositoryUrl, accessToken: null, prerelease: AppVersion.Current.Contains('-'));
+            return new UpdateManager(source, new UpdateOptions
+            {
+                ExplicitChannel = Channel,
+                AllowVersionDowngrade = false
+            });
+        }
+        catch { return null; }
     }
 
-    public string CurrentVersion => _manager.CurrentVersion?.ToString() ?? AppVersion.Current;
-    public bool HasPendingUpdate => _manager.UpdatePendingRestart is not null;
+    private UpdateManager Manager => _manager.Value ?? throw new InvalidOperationException("The updater is unavailable.");
+
+    public string CurrentVersion => _manager.Value?.CurrentVersion?.ToString() ?? AppVersion.Current;
+    public bool HasPendingUpdate => _manager.Value?.UpdatePendingRestart is not null;
 
     public async Task<UpdateRelease?> CheckForUpdatesAsync(CancellationToken cancellationToken)
     {
@@ -91,27 +100,30 @@ public sealed class VelopackUpdateClient : IUpdateClient
         // Velopack 1.2.158 does not pass a token into the feed request. WaitAsync
         // still lets Brisa end its service lifetime promptly during safe exit;
         // no later check can start because the coordinator is then disposed.
-        var update = await _manager.CheckForUpdatesAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        var update = await Manager.CheckForUpdatesAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
         return update is null ? null : new(update.TargetFullRelease.Version.ToString(), update);
     }
 
     public Task DownloadUpdatesAsync(UpdateRelease release, Action<int>? progress, CancellationToken cancellationToken) =>
-        _manager.DownloadUpdatesAsync((UpdateInfo)release.NativeRelease, progress, cancellationToken);
+        Manager.DownloadUpdatesAsync((UpdateInfo)release.NativeRelease, progress, cancellationToken);
 
     public void PrepareApply(bool restart)
     {
-        var pending = _manager.UpdatePendingRestart;
+        var pending = Manager.UpdatePendingRestart;
         if (pending is not null)
-            _manager.WaitExitThenApplyUpdates(pending, silent: true, restart: restart);
+            Manager.WaitExitThenApplyUpdates(pending, silent: true, restart: restart);
     }
 }
 
 public sealed class UpdateService : IUpdateService
 {
     public static readonly TimeSpan DefaultCheckInterval = TimeSpan.FromHours(6);
+    // The first GitHub check waits this long after launch, so starting Brisa stays quiet.
+    public static readonly TimeSpan DefaultStartupDelay = TimeSpan.FromSeconds(25);
 
     private readonly IUpdateClient _client;
     private readonly TimeSpan _checkInterval;
+    private readonly TimeSpan _initialDelay;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _singleFlight = new(1, 1);
     private readonly object _lifecycleGate = new();
@@ -120,18 +132,24 @@ public sealed class UpdateService : IUpdateService
     private Task? _disposeTask;
     private TaskCompletionSource _checksIdle = CompletedSignal();
     private int _activeChecks;
-    private UpdateStatus _status;
+    // Null until the first read or publication: the constructor never touches the client.
+    private UpdateStatus? _status;
 
-    public UpdateService(IUpdateClient client, TimeSpan? checkInterval = null)
+    public UpdateService(IUpdateClient client, TimeSpan? checkInterval = null, TimeSpan? initialDelay = null)
     {
         _client = client;
         _checkInterval = checkInterval ?? DefaultCheckInterval;
-        _status = client.HasPendingUpdate
-            ? Ready(null)
-            : new(UpdatePhase.Idle, "UpdateIdle");
+        _initialDelay = initialDelay is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
     }
 
-    public UpdateStatus Status => Volatile.Read(ref _status);
+    public UpdateStatus Status => Volatile.Read(ref _status) ?? InitialStatus();
+
+    private UpdateStatus InitialStatus()
+    {
+        var initial = _client.HasPendingUpdate ? Ready(null) : new UpdateStatus(UpdatePhase.Idle, "UpdateIdle");
+        Interlocked.CompareExchange(ref _status, initial, null);
+        return Volatile.Read(ref _status)!;
+    }
     public bool HasPendingUpdate => _client.HasPendingUpdate;
     public event EventHandler<UpdateStatus>? StatusChanged;
 
@@ -215,6 +233,8 @@ public sealed class UpdateService : IUpdateService
     {
         try
         {
+            if (_initialDelay > TimeSpan.Zero)
+                await Task.Delay(_initialDelay, cancellationToken).ConfigureAwait(false);
             while (true)
             {
                 await CheckNowAsync(cancellationToken).ConfigureAwait(false);

@@ -18,6 +18,7 @@ internal static class Program
             PendingDownloadFailures().GetAwaiter().GetResult();
             LifecycleRaces().GetAwaiter().GetResult();
             FaultySubscriber().GetAwaiter().GetResult();
+            StartupDelay().GetAwaiter().GetResult();
             Console.WriteLine($"PASS {_checks} lifecycle assertions");
             return 0;
         }
@@ -114,6 +115,36 @@ internal static class Program
         }
     }
 
+    private static async Task StartupDelay()
+    {
+        var pending = new GatedClient { Pending = true };
+        await using (var service = new UpdateService(pending))
+        {
+            Check(Volatile.Read(ref pending.PendingReads) == 0, "constructing the updater does not touch the update client");
+            Check(service.Status.Phase == UpdatePhase.Ready, "a pending update still shows as ready on the first status read");
+        }
+        Check(UpdateService.DefaultStartupDelay >= TimeSpan.FromSeconds(20) && UpdateService.DefaultStartupDelay <= TimeSpan.FromSeconds(30),
+            "the first GitHub check waits 20 to 30 s after launch");
+
+        var delayed = new GatedClient();
+        await using (var service = new UpdateService(delayed, TimeSpan.FromHours(6), initialDelay: TimeSpan.FromMilliseconds(600)))
+        {
+            service.Start();
+            await Task.Delay(150);
+            Check(Volatile.Read(ref delayed.CheckCalls) == 0, "Start waits for the initial delay before the first check");
+            await delayed.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(Volatile.Read(ref delayed.CheckCalls) == 1, "the first check runs once the initial delay ends");
+        }
+
+        var parked = new GatedClient();
+        var parkedService = new UpdateService(parked, TimeSpan.FromHours(6), initialDelay: TimeSpan.FromHours(1));
+        parkedService.Start();
+        await parkedService.CheckNowAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Check(Volatile.Read(ref parked.CheckCalls) == 1, "Check now is not held back by the startup delay");
+        await parkedService.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+        Check(Volatile.Read(ref parked.CheckCalls) == 1, "disposal during the startup delay ends without another check");
+    }
+
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); _checks++; }
     private static void Throws(Action action, string message)
     {
@@ -124,13 +155,15 @@ internal static class Program
     private sealed class GatedClient : IUpdateClient
     {
         public bool Pending, GateCheck, FailDownload, CancelDownload;
+        public int PendingReads, CheckCalls;
         public Action? BeforeDownload;
         public TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string CurrentVersion => "0.1.0";
-        public bool HasPendingUpdate => Pending;
+        public bool HasPendingUpdate { get { Interlocked.Increment(ref PendingReads); return Pending; } }
         public async Task<UpdateRelease?> CheckForUpdatesAsync(CancellationToken token)
         {
+            Interlocked.Increment(ref CheckCalls);
             Entered.TrySetResult();
             if (GateCheck) await Release.Task;
             return new UpdateRelease("0.2.0", new object());

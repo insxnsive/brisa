@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
     private Mutex? _mutex;
     private TrayService? _tray;
     private IUpdateService? _updates;
+    private bool _exiting;
 
     [STAThread]
     private static void Main(string[] args)
@@ -86,11 +87,9 @@ public partial class App : System.Windows.Application
         }
         if (!isolated)
         {
-            try
-            {
-                _updates = new UpdateService(new VelopackUpdateClient());
-                _updates.Start();
-            }
+            // Cheap here: the client builds Velopack's UpdateManager on first use. Start() runs after
+            // the first frame, and the first GitHub check waits DefaultStartupDelay on top of that.
+            try { _updates = new UpdateService(new VelopackUpdateClient(), initialDelay: UpdateService.DefaultStartupDelay); }
             catch { _updates = null; }
         }
         // Sessão isolada não mede tráfego de verdade: o contador é simulado, e o título diz isso
@@ -98,14 +97,23 @@ public partial class App : System.Windows.Application
         var traffic = isolated ? new SimulatedTrafficSource() : null;
         var window = new MainWindow(backend, settings, smokeOutput, _updates, traffic: traffic);
         MainWindow = window;
-        _tray = new TrayService(window, settings);
         if (isolated) window.Title = traffic is null ? "Brisa — UI Test (No Network)" : "Brisa — UI Test (No Network, simulated counters)";
         window.Show();
+        // The tray (Windows Forms plus the exe icon) and the updater are not needed to paint.
+        // ContextIdle runs after Render and Loaded, so the first frame is already on screen, and
+        // ahead of ApplicationIdle work. An exit that started first wins: no tray after OnExit.
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (_exiting) return;
+            _tray = new TrayService(window, settings);
+            try { _updates?.Start(); } catch { }
+        }, System.Windows.Threading.DispatcherPriority.ContextIdle);
         await window.InitializeAsync(openAccount: !startupLaunch);
     }
 
     private void OnExit(object sender, ExitEventArgs e)
     {
+        _exiting = true;
         _tray?.Dispose();
         _updates?.Dispose();
         _mutex?.Dispose();

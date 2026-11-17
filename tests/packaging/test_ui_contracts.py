@@ -73,5 +73,18 @@ class UiContracts(unittest.TestCase):
         self.assertIn('InitializeAsync(openAccount: !startupLaunch)', app)
 
 
+    def test_tray_and_updater_start_after_first_paint(self):
+        # Neither is needed to paint the window: both are created from an idle dispatcher callback.
+        app = (ROOT / 'App.xaml.cs').read_text(encoding='utf-8')
+        show = app.index('window.Show();')
+        self.assertLess(show, app.index('new TrayService('))
+        self.assertLess(show, app.index('_updates?.Start()'))
+        self.assertNotIn('_updates.Start()', app)
+        self.assertIn('DispatcherPriority.ContextIdle', app)
+        self.assertIn('initialDelay: UpdateService.DefaultStartupDelay', app)
+        updates = (ROOT / 'Services/UpdateService.cs').read_text(encoding='utf-8')
+        self.assertIn('Lazy<UpdateManager?>', updates)
+
+
 if __name__ == '__main__':
     unittest.main()
