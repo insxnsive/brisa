@@ -13,7 +13,7 @@ import os from "os";
 import path from "path";
 
 import { WireSockSetupError } from "../wiresock-setup.mjs";
-import { probeWireSock, runProbe } from "../wiresock-probe.mjs";
+import { probeWireSock, revalidateWireSockCandidate as revalidateProbe, runProbe } from "../wiresock-probe.mjs";
 
 import {
     formatAllowedApps,
@@ -452,6 +452,13 @@ export async function findWireSockCandidate(env: NodeJS.ProcessEnv = process.env
     return (await probeCandidates(env, options)).candidate;
 }
 
+/** Reuse the normal trust/version selection for exactly the already-selected pair. */
+export async function revalidateWireSockCandidate(candidate: WireSockCandidate, options: WireSockProbeOptions = {}): Promise<WireSockCandidate | null> {
+    const probe = await revalidateProbe(candidate, options.run ?? runProbe, options.timeoutMs ?? 15000, options.signal);
+    const trusted = probe.candidates.filter(value => value.trusted);
+    return selectWireSockCandidate(trusted.map(({ trusted: _trusted, ...rest }) => rest));
+}
+
 function abortError(): Error {
     const error = new Error("The operation was aborted.");
     error.name = "AbortError";
@@ -854,9 +861,8 @@ export async function learnCandidateLease(candidate: WireSockCandidate, signal?:
         if (!beforeExecutable || !beforeBooster) return null;
         const executableDigest = await sha256(candidate.executable, signal);
         const boosterDigest = await sha256(candidate.booster, signal);
-        // Os rótulos de versão vêm da seleção: se a descoberta não confirma mais o mesmo par e as
-        // mesmas versões, o lease herdaria compatibilidade que não foi verificada.
-        const current = await (revalidate ?? (() => findWireSockCandidate(process.env, { signal })))();
+        // Confirm the same pair, versions and trust after hashing without rediscovering the SDK.
+        const current = await (revalidate ?? (() => revalidateWireSockCandidate(candidate, { signal })))();
         if (!current) return null;
         if (current.executable !== candidate.executable || current.booster !== candidate.booster) return null;
         if (current.executableVersion !== candidate.executableVersion || current.boosterVersion !== candidate.boosterVersion) return null;
@@ -866,6 +872,7 @@ export async function learnCandidateLease(candidate: WireSockCandidate, signal?:
         // O par mudou durante o hash: nenhuma linha de base honesta existe para estes bytes.
         if (beforeExecutable.size !== afterExecutable.size || beforeExecutable.mtimeMs !== afterExecutable.mtimeMs) return null;
         if (beforeBooster.size !== afterBooster.size || beforeBooster.mtimeMs !== afterBooster.mtimeMs) return null;
+        if (signal?.aborted) return null;
         return { ...candidate, executableDigest, boosterDigest };
     } catch {
         return null;

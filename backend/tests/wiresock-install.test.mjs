@@ -1,4 +1,4 @@
-import { build } from "esbuild";
+import { build, transformSync } from "esbuild";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -15,7 +15,7 @@ const bundled = await build({
   entryPoints: [path.join(here, "..", "src", "network", "vpn-windows.ts")],
   bundle: true, format: "esm", platform: "node", write: false, logLevel: "silent",
 });
-const { ensureWireSockInstalled, ensureWireSockCandidate, runElevatedInstaller, downloadInstaller, learnCandidateLease } = await import(
+const { ensureWireSockInstalled, ensureWireSockCandidate, runElevatedInstaller, downloadInstaller, learnCandidateLease, leaseIsFresh, revalidateWireSockCandidate } = await import(
   `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
 );
 const { WireSockSetupError } = await import("../src/wiresock-setup.mjs");
@@ -372,4 +372,46 @@ test("a supervision failure after launch keeps the slot and reports no exit", as
   assert.equal(removed, 0, "the temp directory must be kept while the vendor state is unknown");
   // The slot stays held: a retry refuses instead of starting a second installation.
   await assert.rejects(ensureWireSockCandidate(quietLog, { findCandidate: () => null }), error => error.name === "InstallerSupervisionLost");
+});
+
+
+test("speed N2 lease default uses one targeted revalidation and no discovery", async () => {
+  const source = fs.readFileSync(path.join(here, "../src/network/vpn-windows.ts"), "utf8");
+  const start = source.indexOf("export async function learnCandidateLease(");
+  const end = source.indexOf("/**", start);
+  const code = transformSync(source.slice(start, end).replace("export ", ""), { loader: "ts", format: "esm" }).code;
+  const candidate = { executable: "fixture.exe", booster: "fixture.dll", executableVersion: "3.4.8.1", boosterVersion: "3.4.8.1" };
+  let targeted = 0, discovered = 0;
+  const learn = new Function("fileIdentity", "sha256", "revalidateWireSockCandidate", "findWireSockCandidate", "process", `${code}\nreturn learnCandidateLease;`)(
+    async () => ({ size: 5, mtimeMs: 1 }), async () => "a".repeat(64),
+    async value => { targeted++; assert.deepEqual(value, candidate); return candidate; },
+    async () => { discovered++; return candidate; }, { env: {} });
+  assert.ok(await learn(candidate));
+  assert.equal(targeted, 1); assert.equal(discovered, 0);
+});
+
+for (const [label, override, accepted] of [
+  ["trusted compatible", {}, true], ["untrusted", { trusted: false }, false],
+  ["old", { executableVersion: "1.0.0.0", boosterVersion: "1.0.0.0" }, false],
+  ["mismatched", { boosterVersion: "3.4.9.0" }, false],
+  ["missing trust", { trusted: undefined }, false],
+]) test(`speed N2 targeted selection ${label}`, async () => {
+  assert.equal(typeof revalidateWireSockCandidate, "function");
+  const candidate = { executable: String.raw`C:\Fixture\wiresock-client.exe`, booster: String.raw`C:\Fixture\wgbooster.dll`, executableVersion: "3.4.8.1", boosterVersion: "3.4.8.1" };
+  const selected = await revalidateWireSockCandidate(candidate, { run: async () => JSON.stringify({ candidates: [{ ...candidate, trusted: true, ...override }] }) });
+  assert.deepEqual(selected, accepted ? candidate : null);
+});
+
+test("speed N2 lease keeps digest freshness and refuses file changes or cancellation", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-n2-lease-"));
+  try {
+    const candidate = { executable: path.join(directory, "wiresock-client.exe"), booster: path.join(directory, "wgbooster.dll"), executableVersion: "3.4.8.1", boosterVersion: "3.4.8.1" };
+    fs.writeFileSync(candidate.executable, "exe"); fs.writeFileSync(candidate.booster, "dll");
+    const lease = await learnCandidateLease(candidate, undefined, async () => candidate);
+    assert.ok(lease); assert.equal(await leaseIsFresh(lease), true);
+    fs.writeFileSync(candidate.booster, "different-dll"); assert.equal(await leaseIsFresh(lease), false);
+    assert.equal(await learnCandidateLease(candidate, undefined, async () => { fs.appendFileSync(candidate.executable, "changed"); return candidate; }), null);
+    const controller = new AbortController();
+    assert.equal(await learnCandidateLease(candidate, controller.signal, async () => { controller.abort(); return candidate; }), null);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import path from "node:path";
 
 import { wireSockTrustHelpers } from "./wiresock-trust.mjs";
 import { powerShellCommandArgs } from "./network/powershell.ts";
@@ -55,7 +56,11 @@ foreach ($root in $locations) {
     Add-BrisaPair (Join-Path $dir.FullName 'x64')
   }
 }
-${wireSockTrustHelpers()}
+${wireSockPairChecks()}`;
+}
+
+function wireSockPairChecks() {
+  return `${wireSockTrustHelpers()}
 $out=@()
 foreach ($pair in $pairs) {
   $executableVersion = ''
@@ -67,6 +72,19 @@ foreach ($pair in $pairs) {
   $out += [pscustomobject]@{ executable = $pair.executable; booster = $pair.booster; executableVersion = $executableVersion; boosterVersion = $boosterVersion; trusted = [bool]$trusted }
 }
 ConvertTo-Json -InputObject @{ candidates = @($out) } -Compress -Depth 4`;
+}
+
+/** Recheck one known sibling pair without registry, service or directory discovery. */
+export function wireSockRevalidateScript(executable, booster) {
+  const literal = value => `'${value.replace(/'/g, "''")}'`;
+  return `$ErrorActionPreference='Stop'
+$pairs=@()
+$exe=${literal(executable)}
+$dll=${literal(booster)}
+if ((Test-Path -LiteralPath $exe) -and (Test-Path -LiteralPath $dll)) {
+  $pairs=@([pscustomobject]@{ executable=$exe; booster=$dll })
+}
+${wireSockPairChecks()}`;
 }
 
 const VERSION = /^\d+\.\d+\.\d+\.\d+$/;
@@ -120,4 +138,22 @@ export async function probeWireSock(env = process.env, run = runProbe, timeoutMs
   } catch {
     return { candidates: [], parsed: false };
   }
+}
+
+
+/** Targeted probe retains the same parser and refuses cancellation or another pair. */
+export async function revalidateWireSockCandidate(candidate, run = runProbe, timeoutMs = 15000, signal) {
+  if (process.platform !== "win32") return { candidates: [], parsed: true };
+  try {
+    const { executable, booster } = candidate;
+    if (signal?.aborted || typeof executable !== "string" || typeof booster !== "string"
+      || !/^[a-z]:[\\/]/i.test(executable) || !/^[a-z]:[\\/]/i.test(booster)
+      || path.win32.dirname(executable).toLowerCase() !== path.win32.dirname(booster).toLowerCase())
+      return { candidates: [], parsed: false };
+    const stdout = await run(wireSockRevalidateScript(executable, booster), timeoutMs, signal);
+    if (signal?.aborted) return { candidates: [], parsed: false };
+    const parsed = parseWireSockProbe(stdout);
+    return parsed ? { candidates: parsed.candidates.filter(value => value.executable === executable && value.booster === booster), parsed: true }
+      : { candidates: [], parsed: false };
+  } catch { return { candidates: [], parsed: false }; }
 }

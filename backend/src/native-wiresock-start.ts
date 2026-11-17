@@ -7,7 +7,7 @@ import { elevatedPowerShellFileArgs } from "./network/wiresock-service.ts";
 import { quotePowerShell } from "./network/powershell.ts";
 import { WireSockSetupError } from "./wiresock-setup.mjs";
 import { classifyStartResult, WireSockStartError } from "./wiresock-start-result.mjs";
-import { ensureWireSockCandidate, findWireSockCandidate, inspectWireSockAsync, learnCandidateLease, type WireSockCandidateLease } from "./network/vpn-windows.ts";
+import { ensureWireSockCandidate, inspectWireSockAsync, learnCandidateLease, type WireSockCandidateLease } from "./network/vpn-windows.ts";
 import { formatAllowedApps, sanitizeWireGuardConfig, validateWireGuardConfig } from "./network/vpn-types.ts";
 
 export function nativeDirectScript(executable: string, configPath: string, resultPath: string, cancelPath: string): string {
@@ -87,15 +87,12 @@ export async function startNativeWireSock(configPath: string, rawConfig: string,
   // A linha de base é aprendida agora, junto da seleção e antes do lançamento: aprender depois
   // carimbaria como confiável um par que já pudesse ter sido trocado durante o start.
   const lease = await learnCandidateLease(candidate, signal);
-  if (lease) options?.onLease?.(lease);
   if (signal?.aborted) throw new Error("WireSock start was cancelled.");
-  // Revalidar imediatamente antes do uso elevado: a seleção e o lançamento estão separados por
-  // uma janela em que o par poderia ser trocado, e o lease sozinho não prova identidade.
-  // Revalidar imediatamente antes do uso elevado: a seleção e o lançamento estão separados
-  // por uma janela em que o par poderia ser trocado, e o lease sozinho não prova identidade.
-  // Uma sondagem assíncrona, não uma checagem por arquivo.
-  const fresh = await findWireSockCandidate(process.env, { signal });
-  if (!fresh || fresh.executable !== candidate.executable || fresh.booster !== candidate.booster || fresh.executableVersion !== candidate.executableVersion || fresh.boosterVersion !== candidate.boosterVersion) throw new WireSockStartError("START_NOT_APPROVED");
+  if (!lease) throw new WireSockStartError("START_NOT_APPROVED");
+  options?.onLease?.(lease);
+  if (signal?.aborted) throw new Error("WireSock start was cancelled.");
+  // Lease learning just confirmed the hashed pair's identity, versions and trust.
+  // Do not repeat SDK discovery between that confirmation and elevated use.
   options?.onStage?.("starting-tunnel");
 
   const target = path.resolve(configPath);

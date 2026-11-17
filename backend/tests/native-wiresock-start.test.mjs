@@ -120,9 +120,9 @@ function deferred() {
 
 // Compile the real function, replacing every imported dependency with fakes.
 // Never import or invoke the production backend, PowerShell, SDK, or real filesystem.
-function nativeHarness({ after = deferred(), beforeActive = false, verdictOk = true } = {}) {
+function nativeHarness({ after = deferred(), beforeActive = false, verdictOk = true, missingLease = false } = {}) {
   const events = [], timer = deferred(), wrapper = deferred();
-  let timerSignal, inspections = 0, completed = false;
+  let timerSignal, inspections = 0, completed = false, discoveries = 0;
   const candidate = { executable: "sdk.exe", booster: "booster.dll", executableVersion: "1", boosterVersion: "1" };
   const fakeFs = {
     mkdirSync() {}, readdirSync() { return []; }, writeFileSync() {}, rmSync() {}, renameSync() {},
@@ -135,8 +135,9 @@ function nativeHarness({ after = deferred(), beforeActive = false, verdictOk = t
     WireSockSetupError: class extends Error {},
     WireSockStartError: class extends Error { constructor(code) { super(code); this.code = code; } },
     classifyStartResult: () => verdictOk ? { ok: true } : { ok: false, code: "START_NOT_APPROVED" },
-    ensureWireSockCandidate: async () => candidate, findWireSockCandidate: async () => candidate,
-    learnCandidateLease: async () => null,
+    ensureWireSockCandidate: async () => candidate,
+    findWireSockCandidate: async () => { discoveries++; return candidate; },
+    learnCandidateLease: async () => missingLease ? null : { ...candidate, executableDigest: "a".repeat(64), boosterDigest: "b".repeat(64) },
     inspectWireSockAsync: async () => {
       if (++inspections === 1) return { reliable: true, active: beforeActive, owned: beforeActive };
       events.push("inspect-after"); return after.promise;
@@ -155,7 +156,7 @@ function nativeHarness({ after = deferred(), beforeActive = false, verdictOk = t
   const controller = new AbortController();
   const pending = start(String.raw`C:\fixture\owned.conf`, "fixture", [String.raw`C:\Discord\Discord.exe`], controller.signal);
   pending.then(() => { completed = true; }, () => { completed = true; });
-  return { events, timer, wrapper, after, pending, controller, get timerSignal() { return timerSignal; }, get completed() { return completed; } };
+  return { events, timer, wrapper, after, pending, controller, get discoveries() { return discoveries; }, get timerSignal() { return timerSignal; }, get completed() { return completed; } };
 }
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const confirmed = { reliable: true, active: true, owned: true };
@@ -220,4 +221,21 @@ test("speed N3 already-owned shortcut retains production settling", async () => 
   h.timer.resolve(); await h.pending;
   assert.equal(waited, true);
   assert.deepEqual(h.events, [["settle", 2000]]);
+});
+
+
+test("speed N2 native start refuses a missing lease before elevated launch", async () => {
+  const h = nativeHarness({ missingLease: true });
+  const checked = assert.rejects(h.pending, error => error.code === "START_NOT_APPROVED"); checked.catch(() => {});
+  h.wrapper.resolve(); h.after.resolve(confirmed); h.timer.resolve();
+  await checked;
+  assert.deepEqual(h.events, []);
+  assert.doesNotMatch(source, /await findWireSockCandidate\(/);
+});
+
+test("speed N2 native start uses the learned lease without another full probe", async () => {
+  const h = nativeHarness();
+  h.wrapper.resolve(); h.after.resolve(confirmed); h.timer.resolve();
+  await h.pending;
+  assert.equal(h.discoveries, 0);
 });

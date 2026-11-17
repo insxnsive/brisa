@@ -5,6 +5,8 @@ import path from "node:path";
 import test from "node:test";
 
 import { parseWireSockProbe, probeWireSock, runProbe, wireSockProbeScript } from "../src/wiresock-probe.mjs";
+import * as probeModule from "../src/wiresock-probe.mjs";
+import { wireSockTrustHelpers } from "../src/wiresock-trust.mjs";
 
 test("PowerShell reports a non-ASCII path byte-for-byte", { skip: process.platform !== "win32" }, async () => {
   // Windows can hand back an 8.3 temp path while PowerShell reports the long form, so compare on the long one.
@@ -90,4 +92,53 @@ test("an untrusted higher version is present in the probe but never wins selecti
   const result = await probeWireSock({}, async () => json([good, untrusted]));
   assert.equal(result.candidates.length, 2);
   assert.deepEqual(result.candidates.filter(candidate => candidate.trusted).map(candidate => candidate.executable), [good.executable]);
+});
+
+
+const directProbe = (...args) => {
+  assert.equal(typeof probeModule.revalidateWireSockCandidate, "function", "targeted revalidation is available");
+  return probeModule.revalidateWireSockCandidate(...args);
+};
+
+test("speed N2 targeted script shares all trust checks without discovery", () => {
+  assert.equal(typeof probeModule.wireSockRevalidateScript, "function");
+  const script = probeModule.wireSockRevalidateScript(good.executable, good.booster);
+  assert.ok(script.includes(wireSockTrustHelpers()));
+  assert.doesNotMatch(script, /Uninstall|Win32_Service|Get-CimInstance|Get-ItemProperty|Get-ChildItem/);
+  for (const check of ["Test-Path -LiteralPath $exe", "Test-Path -LiteralPath $dll", "VersionInfo.FileVersion", "Test-BrisaSignature $pair.executable", "Test-BrisaSignature $pair.booster", "Test-BrisaAcl $pair.executable", "Test-BrisaAcl $pair.booster", "Test-BrisaAclChain $pair.executable", "ConvertTo-Json"])
+    assert.ok(script.includes(check), check);
+  const discovery = wireSockProbeScript({});
+  assert.equal(script.slice(script.indexOf(wireSockTrustHelpers())), discovery.slice(discovery.indexOf(wireSockTrustHelpers())), "trust/output tail is identical");
+});
+
+test("speed N2 targeted script quotes apostrophes and forwards timeout and signal", async () => {
+  const candidate = { ...good, executable: String.raw`C:\João's 東京\wiresock-client.exe`, booster: String.raw`C:\João's 東京\wgbooster.dll` };
+  const controller = new AbortController(); let received;
+  const result = await directProbe(candidate, async (...args) => { received = args; return json([candidate]); }, 4321, controller.signal);
+  assert.deepEqual(result, { candidates: [candidate], parsed: true });
+  assert.ok(received[0].includes("João''s 東京"));
+  assert.equal(received[1], 4321); assert.equal(received[2], controller.signal);
+});
+
+for (const [label, output] of [
+  ["invalid JSON", "not JSON"], ["missing trust", json([{ ...good, trusted: undefined }])],
+  ["malformed version", json([{ ...good, boosterVersion: "bad" }])],
+  ["another pair", json([{ ...good, executable: String.raw`C:\Other\wiresock-client.exe` }])],
+]) test(`speed N2 targeted parser refuses ${label}`, async () => {
+  assert.deepEqual((await directProbe(good, async () => output)).candidates, []);
+});
+
+test("speed N2 targeted failures and cancellation fail closed", async () => {
+  assert.deepEqual(await directProbe(good, async () => { throw new Error("timeout"); }), { candidates: [], parsed: false });
+  const controller = new AbortController(); controller.abort(); let ran = false;
+  assert.deepEqual(await directProbe(good, async () => { ran = true; return json([good]); }, 15000, controller.signal), { candidates: [], parsed: false });
+  assert.equal(ran, false);
+  const late = new AbortController();
+  assert.deepEqual(await directProbe(good, async () => { late.abort(); return json([good]); }, 15000, late.signal), { candidates: [], parsed: false });
+});
+
+test("speed N2 targeted validation refuses different directories before running", async () => {
+  let ran = false;
+  const result = await directProbe({ ...good, booster: String.raw`C:\Other\wgbooster.dll` }, async () => { ran = true; return json([good]); });
+  assert.deepEqual(result, { candidates: [], parsed: false }); assert.equal(ran, false);
 });
