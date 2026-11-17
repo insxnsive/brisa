@@ -15,28 +15,56 @@ public interface ITrafficSource
     TrafficReading? Read();
 }
 
-/// <summary>Counters of the WireSock adapter, read from the IP statistics the stack already keeps.</summary>
+/// <summary>
+/// Counters of the WireSock adapter, read from the IP statistics the stack already keeps.
+/// Enumerating every adapter is the expensive part, and the result's OperationalStatus is a
+/// snapshot taken at enumeration. So the adapter list is read at most once per
+/// <see cref="RefreshInterval"/>: to find a tunnel while none is cached, and to confirm a cached
+/// tunnel is still up. Between refreshes only the cached adapter's counters are read.
+/// </summary>
 public sealed class InterfaceTrafficSource : ITrafficSource
 {
-    private NetworkInterface? _adapter = null;
+    internal static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
+    private readonly Func<IEnumerable<NetworkInterface>> _enumerate;
+    private readonly Func<DateTime> _clock;
+    private NetworkInterface? _adapter;
+    private DateTime? _nextRefresh;
+
+    public InterfaceTrafficSource() : this(NetworkInterface.GetAllNetworkInterfaces, () => DateTime.UtcNow) { }
+
+    internal InterfaceTrafficSource(Func<IEnumerable<NetworkInterface>> enumerate, Func<DateTime> clock)
+    {
+        _enumerate = enumerate;
+        _clock = clock;
+    }
 
     public TrafficReading? Read()
     {
-        var adapter = _adapter is { } cached && IsTunnel(cached) ? cached : Find();
-        _adapter = adapter;
-        if (adapter is null) return null;
+        var now = _clock();
+        if (_nextRefresh is not { } due || now >= due)
+        {
+            _nextRefresh = now + RefreshInterval;
+            // A fresh enumeration carries the live status. The cached object's status never changes.
+            var cachedId = _adapter?.Id;
+            _adapter = Find(cachedId);
+        }
+        if (_adapter is not { } adapter) return null;
         try
         {
             var stats = adapter.GetIPStatistics();
             return new TrafficReading((ulong)Math.Max(0, stats.BytesReceived), (ulong)Math.Max(0, stats.BytesSent));
         }
-        catch (NetworkInformationException) { return null; }
-        catch (PlatformNotSupportedException) { return null; }
+        catch (NetworkInformationException) { _adapter = null; return null; }
+        catch (PlatformNotSupportedException) { _adapter = null; return null; }
     }
 
-    private static NetworkInterface? Find()
+    private NetworkInterface? Find(string? preferredId)
     {
-        try { return NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(IsTunnel); }
+        try
+        {
+            var tunnels = _enumerate().Where(IsTunnel).ToList();
+            return tunnels.FirstOrDefault(adapter => adapter.Id == preferredId) ?? tunnels.FirstOrDefault();
+        }
         catch (NetworkInformationException) { return null; }
     }
 

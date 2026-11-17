@@ -201,7 +201,7 @@ def package(skip_build=False, output=None, version=None, allow_dirty=False):
         run([tool('node'), 'build.mjs'], cwd=REPO / 'backend')
         run([tool('go'), 'build', '-trimpath', '-ldflags=-s -w', '-o', 'build/proton-confgen.exe', './cmd/protonvpn-wg'], cwd=REPO / 'tools/proton-confgen')
         run([tool('dotnet'), 'publish', PROJECT, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
-             '-p:PublishSingleFile=false', '-p:Version=' + version, '-o', publish])
+             '-p:PublishSingleFile=false', '-p:PublishReadyToRun=true', '-p:Version=' + version, '-o', publish])
     validate_publish(publish)
     if dest.exists():
         shutil.rmtree(dest)

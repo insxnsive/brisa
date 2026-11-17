@@ -26,6 +26,9 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual((root / 'CHANGELOG.md').read_text(encoding='utf-8'), text)
             self.assertIn("'--releaseNotes', notes_path", SCRIPT.read_text(encoding='utf-8'))
 
+    def test_brisa_is_published_ready_to_run(self):
+        self.assertTrue("'-p:PublishReadyToRun=true'" in SCRIPT.read_text(encoding='utf-8'), 'package.py must publish Brisa ReadyToRun')
+
     def test_rejects_publish_output_without_native_executable(self):
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaisesRegex(ValueError, 'executable'):

@@ -6,6 +6,36 @@ using Brisa.Services;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("traffic source looks for a tunnel at most every five seconds", () =>
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var scans = 0;
+        var source = new InterfaceTrafficSource(() => { scans++; return Array.Empty<System.Net.NetworkInformation.NetworkInterface>(); }, () => now);
+        Assert(source.Read() is null && scans == 1);
+        for (var second = 1; second <= 4; second++) { now = now.AddSeconds(1); Assert(source.Read() is null); }
+        Assert(scans == 1);
+        now = now.AddSeconds(1);
+        Assert(source.Read() is null && scans == 2);
+    }),
+    ("traffic source notices a tunnel that went down", () =>
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var up = true;
+        // Each enumeration returns new objects whose status is fixed at creation, like Windows does.
+        var source = new InterfaceTrafficSource(() => new[] { new FakeAdapter("t1", "WireSock Virtual Adapter", up ? System.Net.NetworkInformation.OperationalStatus.Up : System.Net.NetworkInformation.OperationalStatus.Down, 100, 40) }, () => now);
+        Assert(source.Read() == new TrafficReading(100, 40));
+        up = false;
+        now = now.AddSeconds(5);
+        Assert(source.Read() is null);
+    }),
+    ("traffic source reads a cached tunnel without rescanning", () =>
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var scans = 0;
+        var source = new InterfaceTrafficSource(() => { scans++; return new[] { new FakeAdapter("t1", "WireSock Virtual Adapter", System.Net.NetworkInformation.OperationalStatus.Up, 7, 3) }; }, () => now);
+        for (var second = 0; second < 5; second++) { Assert(source.Read() == new TrafficReading(7, 3)); now = now.AddSeconds(1); }
+        Assert(scans == 1);
+    }),
     ("idless startup failures remain readable", () =>
     {
         var frame = NdjsonProtocol.ParseResponse("{\"id\":\"\",\"ok\":false,\"code\":\"INIT_DATA_DIR_INVALID\",\"result\":{},\"error\":\"safe fixture\"}");
@@ -485,4 +515,29 @@ sealed class DelayedCancelBackend : IBackendClient
     public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) => Task.FromResult(new CommandResult(true));
     public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("Fixture");
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+sealed class FakeAdapter(string id, string description, System.Net.NetworkInformation.OperationalStatus status, long received, long sent) : System.Net.NetworkInformation.NetworkInterface
+{
+    public override string Id => id;
+    public override string Name => description;
+    public override string Description => description;
+    public override System.Net.NetworkInformation.OperationalStatus OperationalStatus => status;
+    public override System.Net.NetworkInformation.IPInterfaceStatistics GetIPStatistics() => new FakeStatistics(received, sent);
+}
+
+sealed class FakeStatistics(long received, long sent) : System.Net.NetworkInformation.IPInterfaceStatistics
+{
+    public override long BytesReceived => received;
+    public override long BytesSent => sent;
+    public override long IncomingPacketsDiscarded => 0;
+    public override long IncomingPacketsWithErrors => 0;
+    public override long IncomingUnknownProtocolPackets => 0;
+    public override long NonUnicastPacketsReceived => 0;
+    public override long NonUnicastPacketsSent => 0;
+    public override long OutgoingPacketsDiscarded => 0;
+    public override long OutgoingPacketsWithErrors => 0;
+    public override long OutputQueueLength => 0;
+    public override long UnicastPacketsReceived => 0;
+    public override long UnicastPacketsSent => 0;
 }
