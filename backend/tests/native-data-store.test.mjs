@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
+import childProcess, { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -16,6 +17,26 @@ function fixture(run) {
   const base = path.join(root, 'Brisa');
   fs.mkdirSync(base);
   try { return run(base, root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
+}
+
+// Counts PowerShell processes started through execFileSync, by every module, and can make the
+// storage helper's process fail with a chosen stderr. syncBuiltinESMExports pushes the wrapper into
+// every named import of node:child_process, so the module under test sees it without a seam.
+function powerShellSpy(helperStderr) {
+  const original = childProcess.execFileSync;
+  const calls = [];
+  childProcess.execFileSync = function (file, args, options) {
+    if (/powershell/i.test(String(file))) {
+      const helper = String(options?.input ?? '').includes('BrisaStorageTransaction');
+      calls.push(helper ? 'helper' : 'other');
+      if (helper && helperStderr) {
+        throw Object.assign(new Error('fixture helper failure'), { stderr: `Exception calling "Run" with "4" argument(s): "${helperStderr}"` });
+      }
+    }
+    return original.apply(this, arguments);
+  };
+  syncBuiltinESMExports();
+  return { calls, restore() { childProcess.execFileSync = original; syncBuiltinESMExports(); } };
 }
 
 for (const name of ['Joao', 'Jo\u00e3o']) test(`private store preserves paths under ${name}`, windows, () => fixture((_, root) => {
@@ -189,6 +210,47 @@ test('active and unknown WireSock state refuse migration without changing legacy
     assert.equal(fs.existsSync(path.join(base, 'native-data', 'native-wiresock.conf')), false);
   });
 });
+
+test('a fresh store starts one PowerShell process, the storage helper', windows, () => fixture(base => {
+  const spy = powerShellSpy();
+  try { prepareNativeDataStoreSync(base); } finally { spy.restore(); }
+  assert.deepEqual(spy.calls, ['helper']);
+}));
+
+test('helper refusals of owner, DACL and reparse keep the not-private startup error', windows, () => {
+  for (const detail of ['Foreign storage owner.', 'Unprotected storage object.', 'Storage object is not a regular file or directory.']) fixture(base => {
+    const spy = powerShellSpy(detail);
+    try { assert.throws(() => prepareNativeDataStoreSync(base), { message: 'Brisa data directory is not private.' }, detail); }
+    finally { spy.restore(); }
+  });
+  for (const [detail, message] of [
+    ['Broad private-data grant.', 'Brisa private data migration failed safely.'],
+    ['Brisa private data migration conflict.', 'Brisa private data migration conflict.'],
+    ['Unable to lock storage object: 32', 'Brisa private data migration failed safely.'],
+  ]) fixture(base => {
+    const spy = powerShellSpy(detail);
+    try { assert.throws(() => prepareNativeDataStoreSync(base), { message }, detail); }
+    finally { spy.restore(); }
+  });
+});
+
+test('a junction at or above the store is refused as not private before PowerShell runs', windows, () => fixture((base, root) => {
+  const target = path.join(root, 'target');
+  fs.mkdirSync(target);
+  const linked = path.join(root, 'linked');
+  fs.symlinkSync(target, linked, 'junction');
+  for (const candidate of [linked, path.join(linked, 'Brisa')]) {
+    const spy = powerShellSpy();
+    try { assert.throws(() => prepareNativeDataStoreSync(candidate), { message: 'Brisa data directory is not private.' }, candidate); }
+    finally { spy.restore(); }
+    assert.deepEqual(spy.calls, []);
+  }
+}));
+
+test('a junction in place of native-data is refused as not private by the helper', windows, () => fixture((base, root) => {
+  fs.symlinkSync(root, path.join(base, 'native-data'), 'junction');
+  assert.throws(() => prepareNativeDataStoreSync(base), { message: 'Brisa data directory is not private.' });
+}));
 
 test('rejects legacy reparse points and private-store reparse boundary', windows, () => fixture((base, root) => {
   const outside = path.join(root, 'outside');
