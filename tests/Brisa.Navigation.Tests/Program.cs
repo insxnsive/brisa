@@ -424,6 +424,31 @@ internal static class Program
             Check(cancelledSilently, "a cancelled verification stays a cancellation");
             cancelledMain.Close(); Pump(() => !cancelledMain.IsVisible);
 
+            // T2: a minimized window is still IsVisible to WPF, so the status timer must check
+            // WindowState itself. Restoring from minimized refreshes once; maximize does not.
+            var t2Backend = new SnapshotCountingBackend();
+            var t2Main = new MainWindow(t2Backend, store);
+            t2Main.Show(); t2Main.InitializeAsync().GetAwaiter().GetResult();
+            // Stop the real 10 s timer so only the calls below can request a snapshot.
+            ((DispatcherTimer)typeof(MainWindow).GetField("_statusTimer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(t2Main)!).Stop();
+            var t2Refresh = typeof(MainWindow).GetMethod("RefreshStatus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            Spin(200);
+            var t2Baseline = t2Backend.Snapshots;
+            t2Main.WindowState = WindowState.Minimized;
+            Spin(200);
+            Check(t2Main.IsVisible, "a minimized window still reports IsVisible");
+            t2Refresh.Invoke(t2Main, [null, EventArgs.Empty]);
+            Spin(200);
+            Check(t2Backend.Snapshots == t2Baseline, "a minimized window skips the status refresh");
+            t2Main.WindowState = WindowState.Normal;
+            Spin(300);
+            Check(t2Backend.Snapshots == t2Baseline + 1, "restoring from minimized refreshes status exactly once");
+            t2Main.WindowState = WindowState.Maximized;
+            Spin(200);
+            t2Main.WindowState = WindowState.Normal;
+            Spin(300);
+            Check(t2Backend.Snapshots == t2Baseline + 1, "maximizing and restoring does not refresh status");
+            t2Main.Close(); Pump(() => !t2Main.IsVisible);
             Console.WriteLine($"{count} inline-navigation assertions passed");
             return 0;
         }
@@ -640,6 +665,19 @@ internal static class Program
         public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) =>
             Task.FromResult(new CommandResult(false, "HUMAN_VERIFICATION_REQUIRED", "Verification required")
             { CaptchaUrl = "https://vpn-api.proton.me/core/v4/captcha?Token=fixture-token" });
+        public Task CancelAsync() => Task.CompletedTask;
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class SnapshotCountingBackend : IBackendClient
+    {
+        public int Snapshots { get; private set; }
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default)
+        {
+            Snapshots++;
+            return Task.FromResult(new NativeSnapshot(false, false, true, true, "fixture", null));
+        }
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default) => Task.FromResult(new CommandResult(true));
         public Task CancelAsync() => Task.CompletedTask;
         public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

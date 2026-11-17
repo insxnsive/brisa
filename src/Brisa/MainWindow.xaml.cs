@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private UserControl? _currentPage;
     private Task? _returnHomeTask;
     private bool _refreshing;
+    private bool _wasMinimized;
     private bool _nativeOperationMayBeActive;
     private bool _terminalBackendFailure;
     // Snapshot commit bookkeeping. Every snapshot-derived state write goes through one gate:
@@ -182,7 +183,15 @@ public partial class MainWindow : Window
         _statusTimer.Tick += RefreshStatus;
         _detailsTimer.Tick += (_, _) => RenderDetails();
         ChartHost.SizeChanged += (_, _) => DrawChart();
-        StateChanged += (_, _) => SyncDetailsTimer();
+        // A minimized window is still IsVisible, so the status timer skips it by WindowState.
+        // Leaving Minimized refreshes once, like coming back from the tray does.
+        StateChanged += (_, _) =>
+        {
+            var restored = _wasMinimized && WindowState != WindowState.Minimized;
+            _wasMinimized = WindowState == WindowState.Minimized;
+            if (restored && IsVisible) RefreshStatus(this, EventArgs.Empty);
+            SyncDetailsTimer();
+        };
         Closed += (_, _) =>
         {
             _statusTimer.Stop(); _detailsTimer.Stop();
@@ -230,7 +239,7 @@ public partial class MainWindow : Window
 
     private async void RefreshStatus(object? sender, EventArgs e)
     {
-        if (_refreshing || _closing || !IsVisible || _currentPage is not null || UiMutationBusy ||
+        if (_refreshing || _closing || !IsVisible || WindowState == WindowState.Minimized || _currentPage is not null || UiMutationBusy ||
             _state.Phase is ConnectionPhase.Loading) return;
         _refreshing = true;
         try { await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(30)); }
