@@ -95,7 +95,7 @@ public partial class App : System.Windows.Application
         // Sessão isolada não mede tráfego de verdade: o contador é simulado, e o título diz isso
         // para que nenhuma captura pareça um número real.
         var traffic = isolated ? new SimulatedTrafficSource() : null;
-        var window = new MainWindow(backend, settings, smokeOutput, _updates, traffic: traffic);
+        var window = new MainWindow(backend, settings, smokeOutput, _updates, traffic: traffic, autoRouteScan: !isolated);
         MainWindow = window;
         if (isolated) window.Title = traffic is null ? "Brisa — UI Test (No Network)" : "Brisa — UI Test (No Network, simulated counters)";
         window.Show();

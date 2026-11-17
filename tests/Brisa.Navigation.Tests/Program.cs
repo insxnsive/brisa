@@ -449,6 +449,56 @@ internal static class Program
             Spin(300);
             Check(t2Backend.Snapshots == t2Baseline + 1, "maximizing and restoring does not refresh status");
             t2Main.Close(); Pump(() => !t2Main.IsVisible);
+            // F1: one quiet route scan at launch, and any user mutation preempts it.
+            var idleProton = new NativeSnapshot(false, false, true, true, "fixture", null);
+            MainWindow ScanWindow(RouteScanBackend backend)
+            {
+                var window = new MainWindow(backend, store, exitWarning: _ => { }, autoRouteScan: true);
+                window.Show(); window.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+                Spin(200);
+                return window;
+            }
+
+            var scanned = new RouteScanBackend(idleProton);
+            var scannedMain = ScanWindow(scanned);
+            Check(scanned.Commands.SequenceEqual(new[] { "optimize" }), "a signed-in, disconnected proton launch scans the route once");
+            Check(scanned.SnapshotsAfterScan >= 1, "a finished scan refreshes the route snapshot");
+            scannedMain.RequestExit(); Pump(() => !scannedMain.IsVisible);
+
+            foreach (var (label, snapshot) in new[]
+            {
+                ("signed out", idleProton with { SignedIn = false }),
+                ("an owned tunnel", idleProton with { OwnedTunnelPresent = true }),
+                ("custom mode", idleProton with { Mode = "custom" }),
+                ("an unreadable inspection", idleProton with { Reliable = false }),
+            })
+            {
+                var quiet = new RouteScanBackend(snapshot);
+                var quietMain = ScanWindow(quiet);
+                Check(!quiet.Commands.Contains("optimize"), "no route scan with " + label);
+                quiet.Settle();
+                quietMain.RequestExit(); Pump(() => !quietMain.IsVisible);
+            }
+
+            var racing = new RouteScanBackend(idleProton) { HoldOptimize = true };
+            var racingMain = ScanWindow(racing);
+            Check(racing.OptimizeInFlight, "the launch scan is still pinging");
+            Click((Button)racingMain.FindName("PrimaryButton"));
+            Pump(() => racing.Commands.Contains("connect"));
+            Spin(200);
+            Check(racing.Commands.Take(3).SequenceEqual(new[] { "optimize", "cancel", "connect" }), "a user Connect cancels the scan before the connect is sent");
+            Check(!racing.AnsweredBusy, "the user's Connect is never answered MUTATION_BUSY");
+            racingMain.RequestExit(); Pump(() => !racingMain.IsVisible);
+
+            var early = new RouteScanBackend(idleProton);
+            var earlyMain = new MainWindow(early, store, exitWarning: _ => { }, autoRouteScan: true);
+            earlyMain.Show();
+            Check(earlyMain.ImportConfigAsync(@"C:\picked\route.conf").GetAwaiter().GetResult().Success, "import runs before the launch scan starts");
+            earlyMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Spin(200);
+            Check(!early.Commands.Contains("optimize"), "a user action before the scan starts skips it for this launch");
+            earlyMain.RequestExit(); Pump(() => !earlyMain.IsVisible);
+
             Console.WriteLine($"{count} inline-navigation assertions passed");
             return 0;
         }
@@ -635,6 +685,53 @@ internal static class Program
             timer.Start(); Dispatcher.PushFrame(frame);
         }
         Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+    }
+    // Stands in for the backend's single mutation slot: an optimize held open answers a second
+    // mutation with MUTATION_BUSY until a cancel releases it, as backend.mjs does.
+    private sealed class RouteScanBackend(NativeSnapshot initial) : IBackendClient
+    {
+        private NativeSnapshot _snapshot = initial;
+        private TaskCompletionSource<CommandResult>? _optimize;
+        private bool _scanRan;
+        public bool HoldOptimize { get; init; }
+        public List<string> Commands { get; } = [];
+        public int Snapshots { get; private set; }
+        public int SnapshotsAfterScan { get; private set; }
+        public bool AnsweredBusy { get; private set; }
+        public bool OptimizeInFlight => _optimize is { Task.IsCompleted: false };
+        // ExitGuard refuses to close on an owned or unreadable tunnel, which is correct. The
+        // guard cases below are about the scan, so they settle the fixture before exiting.
+        public void Settle() => _snapshot = new NativeSnapshot(false, false, true, true, _snapshot.Username, _snapshot.Route);
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default)
+        {
+            Snapshots++;
+            if (_scanRan) SnapshotsAfterScan++;
+            return Task.FromResult(_snapshot);
+        }
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            Commands.Add(command);
+            if (command == "optimize")
+            {
+                if (HoldOptimize)
+                {
+                    _optimize = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    return _optimize.Task;
+                }
+                _scanRan = true;
+                return Task.FromResult(new CommandResult(true));
+            }
+            if (OptimizeInFlight) { AnsweredBusy = true; return Task.FromResult(new CommandResult(false, "MUTATION_BUSY", "busy")); }
+            return Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync()
+        {
+            Commands.Add("cancel");
+            _optimize?.TrySetResult(new CommandResult(false, "CANCELLED", "Operation cancelled."));
+            return Task.CompletedTask;
+        }
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
     private sealed class DeferredMutationBackend : IBackendClient
     {

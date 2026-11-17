@@ -35,6 +35,9 @@ public partial class MainWindow : Window
     private bool _wasMinimized;
     private bool _nativeOperationMayBeActive;
     private bool _terminalBackendFailure;
+    private readonly bool _autoRouteScan;
+    private bool _routeScanClaimed;
+    private Task? _routeScan;
     // Snapshot commit bookkeeping. Every snapshot-derived state write goes through one gate:
     // a stale response must never overwrite a newer operation's state, and an operation-owned
     // final refresh must be distinguishable from a background poll that merely looks current.
@@ -148,7 +151,7 @@ public partial class MainWindow : Window
         SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
     }
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null, bool autoRouteScan = false)
     {
         InitializeComponent(); TrafficCard.Height = TrafficCardHeight; _backend = backend;
         // O servidor encosta no país; quando o nome do país não cabe, ele trima e o servidor não.
@@ -203,6 +206,7 @@ public partial class MainWindow : Window
         // The timer is paused while hidden in the tray, so refresh once when the window comes back.
         IsVisibleChanged += (_, e) => { if (e.NewValue is true) { RefreshStatus(this, EventArgs.Empty); SyncDetailsTimer(); } else SyncDetailsTimer(); };
         _allowMotion = allowMotion;
+        _autoRouteScan = autoRouteScan;
         PreviewKeyDown += OnNavigationKeyDown;
         // A última entrada decide se um anel de foco é cortesia ou ruído.
         PreviewKeyDown += (_, _) => _keyboardInput = true;
@@ -233,8 +237,48 @@ public partial class MainWindow : Window
         // instead of jumping the user into a sign-in they did not ask for. Onboarding also
         // waits for an accepted snapshot, so a stale or rejected one cannot open Account.
         if (openAccount && accepted && _state.RequiresSignIn && _currentPage is null && !_closing) OpenAccount();
+        if (accepted) StartRouteScan();
         if (!_terminalBackendFailure) _statusTimer.Start();
         if (_smokeOutput is not null) await RunSmokeAsync(_smokeOutput);
+    }
+
+    // F1: the saved automatic route is reused by every connect until the user opens Route, so one
+    // stale pick can outlive weeks of launches. One quiet scan at launch keeps it current.
+    private void StartRouteScan()
+    {
+        if (!_autoRouteScan || _routeScanClaimed || _closing || _smokeOutput is not null) return;
+        // The manual Route rule, plus proton mode: never while a tunnel may be ours or someone
+        // else's, and never on an unreadable inspection.
+        if (_state.Snapshot is not { SignedIn: true, Mode: "proton", HasOwnedTunnel: false, ExternalTunnel: false, TunnelActive: false, Reliable: true }) return;
+        _routeScanClaimed = true;
+        _routeScan = RunRouteScanAsync(_lifetime.Token);
+    }
+
+    private async Task RunRouteScanAsync(CancellationToken lifetime)
+    {
+        try
+        {
+            // Not ExecuteWithVerificationAsync: a verification challenge must not open a window
+            // the user did not ask for. Any failure keeps the previous route and profile.
+            var result = await _backend.CommandAsync("optimize", new { }, lifetime);
+            if (!result.Success || _closing) return;
+            var ticket = IssueTicket();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            ApplySnapshot(await _backend.SnapshotAsync(timeout.Token), ticket);
+        }
+        catch { }
+    }
+
+    // A user mutation must never meet MUTATION_BUSY because of the quiet scan: cancel it and wait
+    // for the backend to report idle first. A failed or slow cancel abandons the scan; the user's
+    // command still goes out. Exit needs no call because ExitGuard starts with CancelAsync.
+    private async Task PreemptRouteScanAsync()
+    {
+        _routeScanClaimed = true;
+        if (_routeScan is not { IsCompleted: false } scan) return;
+        try { await _backend.CancelAsync().WaitAsync(TimeSpan.FromSeconds(10)); } catch { }
+        try { await scan.WaitAsync(TimeSpan.FromSeconds(5)); } catch { }
     }
 
     private async void RefreshStatus(object? sender, EventArgs e)
@@ -578,6 +622,7 @@ public partial class MainWindow : Window
 
     public async Task<CommandResult> ExecuteWithVerificationAsync(string command, Func<string?, string?, object> payloadFactory, CancellationToken cancellationToken = default)
     {
+        await PreemptRouteScanAsync();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         // Distinguish our own deadline from a caller or lifetime cancellation, so a timeout can be
         // reported instead of vanishing as a silent refresh.
@@ -840,6 +885,7 @@ public partial class MainWindow : Window
         try
         {
             if (_closing) return new(false, "UI_BUSY", busy);
+            await PreemptRouteScanAsync();
             return await _backend.CommandAsync("importConfig", new { path }, _lifetime.Token);
         }
         finally { EndUiMutation(); _operation.Release(); UpdateActionAvailability(); }
