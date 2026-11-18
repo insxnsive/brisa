@@ -77,6 +77,10 @@ Se o WireSock não estiver instalado, o Brisa abre o instalador oficial na prime
 | [Publicação de versões](docs/releasing.md) | Versões, tags e feed de atualização |
 | [Avisos de terceiros](THIRD-PARTY-NOTICES.md) | Licenças de tudo que vem dentro |
 
+## Notificações
+
+O Brisa inclui um sino de notificações no app que exibe o status das atualizações e avisos vindos de um feed somente leitura. Cada payload remoto de notificação é assinado criptograficamente e verificado localmente pelo app para desktop, e o cliente só aceita dados somente leitura. O backend de publicação, as chaves de assinatura, os scripts de implantação e o painel de administração ficam fora deste repositório público de propósito, para que ninguém possa publicar mensagens não autorizadas nem adulterar o feed.
+
 ## Contribuir
 
 Bugs e sugestões vão nas [Issues](https://github.com/insxnsive/brisa/issues). Nunca publique senhas, códigos de verificação, arquivos de sessão ou perfis de VPN. O log gerado em Avançado → Gerar log pode ser compartilhado: nomes de conta, caminhos e endereços são removidos antes de o log ser escrito.

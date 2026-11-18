@@ -15,7 +15,7 @@ export function wireSockProbeScript(env = process.env) {
     .filter(value => typeof value === "string" && value)
     .map(value => `${value}\\WireSock Secure Connect`);
   const winGet = env.ProgramFiles ? `${env.ProgramFiles}\\WinGet\\Packages` : "";
-  const literals = [...defaults, ...(winGet ? [winGet] : [])].map(value => `'${value.replace(/'/g, "''")}'`).join(",");
+  const literals = [...defaults, ...(winGet ? [winGet] : [])].map(value => `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`).join(",");
   return `$ErrorActionPreference='Stop'
 $locations=@()
 $keys=@('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
@@ -76,7 +76,7 @@ ConvertTo-Json -InputObject @{ candidates = @($out) } -Compress -Depth 4`;
 
 /** Recheck one known sibling pair without registry, service or directory discovery. */
 export function wireSockRevalidateScript(executable, booster) {
-  const literal = value => `'${value.replace(/'/g, "''")}'`;
+  const literal = value => `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`;
   return `$ErrorActionPreference='Stop'
 $pairs=@()
 $exe=${literal(executable)}

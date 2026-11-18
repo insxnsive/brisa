@@ -5,6 +5,16 @@
     <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <controls:ToolbarButton x:Name="BackButton" Style="{StaticResource ToolbarAction}" Visibility="Collapsed" Margin="0,0,8,0" Click="Back_Click" ToolTip="{loc:Loc BackLabel}" AutomationProperties.Name="{loc:Loc Back}"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;"/></controls:ToolbarButton>
+      <!-- Same slot as BackButton: the bell lives on Home and gives the slot up on subpages. -->
+      <Grid x:Name="NotificationsHost" Visibility="Collapsed" Margin="0,0,8,0">
+        <controls:ToolbarButton x:Name="NotificationsButton" Style="{StaticResource ToolbarAction}" Click="Notifications_Click" ToolTip="{loc:Loc Notifications}" AutomationProperties.Name="{loc:Loc Notifications}"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xEA8F;"/></controls:ToolbarButton>
+        <Border x:Name="NotificationsBadge" Visibility="Collapsed" IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0" MinWidth="16" Height="16" CornerRadius="8" Padding="3,0" Background="{DynamicResource AccentButtonBackground}" BorderBrush="{DynamicResource NativeBackground}" BorderThickness="1">
+          <TextBlock x:Name="NotificationsBadgeText" FontSize="9.5" FontWeight="SemiBold" Margin="0,-0.5,0,0" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource AccentButtonForeground}"/>
+        </Border>
+        <Popup x:Name="NotificationsPopup" PlacementTarget="{Binding ElementName=NotificationsButton}" Placement="Bottom" HorizontalOffset="-8" VerticalOffset="2" AllowsTransparency="True" StaysOpen="False" PopupAnimation="None" Width="340" MaxHeight="390" Opened="NotificationsPopup_Opened" Closed="NotificationsPopup_Closed">
+          <controls:NotificationsPopover x:Name="NotificationsPanel"/>
+        </Popup>
+      </Grid>
       <TextBlock x:Name="PageTitle" Grid.Column="1" Style="{StaticResource PageTitle}" VerticalAlignment="Center" Visibility="Collapsed"/>
       <StackPanel x:Name="HomeActions" Grid.Column="2" Orientation="Horizontal">
         <controls:ToolbarButton x:Name="AccountButton" Style="{StaticResource ToolbarAction}" ToolTip="{loc:Loc Account}" AutomationProperties.Name="{loc:Loc Account}" Click="Account_Click" Margin="0,0,4,0"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77B;"/></controls:ToolbarButton>
@@ -100,7 +110,10 @@
          vendor's SDK page; the automatic installer stays the normal path. -->
     <TextBlock x:Name="SdkBanner" Grid.Row="1" Margin="0,0,0,12" Visibility="Collapsed" FontSize="12"
                Foreground="{DynamicResource NativeDanger}" TextWrapping="Wrap" TextAlignment="Center"><Run Text="{loc:Loc SdkMissing}"/><Hyperlink Foreground="{DynamicResource NativeDanger}" Click="SdkLink_Click"><Run Text="{loc:Loc SdkInstallLink}"/></Hyperlink></TextBlock>
-    <Button x:Name="PrimaryButton" Grid.Row="2" Style="{StaticResource PrimaryAction}" AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}" IsEnabled="False" MinHeight="40" Click="Primary_Click" Content="{loc:Loc Connect}"/>
+    <StackPanel Grid.Row="2">
+      <Button x:Name="PrimaryButton" Style="{StaticResource PrimaryAction}" AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}" IsEnabled="False" MinHeight="40" Click="Primary_Click" Content="{loc:Loc Connect}"/>
+      <TextBlock x:Name="DiscordRestartNote" Style="{StaticResource SecondaryText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" Visibility="Collapsed" Text="{loc:Loc DiscordRestartNote}"/>
+    </StackPanel>
     </Grid>
     <ContentControl x:Name="PageHost" Grid.Row="1" Margin="0,20,0,0" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
   </Grid>

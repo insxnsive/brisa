@@ -117,7 +117,7 @@ export function createProductionBackend() {
       encoding: "utf8", windowsHide: true, timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
     });
     // Match the exact SID column; group names and attributes may be localized.
-    elevated = groups.split(/\r?\n/).some(row => /^"(?:[^"]|"")*","(?:[^"]|"")*","S-1-16-12288",/.test(row));
+    elevated = groups.split(/\r?\n/).some(row => /^"(?:[^"]|"")*","(?:[^"]|"")*","S-1-16-(?:12288|16384)",/.test(row));
   } catch { /* Unknown privilege fails closed, just like unknown ownership. */ }
   // Every mutation refuses while unelevated; record why so the refusal is diagnosable.
   if (!elevated) diagnostics.record("startup", "NOT_ELEVATED");

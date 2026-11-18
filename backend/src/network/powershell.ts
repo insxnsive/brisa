@@ -4,7 +4,7 @@
  * monta caminhos ou argumentos: uma divergência vira injeção ou caminho quebrado.
  */
 export function quotePowerShell(value: string): string {
-    return `'${value.replace(/'/g, "''")}'`;
+    return `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`;
 }
 
 export const POWERSHELL_UTF8_PRELUDE = "[Console]::InputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);";

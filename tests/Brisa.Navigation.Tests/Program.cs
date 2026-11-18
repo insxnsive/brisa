@@ -340,13 +340,35 @@ internal static class Program
             var limitedMain = new MainWindow(limitedBackend, store);
             limitedMain.Show(); limitedMain.InitializeAsync().GetAwaiter().GetResult();
             var limitedPrimary = (Button)limitedMain.FindName("PrimaryButton");
-            Check(!limitedPrimary.IsEnabled && (string)limitedPrimary.Content == "Connect", "limited access keeps Connect disabled");
+            Check(limitedPrimary.IsEnabled && (string)limitedPrimary.Content == "Restart as administrator", "limited access offers Restart as administrator");
             Check(((TextBlock)limitedMain.FindName("DetailText")).Text.Contains("administrator"), "limited access explains the administrator requirement");
             var limitedAccount = new AccountView(limitedBackend, limitedMain, limited);
             Check(((Button)limitedAccount.FindName("ActionButton")).IsEnabled, "signing out stays available while unelevated");
             var limitedAdvanced = new AdvancedView(limitedBackend, limited);
             Check(((Button)limitedAdvanced.FindName("ImportButton")).IsEnabled, "importing a profile stays available while unelevated");
+            // This test process is not Brisa.exe, so the real relaunch refuses before any prompt can appear.
+            Click(limitedPrimary); Spin(300);
+            Check(limitedMain.IsVisible && limitedPrimary.IsEnabled && (string)limitedPrimary.Content == "Restart as administrator", "outside Brisa.exe the restart does nothing and the window stays on Limited");
             limitedMain.Close(); Pump(() => !limitedMain.IsVisible);
+            // A refused administrator prompt shows its notice and leaves the window open on Limited.
+            var restartCalls = 0;
+            var restartNotices = new List<string>();
+            var restartMain = new MainWindow(new SnapshotBackend(limited), store, notice: restartNotices.Add)
+            {
+                RestartElevatedOverride = () =>
+                {
+                    restartCalls++;
+                    restartNotices.Add(Brisa.Localization.LocalizationManager.Current["ElevationCanceled"]);
+                    return Task.CompletedTask;
+                },
+            };
+            restartMain.Show(); restartMain.InitializeAsync().GetAwaiter().GetResult();
+            var restartPrimary = (Button)restartMain.FindName("PrimaryButton");
+            Click(restartPrimary); Pump(() => restartCalls == 1);
+            Spin(200);
+            Check(restartCalls == 1 && restartMain.IsVisible && restartPrimary.IsEnabled && (string)restartPrimary.Content == "Restart as administrator", "a refused restart keeps the window open on Limited");
+            Check(restartNotices.Count == 1 && restartNotices[0].Contains("did not grant administrator rights"), "a refused restart explains itself");
+            restartMain.Close(); Pump(() => !restartMain.IsVisible);
 
             // A logon launch stays on Home even when the account is signed out.
             var signedOut = new NativeSnapshot(false, false, true, false, "", null);
@@ -565,6 +587,47 @@ internal static class Program
                 "a failed auto-connect reports the failure code and restores Home controls");
             failedAutoMain.RequestExit(); Pump(() => !failedAutoMain.IsVisible);
 
+            // F2/D2: an unverified verdict over a tunnel that already reports Connected
+            // must not raise a modal, and the notice must arrive after the window leaves
+            // Connecting so the user never sees a frozen busy screen behind it.
+            var c1Backend = new AutoConnectBackend(idleProton)
+            {
+                ConnectResult = new(false, "ROUTE_UNVERIFIED", "unverified"),
+                ConnectSnapshot = idleProton with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true },
+            };
+            var c1Notices = new List<string?>();
+            var c1Main = new MainWindow(c1Backend, store, exitWarning: _ => { }, autoRouteScan: false, autoConnect: true)
+            { CommandFailureNotice = (code, _) => c1Notices.Add(code) };
+            c1Main.Show(); c1Main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Pump(() => ((TextBlock)c1Main.FindName("StatusText")).Text == "Connected");
+            Check(c1Notices.Count == 0, "an unverified result over a connected tunnel raises no failure notice");
+            Check(((TextBlock)c1Main.FindName("StatusText")).Text == "Connected", "the connected tunnel stays Connected after an unverified result");
+            c1Main.RequestExit(); Pump(() => !c1Main.IsVisible);
+
+            MainWindow? c2Main = null;
+            string? statusAtNotice = null;
+            var c2Notices = new List<string?>();
+            var c2Backend = new AutoConnectBackend(idleProton)
+            {
+                ConnectResult = new(false, "ROUTE_UNVERIFIED", "unverified"),
+                ConnectSnapshot = idleProton with { Connected = false, TunnelActive = true, OwnedTunnelPresent = true },
+            };
+            c2Main = new MainWindow(c2Backend, store, exitWarning: _ => { }, autoRouteScan: false, autoConnect: true)
+            {
+                CommandFailureNotice = (code, _) =>
+                {
+                    c2Notices.Add(code);
+                    statusAtNotice = ((TextBlock)c2Main!.FindName("StatusText")).Text;
+                },
+            };
+            c2Main.Show(); c2Main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Pump(() => c2Notices.Count == 1);
+            Check(c2Notices.Count == 1 && c2Notices[0] == "ROUTE_UNVERIFIED", "an unverified tunnel reports exactly one failure notice");
+            Check(statusAtNotice is not null && statusAtNotice != "Connecting…",
+                "the window leaves Connecting before the failure notice opens: " + statusAtNotice);
+            c2Backend.Settle();
+            c2Main.RequestExit(); Pump(() => !c2Main.IsVisible);
+
             foreach (var (label, snapshot, openAccount) in new[]
             {
                 ("signed out interactive", idleProton with { SignedIn = false }, true),
@@ -614,6 +677,9 @@ internal static class Program
             Check(heldScan.Cancels >= 1 && !heldScan.Commands.Contains("connect"),
                 "exiting during the pre-connect route scan cancels cleanly without starting the tunnel");
             store.Save(store.Current with { AutoConnect = false });
+
+            NotificationBellTests.Run(store, Check);
+            UxTests.Run(store, Check);
 
             Console.WriteLine($"{count} inline-navigation assertions passed");
             return 0;
@@ -854,6 +920,7 @@ internal static class Program
         private NativeSnapshot _snapshot = initial;
         private TaskCompletionSource<CommandResult>? _optimize;
         public RouteInfo? OptimizedRoute { get; init; }
+        public NativeSnapshot? ConnectSnapshot { get; init; }
         public CommandResult OptimizeResult { get; init; } = new(true);
         public CommandResult ConnectResult { get; init; } = new(true);
         public bool HoldOptimize { get; init; }
@@ -880,7 +947,9 @@ internal static class Program
             }
             if (command == "connect")
             {
-                if (ConnectResult.Success)
+                if (ConnectSnapshot is not null)
+                    _snapshot = ConnectSnapshot;
+                else if (ConnectResult.Success)
                     _snapshot = _snapshot with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true };
                 return Task.FromResult(ConnectResult);
             }

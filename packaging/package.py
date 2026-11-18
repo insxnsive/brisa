@@ -14,7 +14,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 PROJECT = REPO / 'src/Brisa/Brisa.csproj'
-PRIVATE_NAMES = {'.env', 'proton-session.json', 'session.json', 'state.json', 'settings.json', 'wireguard.conf', 'native-wiresock.conf', 'imported.conf'}
+PRIVATE_NAMES = {'.env', 'proton-session.json', 'session.json', 'state.json', 'settings.json', 'wireguard.conf', 'native-wiresock.conf', 'imported.conf', 'notifications-state.json'}
 GENERATED = {'bin', 'obj', 'artifacts', 'dist', 'node_modules', '__pycache__', '.git', '.tools', '.hermes', 'build', 'vendor'}
 PRIVATE_SUFFIXES = {'.conf', '.key', '.pem', '.pfx', '.p12'}
 SOURCE_ROOTS = ('src', 'backend', 'tools/proton-confgen', 'tests', 'packaging', 'scripts', 'docs', '.github', '.config')

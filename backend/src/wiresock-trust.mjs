@@ -9,7 +9,7 @@ export const WIRESOCK_SIGNER_SUBJECT = { cn: "The Anti-Cloud Corporation", o: "T
 const RISKY_FILE_RIGHTS = "0xD0156 -bor 0x10000000 -bor 0x40000000";
 const TRUSTED_SIDS = ["S-1-5-18", "S-1-5-32-544", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"];
 
-const quote = value => `'${value.replace(/'/g, "''")}'`;
+const quote = value => `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`;
 
 /**
  * As funções PowerShell da checagem, compartilhadas entre a verificação de um par e a sondagem

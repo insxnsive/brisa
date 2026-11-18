@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createDiscordLifecycle } from "../src/discord-lifecycle.mjs";
+import { powerShellCommandArgs, quotePowerShell } from "../src/network/powershell.ts";
+import { wireSockRevalidateScript } from "../src/wiresock-probe.mjs";
 
 const app = String.raw`C:\Fixture's Folder\Discord\app-1\Discord.exe`;
 const literal = value => `'${value.replaceAll("'", "''")}'`;
@@ -200,4 +202,17 @@ test("speed N1 persistent confirmation cancellation preserves AbortError", { ski
   const sessionSpawn = (file, args, options) => spawnProcess(file, [...args.slice(0, -1), "function Get-CimInstance {param($ClassName)}; " + args.at(-1)], options);
   const lifecycle = createDiscordLifecycle({ execFile: forbidOneShot, sessionSpawn, spawn: () => { spawned = true; return spawnedChild(); }, sleep: async () => { if (spawned) controller.abort(); } });
   await assert.rejects(lifecycle.launch([app], controller.signal), error => error.name === "AbortError" && error.code === "ABORT_ERR");
+});
+
+test("PowerShell literal helpers escape Unicode curly single quotes cleanly", { skip: process.platform !== "win32" }, async () => {
+  const nasty = "C:\\Users\\O\u2019Connor\\app-1\u2018x\u201a\u201by'z\\Discord.exe";
+  const quoted = quotePowerShell(nasty);
+  const out = await new Promise((resolve, reject) => {
+    execute("powershell.exe", powerShellCommandArgs(`Write-Output (${quoted})`), { encoding: "utf8" }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout.trim());
+    });
+  });
+  assert.equal(out, nasty);
+  assert.ok(wireSockRevalidateScript(nasty, "C:\\Program Files\\WireSock\\wgbooster.dll").includes(quoted));
 });

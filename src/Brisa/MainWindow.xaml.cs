@@ -12,12 +12,16 @@ using Brisa.Services;
 
 namespace Brisa;
 
+internal enum AdvancedOrigin { None, Settings, Account }
+
 public partial class MainWindow : Window
 {
     private readonly IBackendClient _backend;
     private readonly SettingsStore _settings;
     private readonly string? _smokeOutput;
     private readonly IUpdateService? _updates;
+    private readonly INotificationService? _notifications;
+    private long _notificationsClosedAt;
     private readonly Action<string> _exitWarning;
     private readonly Action<string> _notice;
     private readonly Func<string, bool> _exitConfirm;
@@ -35,6 +39,7 @@ public partial class MainWindow : Window
     private bool _wasMinimized;
     private bool _nativeOperationMayBeActive;
     private bool _terminalBackendFailure;
+    private bool _sdkSetupFailed;
     private readonly bool _autoRouteScan;
     private readonly bool _autoConnect;
     private bool _routeScanClaimed;
@@ -134,6 +139,7 @@ public partial class MainWindow : Window
 
     private void BeginUiMutation()
     {
+        CloseNotifications();
         _operationOwnsUi = true;
         _operationEpoch++;
     }
@@ -152,7 +158,7 @@ public partial class MainWindow : Window
         SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
     }
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null, bool autoRouteScan = false, bool autoConnect = false)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null, bool autoRouteScan = false, bool autoConnect = false, INotificationService? notifications = null)
     {
         InitializeComponent(); TrafficCard.Height = TrafficCardHeight; _backend = backend;
         // O servidor encosta no país; quando o nome do país não cabe, ele trima e o servidor não.
@@ -172,6 +178,8 @@ public partial class MainWindow : Window
             if (_closing) return;
             SetState(_state);
             RenderDetails();
+            // The bell's spoken unread count is text too: refresh it with the language.
+            if (_notifications is not null) ApplyNotificationBadge(_notifications.Snapshot);
             // O título da página aberta também é texto do produto: sem isto ele ficaria no idioma
             // anterior até a próxima navegação.
             var loc = Localization.LocalizationManager.Current;
@@ -202,6 +210,7 @@ public partial class MainWindow : Window
             // O gerenciador é um singleton: um handler anônimo manteria esta janela viva depois de
             // fechada, e um Apply posterior pintaria uma árvore já descartada.
             Localization.LocalizationManager.Current.PropertyChanged -= _languageChanged;
+            if (_notifications is not null) _notifications.SnapshotChanged -= OnNotificationsChanged;
         };
         Closing += OnClosing;
         // The timer is paused while hidden in the tray, so refresh once when the window comes back.
@@ -213,6 +222,16 @@ public partial class MainWindow : Window
         // A última entrada decide se um anel de foco é cortesia ou ruído.
         PreviewKeyDown += (_, _) => _keyboardInput = true;
         PreviewMouseDown += (_, _) => _keyboardInput = false;
+        _notifications = notifications;
+        if (_notifications is not null)
+        {
+            NotificationsPanel.Bind(_notifications);
+            NotificationsPanel.CloseRequested += (_, _) => { CloseNotifications(); NotificationsButton.Focus(); };
+            NotificationsPanel.InstallRequested += (_, _) => { CloseNotifications(); RequestUpdateRestart(); };
+            _notifications.SnapshotChanged += OnNotificationsChanged;
+            ApplyNotificationBadge(_notifications.Snapshot);
+        }
+        UpdateNotificationsHost();
     }
 
     public async Task InitializeAsync(bool openAccount = true)
@@ -277,7 +296,7 @@ public partial class MainWindow : Window
         {
             // Not ExecuteWithVerificationAsync: a verification challenge must not open a window
             // the user did not ask for. Any failure keeps the previous route and profile.
-            var result = await _backend.CommandAsync("optimize", new { }, lifetime);
+            var result = await _backend.CommandAsync("optimize", RoutePayload(), lifetime);
             if (!result.Success || _closing) return;
             var ticket = IssueTicket();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
@@ -323,11 +342,18 @@ public partial class MainWindow : Window
         _state = state; RenderStatusText(state.StatusText); DetailText.Text = state.Detail ?? "";
         if (state.Phase == ConnectionPhase.Error && _backend.StartupCode != "INIT_UNKNOWN" && StartupDiagnostics.IsKnownCode(_backend.StartupCode))
             DetailText.Text += $" ({_backend.StartupCode})";
-        // Missing SDK is a prerequisite state, not a connection error: one red line above the
-        // primary action, only while the probe stands behind it. It disappears once a tunnel
-        // starts, and while the vendor installer is on screen the existing stage text says more.
-        SdkBanner.Visibility = state.Snapshot is { SdkMissing: true, Stage: not "installing-wiresock", HasOwnedTunnel: false }
-            && state.Phase is not ConnectionPhase.Connected ? Visibility.Visible : Visibility.Collapsed;
+        // Missing SDK is a prerequisite state, not a connection error. The banner appears only
+        // after this session's automatic install failed: a launch that merely sees SdkMissing
+        // stays quiet, and a later snapshot that proves the SDK present clears the gate.
+        if (state.Snapshot is { SdkMissing: false }) _sdkSetupFailed = false;
+        SdkBanner.Visibility = _sdkSetupFailed
+            && state.Snapshot is { SdkMissing: true, Stage: not "installing-wiresock", HasOwnedTunnel: false }
+            && state.Phase is not (ConnectionPhase.Connected or ConnectionPhase.Limited)
+            ? Visibility.Visible : Visibility.Collapsed;
+        // Discord restarts on both actions, so the note is static: it does not depend on
+        // DiscordRunning, which the backend only reports while a tunnel is up.
+        DiscordRestartNote.Visibility = state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
+            ? Visibility.Visible : Visibility.Collapsed;
         PrimaryButton.Content = state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;
         SetStatusRing(busy);
@@ -437,7 +463,11 @@ public partial class MainWindow : Window
         _detailsVisible = showDetails;
         CompactStatusText.Text = state.StatusText;
         SyncDetailsTimer();
+        HomeStateChanged?.Invoke(this, state);
     }
+
+    /// <summary>Raised after Home has finished showing a new state. The tray menu follows it.</summary>
+    public event EventHandler<HomeState>? HomeStateChanged;
 
     // A palavra do estado troca com um cross-fade: o texto antigo sai por baixo enquanto o novo
     // entra, no mesmo lugar, e o valor real é escrito na hora para que nenhuma leitura dependa do
@@ -573,6 +603,7 @@ public partial class MainWindow : Window
     {
         if (_currentPage is not null || _navigationBusy || _closing) return;
         if (_state.StartupFailed) { RequestExit(); return; }
+        if (_state.CanRestartElevated) { await (RestartElevatedOverride is not null ? RestartElevatedOverride() : RestartElevatedAsync()); return; }
         if (UiMutationBusy || !await _operation.WaitAsync(0)) return;
         BeginUiMutation();
         if (_state.RequiresSignIn)
@@ -599,7 +630,7 @@ public partial class MainWindow : Window
                 {
                     using var scanBudget = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
                     scanBudget.CancelAfter(TimeSpan.FromSeconds(75));
-                    var scan = await _backend.CommandAsync("optimize", new { }, scanBudget.Token);
+                    var scan = await _backend.CommandAsync("optimize", RoutePayload(), scanBudget.Token);
                     if (scan.Success && scan.Route is { } freshRoute && !_closing && _state.Snapshot is { } current)
                         SetState(_state with { Snapshot = current with { Route = freshRoute } });
                 }
@@ -620,12 +651,16 @@ public partial class MainWindow : Window
             var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
-            if (!result.Success)
+            // The SDK banner is an onboarding hint for an automatic install that failed, not a
+            // launch warning: only these codes arm it for this session.
+            if (result.Code is "WIRESOCK_SETUP_REQUIRED" or "SDK_INSTALL_STAYS_OPEN" or "SDK_INSTALL_DISCORD_CLOSED" or "SDK_INSTALL_SUPERVISION_LOST")
+                _sdkSetupFailed = true;
+            await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
+            if (!result.Success && !(result.Code == "ROUTE_UNVERIFIED" && _state.Phase == ConnectionPhase.Connected))
             {
                 if (CommandFailureNotice is not null) CommandFailureNotice(result.Code, result.Message);
                 else Localization.BackendText.Show(this, result.Code, result.Message, "Brisa");
             }
-            await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
         catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }
         catch (Exception ex) { if (CanCommit(IssueTicket(fromOperation: true))) SetError(ex, _state.Snapshot); }
@@ -780,7 +815,9 @@ public partial class MainWindow : Window
     }
     private void OpenSettings()
     {
-        var view = new SettingsView(_settings, ShowAdvanced);
+        var carried = _settingsDraft;
+        _settingsDraft = null;
+        var view = new SettingsView(_settings, draft => _ = ShowAdvancedAsync(AdvancedOrigin.Settings, draft), carried);
         view.CloseRequested += async (_, _) =>
         {
             // A preferência do painel pode ter mudado: repinta o Home antes de voltar, senão o
@@ -806,6 +843,8 @@ public partial class MainWindow : Window
         PageTitle.Visibility = Visibility.Visible;
         HomeContent.Visibility = HomeActions.Visibility = Visibility.Collapsed;
         PageHost.Visibility = BackButton.Visibility = Visibility.Visible;
+        CloseNotifications();
+        UpdateNotificationsHost();
         PageTransition.Show(PageHost);
         // O foco vai para a página, não para o Voltar: quem abre pelo mouse não deve ver um anel
         // de foco no botão, e quem usa teclado continua com Shift+Tab chegando nele.
@@ -820,10 +859,15 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task GoBackAsync()
     {
-        var toSettings = _advancedFromSettings && _currentPage is AdvancedView;
-        _advancedFromSettings = false;
+        // Advanced fica um passo à frente da página que o abriu. Só volta para ela se ela ainda
+        // fizer sentido: depois de importar um .conf, o modo vira custom e a conta não é mais
+        // necessária, então o caminho certo é Home.
+        var origin = _currentPage is AdvancedView ? _advancedOrigin : AdvancedOrigin.None;
+        _advancedOrigin = AdvancedOrigin.None;
         await ReturnHomeAsync();
-        if (toSettings && !_closing) OpenSettings();
+        if (_closing || _currentPage is not null) return;
+        if (origin == AdvancedOrigin.Settings) OpenSettings();
+        else if (origin == AdvancedOrigin.Account && _state.RequiresSignIn) OpenAccount();
     }
     private async void OnNavigationKeyDown(object sender, KeyEventArgs e)
     {
@@ -851,6 +895,7 @@ public partial class MainWindow : Window
             PageHost.Content = null; _currentPage = null;
             PageHost.Visibility = BackButton.Visibility = Visibility.Collapsed;
             HomeContent.Visibility = HomeActions.Visibility = Visibility.Visible;
+            UpdateNotificationsHost();
             PageTransition.Show(HomeContent);
             // A home não tem título: o nome do app já está na barra, e qualquer palavra acima do
             // estado ("Connected") só repete o estado.
@@ -888,10 +933,22 @@ public partial class MainWindow : Window
     private bool CanChooseRoute => !_state.RequiresSignIn && _state.Phase == ConnectionPhase.Disconnected
         && _state.Snapshot is { ExternalTunnel: false, Reliable: true, HasOwnedTunnel: false };
 
+    // The saved country feeds every scan, so a launch never silently replaces a route the user chose.
+    private object RoutePayload() => string.IsNullOrEmpty(_settings.Current.PreferredRouteCountry)
+        ? (object)new { } : new { country = _settings.Current.PreferredRouteCountry };
+
+    // Automatic is saved as null. Only the route changes here, so the startup mode is the same and
+    // the registrar is never asked, which means no administrator prompt from a route choice.
+    private void RememberRoute(string? country)
+    {
+        try { if (_settings.Current.PreferredRouteCountry != country) _settings.Save(_settings.Current with { PreferredRouteCountry = country }); }
+        catch { }
+    }
+
     private async void Route_Click(object sender, RoutedEventArgs e)
     {
         if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute) return;
-        var dialog = new RouteWindow(this) { Owner = this };
+        var dialog = new RouteWindow(this, _settings.Current.PreferredRouteCountry, _state.Snapshot?.Route) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         // The modal pumps the dispatcher, so eligibility can change while it is open. The
         // selection is never queued or replayed later; the user is told instead.
@@ -908,24 +965,41 @@ public partial class MainWindow : Window
             var pending = ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
-            if (!result.Success)
-                Localization.BackendText.Show(this, result.Code, result.Message, Localization.LocalizationManager.Current["Route"]);
+            if (result.Success) RememberRoute(dialog.SelectedCountry);
+            else Localization.BackendText.Show(this, result.Code, result.Message, Localization.LocalizationManager.Current["Route"]);
             await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
         catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }
         catch (Exception ex) { MessageBox.Show(this, SafeMessage(ex), "Route", MessageBoxButton.OK, MessageBoxImage.Error); }
         finally { EndUiMutation(); LeaveBusyPhase(); _operation.Release(); UpdateActionAvailability(); }
     }
-    private bool _advancedFromSettings;
+    private UserSettings? _settingsDraft;
+    private AdvancedOrigin _advancedOrigin;
 
-    private void ShowAdvanced()
+    internal async Task ShowAdvancedAsync(AdvancedOrigin origin, UserSettings? draft = null)
     {
         // Advanced é página, não diálogo: mesma janela, mesmo botão Voltar do cabeçalho. O guarda
         // continua porque navegar durante uma transição ou uma mutação trabalharia com um snapshot
         // que já não corresponde ao estado.
-        if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not SettingsView) return;
-        _advancedFromSettings = true;
-        ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), Localization.LocalizationManager.Current["Advanced"]);
+        if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not (SettingsView or AccountView)) return;
+        var page = _currentPage;
+        _advancedOrigin = origin;
+        _settingsDraft = origin == AdvancedOrigin.Settings ? draft : null;
+        _navigationBusy = true; BackButton.IsEnabled = false; page.IsEnabled = false;
+        UpdateActionAvailability();
+        try
+        {
+            // AccountView cancela o próprio login ao ser descartada: Advanced não pode abrir
+            // enquanto essa limpeza ainda está rodando.
+            if (page is IAsyncDisposable disposable) await disposable.DisposeAsync();
+            if (_closing) return;
+            PageHost.Content = null; _currentPage = null;
+            ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), Localization.LocalizationManager.Current["Advanced"]);
+        }
+        finally
+        {
+            _navigationBusy = false; BackButton.IsEnabled = true; UpdateActionAvailability();
+        }
     }
 
     /// <summary>
@@ -981,6 +1055,44 @@ public partial class MainWindow : Window
         }
         RequestExit();
     }
+    private void Notifications_Click(object sender, RoutedEventArgs e)
+    {
+        if (_notifications is null || _closing || _currentPage is not null) return;
+        if (NotificationsPopup.IsOpen) { NotificationsPopup.IsOpen = false; return; }
+        // A click on the bell while the popup is open closes it on mouse down; the click that
+        // follows must not open it again.
+        if (NotificationsButton.IsMouseOver && Environment.TickCount64 - _notificationsClosedAt < 250) return;
+        NotificationsPopup.IsOpen = true;
+    }
+    private void NotificationsPopup_Opened(object? sender, EventArgs e)
+    {
+        if (_notifications is null) return;
+        _notifications.BeginPopoverSession();
+        NotificationsPanel.Render(_notifications.Snapshot);
+        Dispatcher.BeginInvoke(NotificationsPanel.FocusFirst, System.Windows.Threading.DispatcherPriority.Input);
+    }
+    private void NotificationsPopup_Closed(object? sender, EventArgs e)
+    {
+        _notificationsClosedAt = Environment.TickCount64;
+        _notifications?.EndPopoverSession();
+    }
+    private void CloseNotifications() { if (NotificationsPopup.IsOpen) NotificationsPopup.IsOpen = false; }
+    private void UpdateNotificationsHost() =>
+        NotificationsHost.Visibility = _notifications is not null && _currentPage is null ? Visibility.Visible : Visibility.Collapsed;
+    private void OnNotificationsChanged(object? sender, NotificationSnapshot snapshot)
+    {
+        if (_closing) return;
+        ApplyNotificationBadge(snapshot);
+        NotificationsPanel.Render(snapshot);
+    }
+    private void ApplyNotificationBadge(NotificationSnapshot snapshot)
+    {
+        var count = snapshot.BadgeCount;
+        NotificationsBadge.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NotificationsBadgeText.Text = count > 9 ? "9+" : count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        System.Windows.Automation.AutomationProperties.SetHelpText(NotificationsButton, count > 0
+            ? string.Format(Localization.LocalizationManager.Current["NotificationsUnreadCount"], count) : "");
+    }
     public void RequestExit() { _explicitExit = true; Close(); }
     public void RequestUpdateRestart()
     {
@@ -993,6 +1105,7 @@ public partial class MainWindow : Window
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (_canClose) return;
+        CloseNotifications();
         PageTransition.Stop(PageHost);
         PageTransition.Stop(HomeContent);
         e.Cancel = true;
@@ -1024,6 +1137,7 @@ public partial class MainWindow : Window
             }
             await _backend.DisposeAsync();
             if (_updates is not null) await _updates.DisposeAsync();
+            if (_notifications is not null) await _notifications.DisposeAsync();
             if (safeToApplyUpdate && _updates?.HasPendingUpdate == true)
             {
                 // The updater process is launched only after account work, tunnel

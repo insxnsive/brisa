@@ -37,6 +37,7 @@ function harness(overrides = {}) {
     discordRunning: async () => true,
     verifyRoute: async () => ({ verified: true, reason: "verified" }),
     helperAvailable: () => true,
+    sleep: async () => {},
     // Fixed presence so the snapshot contract never depends on this machine's SDK.
     probeSdk: async () => ({ parsed: true, candidates: [{}] }),
     files: {
@@ -439,6 +440,201 @@ test("unverified route returns an explicit warning while keeping Disconnect avai
   const snapshot = await backend.execute("snapshot", {});
   assert.equal(snapshot.connected, false);
   assert.equal(snapshot.tunnelActive, true);
+});
+
+test("a transient first proof is retried and connects", async () => {
+  let probes = 0;
+  const sleeps = [];
+  const diag = createDiagnostics();
+  const { backend, calls, files, setInspection } = harness({
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => {
+      probes += 1;
+      return probes === 1 ? { verified: false, reason: "discord_failed" } : { verified: true, reason: "verified" };
+    },
+    sleep: async ms => { sleeps.push(ms); },
+    diag,
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.success, true);
+  assert.equal(probes, 2);
+  assert.deepEqual(sleeps, [2_000]);
+  assert.equal(diag.recent().filter(line => line.includes("ROUTE_PROOF_RETRY")).length, 1);
+  assert.ok(!calls.some(call => call[0] === "stop"), "a retried success must not roll back the tunnel");
+});
+
+test("three failed proofs report unverified with three attempts and bounded sleeps", async () => {
+  let time = 1_000_000;
+  const sleeps = [];
+  const diag = createDiagnostics();
+  const { backend, files, setInspection } = harness({
+    now: () => time,
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => ({ verified: false, reason: "discord_failed" }),
+    sleep: async ms => { sleeps.push(ms); time += ms; },
+    diag,
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.code, "ROUTE_UNVERIFIED");
+  assert.equal((await backend.execute("snapshot", {})).tunnelActive, true);
+  assert.match(diag.recent().find(line => line.includes("ROUTE_UNVERIFIED")), /attempts=3/);
+  assert.deepEqual(sleeps, [2_000, 4_000]);
+  assert.ok(sleeps.reduce((total, value) => total + value, 0) <= 20_000);
+});
+
+test("a deterministic probe_unavailable is not retried", async () => {
+  let probes = 0;
+  let sleeps = 0;
+  const { backend, files, setInspection } = harness({
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => { probes += 1; return { verified: false, reason: "probe_unavailable" }; },
+    sleep: async () => { sleeps += 1; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.code, "ROUTE_UNVERIFIED");
+  assert.equal(probes, 1);
+  assert.equal(sleeps, 0);
+});
+
+test("a cancel during the retry sleep rolls back without another proof", async () => {
+  let probes = 0;
+  let sleepStarted;
+  let releaseSleep;
+  const started = new Promise(resolve => { sleepStarted = resolve; });
+  const parked = new Promise(resolve => { releaseSleep = resolve; });
+  const { backend, calls, files, setInspection } = harness({
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => { probes += 1; return { verified: false, reason: "discord_failed" }; },
+    // Deliberately ignores the signal: only the explicit operation.isCurrent() check
+    // after the wait can stop the loop, so a removed check calls verifyRoute again.
+    sleep: () => { sleepStarted(); return parked; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const connecting = backend.execute("connect", {});
+  await started;
+  await backend.execute("cancel", {});
+  releaseSleep();
+  const result = await connecting;
+  assert.equal(result.success, false);
+  assert.equal(result.code, "CAPTCHA_CANCELLED");
+  assert.equal(probes, 1, "no proof runs after the cancel wakes the sleep");
+  assert.ok(calls.some(call => call[0] === "stop"), "the tunnel is rolled back");
+});
+
+test("the settle window blocks a third attempt at the 14-second boundary", async () => {
+  let time = 1_000_000;
+  let probes = 0;
+  const sleeps = [];
+  const { backend, files, setInspection } = harness({
+    now: () => time,
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async () => {
+      probes += 1;
+      if (probes === 1) time += 12_000;
+      return { verified: false, reason: "discord_failed" };
+    },
+    sleep: async ms => { sleeps.push(ms); time += ms; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const result = await backend.execute("connect", {});
+  assert.equal(result.code, "ROUTE_UNVERIFIED");
+  assert.equal(probes, 2, "a third attempt must not start with 2 s left after its delay");
+  assert.deepEqual(sleeps, [2_000]);
+});
+
+test("a hanging retry probe is cut off at the settle deadline", async () => {
+  let time = 2_000_000;
+  let probes = 0;
+  let probe2Signal = null;
+  let releaseProbe2 = null;
+  const probe2Pending = new Promise(resolve => { releaseProbe2 = resolve; });
+  const diag = createDiagnostics();
+  const { backend, files, setInspection } = harness({
+    now: () => time,
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+    verifyRoute: async signal => {
+      probes += 1;
+      if (probes === 1) {
+        time += 12_950;
+        return { verified: false, reason: "discord_failed" };
+      }
+      probe2Signal = signal;
+      return probe2Pending;
+    },
+    sleep: async ms => { time += ms; },
+    diag,
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const startedAt = Date.now();
+  const result = await Promise.race([
+    backend.execute("connect", {}),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("connect exceeded the settle window")), 7_500)),
+  ]);
+  const elapsed = Date.now() - startedAt;
+  assert.equal(result.code, "ROUTE_UNVERIFIED");
+  assert.ok(elapsed < 6_000, `connect returned after ${elapsed} ms`);
+  assert.ok(probe2Signal?.aborted, "the retry probe is aborted at the deadline");
+  const line = diag.recent().find(entry => entry.includes("ROUTE_UNVERIFIED"));
+  assert.match(line, /reason=DISCORD_FAILED/);
+  assert.match(line, /attempts=2/);
+  assert.equal((await backend.execute("snapshot", {})).tunnelActive, true);
+  // A late verdict from the abandoned probe must not revive the tunnel.
+  releaseProbe2({ verified: true, reason: "verified" });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal((await backend.execute("snapshot", {})).connected, false,
+    "a late verdict from the timed-out probe is discarded");
+});
+
+test("a budget that expires during the tunnel check discards the late verdict", async () => {
+  let time = 3_000_000;
+  let probes = 0;
+  let tunnelStarted = false;
+  let released = false;
+  let parkedOnce = false;
+  let releaseInspect;
+  const parked = new Promise(resolve => { releaseInspect = resolve; });
+  const { backend, files } = harness({
+    now: () => time,
+    inspect: async () => {
+      if (!tunnelStarted) return { active: false, owned: false, reliable: true };
+      if (probes >= 2 && !released && !parkedOnce) {
+        parkedOnce = true;
+        await parked;
+      }
+      return { active: true, owned: true, reliable: true };
+    },
+    start: async () => { tunnelStarted = true; },
+    verifyRoute: async () => {
+      probes += 1;
+      if (probes === 1) {
+        time += 12_950;
+        return { verified: false, reason: "discord_failed" };
+      }
+      return { verified: true, reason: "verified" };
+    },
+    sleep: async ms => { time += ms; },
+  });
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  // checkRouteBounded's deadline timer is unref'd, so the test needs its own handle.
+  const keepalive = setTimeout(() => {}, 7_000);
+  let result;
+  try {
+    result = await backend.execute("connect", {});
+  } finally {
+    clearTimeout(keepalive);
+  }
+  assert.equal(result.code, "ROUTE_UNVERIFIED");
+  assert.equal((await backend.execute("snapshot", {})).connected, false);
+  released = true;
+  releaseInspect();
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(probes, 2);
+  assert.equal((await backend.execute("snapshot", {})).connected, false,
+    "a verdict from an expired budget must not publish connected");
 });
 
 test("status rechecks route health without keeping a stale verified badge", async () => {

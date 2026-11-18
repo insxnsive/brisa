@@ -52,6 +52,11 @@
   <data name="StatusUnverified" xml:space="preserve"><value>Not verified</value></data>
   <data name="StatusUnavailable" xml:space="preserve"><value>Unavailable</value></data>
   <data name="StatusAdministratorRequired" xml:space="preserve"><value>Administrator required</value></data>
+  <data name="RestartAsAdministrator" xml:space="preserve"><value>Restart as administrator</value></data>
+  <data name="ElevationCanceled" xml:space="preserve"><value>Windows did not grant administrator rights. Brisa is still running without them.</value></data>
+  <data name="ElevationWrongUser" xml:space="preserve"><value>Brisa must run as the same Windows account. Sign in to Windows with an administrator account, or ask one to enable Start with Windows for you.</value></data>
+  <data name="StartupElevationCanceled" xml:space="preserve"><value>Start with Windows and Connect when Brisa opens need administrator rights once. Nothing was changed.</value></data>
+  <data name="StartupElevationNeedsAdmin" xml:space="preserve"><value>This Windows account cannot start Brisa elevated. Start with Windows stays as it was.</value></data>
   <data name="StatusError" xml:space="preserve"><value>Couldn’t load status</value></data>
   <data name="StatusDisconnected" xml:space="preserve"><value>Disconnected</value></data>
   <data name="ExitBrisa" xml:space="preserve"><value>Exit Brisa</value></data>
@@ -101,6 +106,8 @@
   <data name="ProtonUsername" xml:space="preserve"><value>Proton username</value></data>
   <data name="Route" xml:space="preserve"><value>Route</value></data>
   <data name="RouteCountry" xml:space="preserve"><value>Route country</value></data>
+  <data name="CurrentRouteFormat" xml:space="preserve"><value>Current route: {0} {1}</value></data>
+  <data name="CurrentRouteWithPingFormat" xml:space="preserve"><value>Current route: {0} {1}, {2} ms</value></data>
   <data name="SignInHelper" xml:space="preserve"><value>Sign in with your Proton account to connect.</value></data>
   <data name="SignedInAs" xml:space="preserve"><value>Signed in as</value></data>
   <data name="LogBox" xml:space="preserve"><value>Support log preview</value></data>
@@ -119,14 +126,17 @@
   <data name="LogGenerationFailed" xml:space="preserve"><value>The log could not be generated.</value></data>
   <data name="SdkPreparing" xml:space="preserve"><value>Preparing WireSock SDK. Complete or cancel the visible installer if it opens.</value></data>
   <data name="SdkInstallerOpen" xml:space="preserve"><value>The WireSock installer is still open. Finish or cancel it in the Windows installer window, then try again.</value></data>
-  <data name="SdkMissing" xml:space="preserve"><value>You don't have the WireSock SDK. Brisa can't work properly without it. </value></data>
-  <data name="SdkInstallLink" xml:space="preserve"><value>Click here to install it.</value></data>
+  <data name="SdkMissing" xml:space="preserve"><value>WireSock SDK setup did not finish. Click Connect to try again, or </value></data>
+  <data name="SdkInstallLink" xml:space="preserve"><value>install WireSock SDK 3.4.8.1 manually.</value></data>
   <data name="ServiceStoppedUnsafe" xml:space="preserve"><value>The native service stopped while a connection may still be active. Brisa cannot confirm a safe disconnect.</value></data>
   <data name="ServiceStoppingRetry" xml:space="preserve"><value>The service has not finished stopping. Please try exiting again.</value></data>
   <data name="VerificationRejected" xml:space="preserve"><value>The verification address was rejected.</value></data>
   <data name="SecondaryWindowFailed" xml:space="preserve"><value>Secondary window failed to load.</value></data>
   <data name="SaveLogFilter" xml:space="preserve"><value>Text file (*.txt)|*.txt</value></data>
   <data name="TrayOpen" xml:space="preserve"><value>Open</value></data>
+  <data name="TrayStatusFormat" xml:space="preserve"><value>Brisa: {0}</value></data>
+  <data name="UseConfFile" xml:space="preserve"><value>Use a WireGuard .conf file instead</value></data>
+  <data name="DiscordRestartNote" xml:space="preserve"><value>Discord closes and reopens for a moment when you connect or disconnect.</value></data>
   <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
   <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>
   <data name="RouteAccessibleName" xml:space="preserve"><value>{0}, server {1}</value></data>
@@ -152,7 +162,7 @@
   <data name="DetailOwnershipUnreliable" xml:space="preserve"><value>Brisa's tunnel may still be running, but ownership could not be checked reliably. Run Brisa as administrator and retry. Brisa will stay open.</value></data>
   <data name="DetailInstallerUnknown" xml:space="preserve"><value>WireSock installation status is unknown. Restart Brisa before connecting.</value></data>
   <data name="DetailExternalTunnel" xml:space="preserve"><value>Another app owns the active tunnel. Close it before continuing.</value></data>
-  <data name="DetailRequiresElevation" xml:space="preserve"><value>Open Brisa as administrator to connect or disconnect. You can sign in and import a profile here.</value></data>
+  <data name="DetailRequiresElevation" xml:space="preserve"><value>Brisa needs administrator rights to connect. Restart as administrator, or turn on Start with Windows and Connect when Brisa opens to start elevated at sign in.</value></data>
   <data name="DetailOwnershipUnverified" xml:space="preserve"><value>Tunnel ownership could not be verified. Run Brisa as administrator. No changes were made.</value></data>
   <data name="DetailTunnelUnverified" xml:space="preserve"><value>The tunnel is running, but Discord routing is not verified. Disconnect and try again.</value></data>
   <data name="Backend.PROFILE_INVALID" xml:space="preserve"><value>The WireGuard profile is invalid.</value></data>
@@ -171,7 +181,7 @@
   <data name="Backend.START_NOT_APPROVED" xml:space="preserve"><value>Windows did not approve the administrator step, or it did not finish in time. Approve the prompt and try again.</value></data>
   <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>WireSock started, but Brisa could not confirm it is running with Brisa's own profile. Try again.</value></data>
   <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>The Brisa tunnel could not be started. Check WireSock and your VPN profile, then try again.</value></data>
-  <data name="Backend.START_FAILED_UNCLASSIFIED" xml:space="preserve"><value>The connection could not be completed. If Discord did not reopen, open it manually. Then go to Settings &gt; Advanced &gt; Generate log and send the log to support.</value></data>
+  <data name="Backend.START_FAILED_UNCLASSIFIED" xml:space="preserve"><value>The connection could not be completed. If Discord did not reopen, open it manually. Then go to Settings &gt; Advanced &gt; Generate log and attach the log to a new issue at github.com/insxnsive/brisa/issues.</value></data>
   <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>Brisa could not read the WireSock state reliably, so it made no changes. Run Brisa as administrator and try again.</value></data>
   <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Enter your Proton two-factor code and try again.</value></data>
   <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>The Proton two-factor code was rejected or expired.</value></data>
@@ -209,4 +219,25 @@
   <data name="Backend.SDK_INSTALL_STAYS_OPEN" xml:space="preserve"><value>WireSock installation status is unknown. Brisa will stay open; restart Brisa before trying again.</value></data>
   <data name="Backend.SDK_INSTALL_DISCORD_CLOSED" xml:space="preserve"><value>Discord was closed; open it again manually.</value></data>
   <data name="Backend.CANCEL_RESTORE_UNCONFIRMED" xml:space="preserve"><value>Cancellation could not confirm normal-route restoration. Check tunnel status and Discord before retrying.</value></data>
+  <data name="Notifications" xml:space="preserve"><value>Notifications</value></data>
+  <data name="NotificationsUnreadCount" xml:space="preserve"><value>{0} unread</value></data>
+  <data name="NotificationsFilterAll" xml:space="preserve"><value>All</value></data>
+  <data name="NotificationsFilterUnread" xml:space="preserve"><value>Unread</value></data>
+  <data name="NotificationsMarkAllRead" xml:space="preserve"><value>Mark all read</value></data>
+  <data name="NotificationsMarkRead" xml:space="preserve"><value>Mark as read</value></data>
+  <data name="NotificationsSectionNew" xml:space="preserve"><value>New</value></data>
+  <data name="NotificationsSectionEarlier" xml:space="preserve"><value>Earlier</value></data>
+  <data name="NotificationsCaughtUp" xml:space="preserve"><value>All caught up</value></data>
+  <data name="NotificationsInstallRestart" xml:space="preserve"><value>Install &amp; restart</value></data>
+  <data name="NotificationsUpdateReady" xml:space="preserve"><value>Update ready</value></data>
+  <data name="NotificationsUpdateDownloading" xml:space="preserve"><value>Downloading update</value></data>
+  <data name="NotificationsJustNow" xml:space="preserve"><value>Just now</value></data>
+  <data name="NotificationsMinutesAgo" xml:space="preserve"><value>{0} min ago</value></data>
+  <data name="NotificationsHoursAgo" xml:space="preserve"><value>{0} h ago</value></data>
+  <data name="NotificationsDaysAgo" xml:space="preserve"><value>{0} d ago</value></data>
+  <data name="NotificationsKindAnnouncement" xml:space="preserve"><value>Announcement</value></data>
+  <data name="NotificationsKindMaintenance" xml:space="preserve"><value>Maintenance</value></data>
+  <data name="NotificationsKindRelease" xml:space="preserve"><value>Release</value></data>
+  <data name="NotificationsKindSecurity" xml:space="preserve"><value>Security</value></data>
+  <data name="NotificationsOpenLink" xml:space="preserve"><value>Open link</value></data>
 </root>

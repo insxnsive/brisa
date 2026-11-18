@@ -48,6 +48,9 @@ public partial class AccountView : UserControl, IAsyncDisposable
         // tunnel must not hide the button, or the backend's deferred-cleanup path is
         // unreachable from the app.
         ActionButton.IsEnabled = !_closed && (!signedIn || _snapshot is not { HasOwnedTunnel: true });
+        // The .conf shortcut belongs to the sign-in form: a signed-in account has no use for it.
+        UseConfFile.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
+        UseConfFile.IsEnabled = !signedIn && !_closed && _pending.IsCompleted;
     }
     private void SignUp_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
     {
@@ -65,10 +68,21 @@ public partial class AccountView : UserControl, IAsyncDisposable
         if (_closed || !_pending.IsCompleted) return;
         _pending = RunActionAsync();
         await _pending;
+        if (!_closed) Render();
+    }
+    // The .conf import is a page, not a dialog: it opens Advanced in the same window, and Back
+    // returns here only while signing in is still required.
+    private async void UseConfFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_closed || !_pending.IsCompleted) return;
+        UseConfFile.IsEnabled = false;
+        try { await _main.ShowAdvancedAsync(AdvancedOrigin.Account); }
+        finally { if (!_closed) { UseConfFile.IsEnabled = true; Render(); } }
     }
     private async Task RunActionAsync()
     {
         ActionButton.IsEnabled = false;
+        UseConfFile.IsEnabled = false;
         try
         {
             CommandResult result;
@@ -110,6 +124,7 @@ public partial class AccountView : UserControl, IAsyncDisposable
         _closed = true; _lifetime.Cancel();
         LocalizationManager.Current.PropertyChanged -= _languageChanged;
         PasswordInput.Clear(); TwoFactorInput.Clear(); ActionButton.IsEnabled = false;
+        UseConfFile.IsEnabled = false;
         // Join cancellation before Home can start another operation; a delayed
         // cancel acknowledgement must never cancel the next Connect request.
         await _pending;

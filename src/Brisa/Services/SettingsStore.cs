@@ -5,20 +5,24 @@ using System.Windows;
 namespace Brisa.Services;
 
 public enum AppTheme { System, Light, Dark }
-public sealed record UserSettings(AppTheme Theme = AppTheme.System, bool StartWithWindows = false, bool ShowDetails = true, string Language = "system", bool AutoConnect = false);
+public sealed record UserSettings(AppTheme Theme = AppTheme.System, bool StartWithWindows = false, bool ShowDetails = true, string Language = "system", bool AutoConnect = false, string? PreferredRouteCountry = null);
 
 public sealed class SettingsStore
 {
     public string DataDirectory { get; }
-    private readonly bool _allowStartupRegistration;
-    private readonly Action<bool> _setStartup;
+    private readonly IStartupRegistrar? _registrar;
     private string SettingsPath => Path.Combine(DataDirectory, "settings.json");
     public UserSettings Current { get; private set; }
-    public SettingsStore(string? dataDirectory = null, bool allowStartupRegistration = true, Action<bool>? setStartup = null)
+    /// <summary>
+    /// With allowStartupRegistration false (every isolated run) no registrar exists at all, so nothing can
+    /// touch the Run key or the Task Scheduler. The setStartup delegate is the older, simpler seam and is
+    /// kept for tests that only care whether startup is on; the registrar is the full one.
+    /// </summary>
+    public SettingsStore(string? dataDirectory = null, bool allowStartupRegistration = true, Action<bool>? setStartup = null, IStartupRegistrar? registrar = null)
     {
         DataDirectory = dataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Brisa");
-        _allowStartupRegistration = allowStartupRegistration;
-        _setStartup = setStartup ?? SetStartup;
+        _registrar = !allowStartupRegistration ? null
+            : registrar ?? (setStartup is not null ? new DelegateRegistrar(setStartup) : new ProductionStartupRegistrar(StartupCommand));
         try { Current = JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(SettingsPath)) ?? new(); }
         catch { Current = new(); }
     }
@@ -26,22 +30,25 @@ public sealed class SettingsStore
     {
         Directory.CreateDirectory(DataDirectory);
         var temporaryPath = Path.Combine(DataDirectory, ".settings-" + Guid.NewGuid().ToString("N") + ".tmp");
-        var startupChanged = false;
+        var previousMode = ModeOf(Current);
+        var applied = false;
         try
         {
             File.WriteAllText(temporaryPath, JsonSerializer.Serialize(value));
-            if (_allowStartupRegistration)
+            // Only a real change of mode touches Windows, and only a change can ask for administrator rights.
+            if (_registrar is not null && ModeOf(value) != previousMode)
             {
-                _setStartup(value.StartWithWindows);
-                startupChanged = true;
+                _registrar.Apply(ModeOf(value));
+                applied = true;
             }
             if (File.Exists(SettingsPath)) File.Replace(temporaryPath, SettingsPath, null);
             else File.Move(temporaryPath, SettingsPath);
         }
         catch
         {
-            // Persistence failed after registration; restore the previous choice.
-            if (startupChanged) _setStartup(Current.StartWithWindows);
+            // Persistence failed after registration; restore the previous choice. A refused or failed
+            // registration never reaches this line with applied set, so Current stays as it was.
+            if (applied) { try { _registrar!.Apply(previousMode); } catch { } }
             throw;
         }
         finally
@@ -51,9 +58,14 @@ public sealed class SettingsStore
         Current = value;
         ApplyTheme();
     }
+    /// <summary>Plain startup is the Run value. Connecting at launch needs administrator rights, so that mode is a logon task.</summary>
+    public static StartupMode ModeOf(UserSettings settings) =>
+        settings.StartWithWindows ? (settings.AutoConnect ? StartupMode.ElevatedTask : StartupMode.RunKey) : StartupMode.Off;
+
     public void ApplyTheme()
     {
         var app = System.Windows.Application.Current;
+        if (app is null) return;
         app.ThemeMode = Current.Theme switch
         {
             AppTheme.Light => ThemeMode.Light,
@@ -125,7 +137,9 @@ public sealed class SettingsStore
                 ? System.Windows.SystemColors.GrayTextBrush : Brush(dark ? "#B4B4B4" : "#5A5A5A");
             app.Resources["AccentButtonBorderBrushDisabled"] = SystemParameters.HighContrast
                 ? System.Windows.SystemColors.ControlBrush : Brush(dark ? "#3A3A3A" : "#E8E8E8");
-            app.Resources["NativeLinkForeground"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(accentFill);
+            // Links sit on both the #F3F3F3 page and white cards. The light coral fill is too pale for text there,
+            // so light mode uses a darker shade of the same hue: 4.7:1 on the page and 5.2:1 on a card.
+            app.Resources["NativeLinkForeground"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(dark ? accentFill : "#BF4223");
             app.Resources["NativeLinkForegroundPointerOver"] = SystemParameters.HighContrast ? System.Windows.SystemColors.HotTrackBrush : Brush(accentHover);
             app.Resources["AccentFillColorDefaultBrush"] = Brush(accentFill);
             app.Resources["AccentFillColorSecondaryBrush"] = Brush(accentFill);
@@ -151,9 +165,13 @@ public sealed class SettingsStore
             app.Resources["RadioButtonOuterEllipseCheckedFillPressed"] = Brush(accentPressed);
         }
     }
-    private static void SetStartup(bool enabled)
+    // The Run value. The contract tests pin this exact text, so it stays here.
+    internal static string StartupCommand() => $"\"{Environment.ProcessPath}\" --startup";
+
+    private sealed class DelegateRegistrar(Action<bool> setStartup) : IStartupRegistrar
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        if (enabled) key.SetValue("Brisa", $"\"{Environment.ProcessPath}\" --startup"); else key.DeleteValue("Brisa", false);
+        private StartupMode _mode;
+        public StartupMode Current() => _mode;
+        public void Apply(StartupMode mode) { setStartup(mode != StartupMode.Off); _mode = mode; }
     }
 }

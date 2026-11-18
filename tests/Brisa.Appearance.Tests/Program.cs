@@ -76,6 +76,27 @@ internal static class Program
                 Check(routeBottom + 12 <= primaryTop, "minimum-size Home retains route/action separation");
                 Check(((TextBlock)main.FindName("DetailText")).ActualHeight >= 38, "blocked explanation keeps its space at minimum size");
                 Capture(main, theme + "-Blocked-Minimum");
+                // The Discord note is static and sits under the primary action: Home must still
+                // fit at the minimum size in both languages, without adding a scrolling surface.
+                var noteWindow = new MainWindow(new UiTestBackendClient(new(false, false, true, true, "fixture", null)), store);
+                noteWindow.Show(); noteWindow.InitializeAsync().GetAwaiter().GetResult();
+                noteWindow.Width = noteWindow.MinWidth; noteWindow.Height = noteWindow.MinHeight; noteWindow.UpdateLayout();
+                var home = (Grid)noteWindow.FindName("HomeContent");
+                var discordNote = (TextBlock)noteWindow.FindName("DiscordRestartNote");
+                Check(discordNote.Visibility == Visibility.Visible, "Home shows the Discord restart note when disconnected");
+                Check(!Descendants(home).OfType<ScrollViewer>().Any(), "Home has no scrolling surface at minimum size");
+                Check(discordNote.TranslatePoint(new Point(0, discordNote.ActualHeight), home).Y <= home.ActualHeight + 0.5,
+                    "the Discord note fits inside Home at minimum size");
+                var noteLanguage = Brisa.Localization.LocalizationManager.Current.Preference;
+                Brisa.Localization.LocalizationManager.Current.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+                noteWindow.UpdateLayout();
+                Check(discordNote.Text == "O Discord fecha e reabre por um instante ao conectar ou desconectar.",
+                    "Portuguese Home translates the Discord note");
+                Check(discordNote.TranslatePoint(new Point(0, discordNote.ActualHeight), home).Y <= home.ActualHeight + 0.5,
+                    "the Portuguese Discord note fits inside Home at minimum size");
+                Brisa.Localization.LocalizationManager.Current.Apply(noteLanguage);
+                noteWindow.RequestExit();
+                Spin(200);
                 foreach (var pageName in new[] { "Settings", "Account", "Route", "Advanced" })
                 {
                     var inline = pageName is "Settings" or "Account" or "Advanced";
@@ -375,6 +396,7 @@ internal static class Program
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 Check(((ContentControl)connected.FindName("PageHost")).Content is null,
                     "signed-in account returns to Connection");
+                Spin(320); connected.UpdateLayout();
                 // O painel de detalhes existe só conectado: com o bloco centralizado no lugar, os
                 // três rótulos de métrica e o protocolo ficam escondidos.
                 var detailsHost = (StackPanel)connected.FindName("DetailsHost");
@@ -399,6 +421,8 @@ internal static class Program
                 Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                 Console.WriteLine("PASS loaded Fluent controls: " + theme);
             }
+            NotificationAppearanceTests.Run(store, Check, Capture, Spin);
+            RouteAppearanceTests.Run(store, Check, Capture, Spin);
             // Regressão do dois fatores: o pedido é estado da tela, então precisa sobreviver ao
             // Render do finally e a uma troca de idioma, e não só ao instante em que foi pedido.
             var loc = Brisa.Localization.LocalizationManager.Current;

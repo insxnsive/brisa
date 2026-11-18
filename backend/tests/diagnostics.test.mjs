@@ -111,3 +111,14 @@ test("a file that cannot be written does not break the in-memory ring", () => {
   assert.doesNotThrow(() => diagnostics.record("startup", "NOT_ELEVATED"));
   assert.equal(diagnostics.recent().length, 1);
 });
+
+test("route proof reasons and attempt counts survive the data filter", () => {
+  const diagnostics = createDiagnostics({ now: fixedNow() });
+  diagnostics.record("verifying-route", "ROUTE_UNVERIFIED", { reason: "DISCORD_FAILED", attempts: 3 });
+  diagnostics.record("verifying-route", "ROUTE_UNVERIFIED", { reason: "UNLISTED_REASON", attempts: 2 });
+  const [kept, dropped] = diagnostics.recent();
+  assert.match(kept, /reason=DISCORD_FAILED/);
+  assert.match(kept, /attempts=3/);
+  assert.doesNotMatch(dropped, /UNLISTED_REASON/, "an app-defined allowlist still drops unknown text");
+  assert.doesNotMatch(dropped, /reason=/, "the unlisted reason leaves no reason field at all");
+});

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { WireSockSetupError, wireSockSetupFailure } from "./wiresock-setup.mjs";
 import { renderSupportLog } from "./support-log.mjs";
 import { WireSockStartError } from "./wiresock-start-result.mjs";
@@ -238,6 +239,16 @@ export function createBackend(deps, paths) {
   let observedTunnelKey = null;
   const ROUTE_STALE_AFTER_MS = 30_000;
   const ROUTE_VERDICT_MAX_AGE_MS = 90_000;
+  // The first proof runs while Discord's own updater is still settling. Retry a
+  // transient failure inside a bounded window instead of reporting it at once.
+  const ROUTE_PROOF_SETTLE_MS = 20_000;
+  const ROUTE_PROOF_RETRY_DELAYS_MS = [2_000, 4_000];
+  // A retry must still have a real attempt left after its own delay. Five seconds covers
+  // the probe's 3.5 s dial/TLS budget and absorbs scheduling jitter after a 12 s probe.
+  const ROUTE_PROOF_MIN_ATTEMPT_MS = 5_000;
+  const RETRYABLE_ROUTE_REASONS = new Set(["probe_failed", "discord_failed", "same_as_direct"]);
+  const defaultSleep = (ms, signal) => delay(ms, undefined, { signal });
+  const sleep = (ms, signal) => (deps.sleep ?? defaultSleep)(ms, signal);
   const now = () => deps.now?.() ?? Date.now();
   // Diagnostics are optional so every existing test fixture and the fixture entry keep working.
   const note = (stage, code, data) => { try { deps.diag?.record(stage, code, data); } catch {} };
@@ -279,10 +290,14 @@ export function createBackend(deps, paths) {
     try { result = await deps.verifyRoute(signal); }
     catch { result = { verified: false, reason: "probe_failed" }; }
     if (mineGeneration !== generation || mineEpoch !== routeEpoch) return false;
+    // A retry cut off by the settle deadline must not apply its late verdict later.
+    if (signal?.aborted) return false;
     // Evidence is accepted only for a tunnel this process can still see, active and owned.
     // The cached observation is not enough: the tunnel can die or be replaced in between.
     const liveKey = await liveTunnelKey();
     if (mineGeneration !== generation || mineEpoch !== routeEpoch) return false;
+    // The budget can expire while the inspection is pending: the proof is stale then.
+    if (signal?.aborted) return false;
     if (liveKey === null || (tunnelKey !== undefined && liveKey !== tunnelKey)) {
       clearVerdict();
       return false;
@@ -292,6 +307,31 @@ export function createBackend(deps, paths) {
       reason: ["verified", "probe_failed", "discord_failed", "same_as_direct", "probe_unavailable"].includes(result?.reason) ? result.reason : "probe_failed" };
     lastRouteCheck = now();
     return true;
+  };
+  // One bounded attempt: the settle deadline must cap the probe itself, not only the
+  // delay before it. Native setTimeout, because deps.sleep is a test seam.
+  const checkRouteBounded = async (parentSignal, budgetMs) => {
+    if (budgetMs <= 0) return { proved: true, timedOut: true };
+    const attemptController = new AbortController();
+    const forwardAbort = () => attemptController.abort(new Error("Route proof cancelled."));
+    if (parentSignal?.aborted) forwardAbort();
+    else parentSignal?.addEventListener?.("abort", forwardAbort, { once: true });
+    let timer = null;
+    try {
+      return await new Promise(resolve => {
+        timer = setTimeout(() => {
+          attemptController.abort(new Error("Route proof settle budget expired."));
+          resolve({ proved: true, timedOut: true });
+        }, budgetMs);
+        timer.unref?.();
+        checkRoute(attemptController.signal)
+          .then(proved => resolve({ proved, timedOut: false }))
+          .catch(() => resolve({ proved: false, timedOut: false }));
+      });
+    } finally {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener?.("abort", forwardAbort);
+    }
   };
   const startRouteRecheck = tunnelKey => {
     const controller = new AbortController();
@@ -386,11 +426,13 @@ export function createBackend(deps, paths) {
   };
 
   const generate = async (payload, operation) => {
+    const optimizeStartedAt = now();
     if (!deps.helperAvailable()) return { success: false, message: APP_MESSAGES.PROTON_HELPER_MISSING, code: "PROTON_HELPER_MISSING" };
     const currentUsername = await username();
     if (!operation.isCurrent()) return cancelled();
     if (!currentUsername) return { success: false, message: APP_MESSAGES.NOT_SIGNED_IN, code: "NOT_SIGNED_IN" };
     let freeOnly = true;
+    const planStartedAt = now();
     try {
       const plan = await deps.getPlan(paths.dataDir, currentUsername);
       if (!operation.isCurrent()) return cancelled();
@@ -398,6 +440,7 @@ export function createBackend(deps, paths) {
       // Recording only: a premium user whose lookup fails still falls back to free servers.
       if (plan?.success !== true) note("plan", "PLAN_UNKNOWN", { freeOnly });
     } catch { note("plan", "PLAN_LOOKUP_FAILED", { freeOnly: true }); }
+    const planMs = Math.max(0, now() - planStartedAt);
     const generated = await deps.generate(paths.dataDir, {
       username: currentUsername,
       countries: payload.country ? payload.country.toUpperCase() : undefined,
@@ -419,6 +462,11 @@ export function createBackend(deps, paths) {
       }
       state = nextState;
     }
+    note("optimizing", "OPTIMIZE_DONE", {
+      ms: Math.max(0, now() - optimizeStartedAt),
+      planMs,
+      success: normalized.success === true,
+    });
     return normalized;
   };
 
@@ -675,6 +723,7 @@ export function createBackend(deps, paths) {
 
       if (command === "connect") {
         const operation = connectOperation;
+        const connectStartedAt = now();
         if (!operation?.isCurrent()) return cancelled();
         if (guarded.status.active && guarded.status.owned)
           return { success: false, message: APP_MESSAGES.TUNNEL_ALREADY_ACTIVE, code: "TUNNEL_ALREADY_ACTIVE" };
@@ -744,15 +793,47 @@ export function createBackend(deps, paths) {
           if (!operation.isCurrent()) return await cancelledStart(apps);
           sessionApps = apps;
           stage = "verifying-route";
-          const proved = await checkRoute(operation.controller.signal);
-          if (!operation.isCurrent()) return await cancelledStart(apps);
-          // A discarded proof means the tunnel it proved is gone or was replaced.
-          if (!proved) throw new Error("Route proof discarded for a tunnel that is no longer active.");
-          if (!routeVerification.verified) {
-            note("verifying-route", "ROUTE_UNVERIFIED", { reason: String(routeVerification.reason).toUpperCase() });
-            return { success: false, code: "ROUTE_UNVERIFIED",
-              message: APP_MESSAGES.ROUTE_UNVERIFIED, code: "ROUTE_UNVERIFIED" };
+          const proofStartedAt = now();
+          const maxAttempts = 1 + ROUTE_PROOF_RETRY_DELAYS_MS.length;
+          let attempts = 0;
+          while (true) {
+            const budgetMs = ROUTE_PROOF_SETTLE_MS - Math.max(0, now() - proofStartedAt);
+            const { proved, timedOut } = await checkRouteBounded(operation.controller.signal, budgetMs);
+            attempts += 1;
+            if (!operation.isCurrent()) return await cancelledStart(apps);
+            if (timedOut) {
+              // A deadline is not a routing verdict: keep whatever the last completed probe
+              // said, and never report the generic "not checked" placeholder.
+              if (routeVerification.verified || routeVerification.reason === "not_checked")
+                routeVerification = { verified: false, reason: "probe_failed" };
+              break;
+            }
+            // A discarded proof means the tunnel it proved is gone or was replaced.
+            if (!proved) throw new Error("Route proof discarded for a tunnel that is no longer active.");
+            if (routeVerification.verified) break;
+            const reason = String(routeVerification.reason || "probe_failed");
+            if (!RETRYABLE_ROUTE_REASONS.has(reason) || attempts >= maxAttempts) break;
+            const delayMs = ROUTE_PROOF_RETRY_DELAYS_MS[attempts - 1];
+            const remainingMs = ROUTE_PROOF_SETTLE_MS - Math.max(0, now() - proofStartedAt);
+            if (!operation.isCurrent() || remainingMs - delayMs < ROUTE_PROOF_MIN_ATTEMPT_MS) break;
+            note("verifying-route", "ROUTE_PROOF_RETRY", { attempt: attempts, reason: reason.toUpperCase() });
+            await sleep(delayMs, operation.controller.signal);
+            if (!operation.isCurrent()) return await cancelledStart(apps);
+            if (ROUTE_PROOF_SETTLE_MS - Math.max(0, now() - proofStartedAt) < ROUTE_PROOF_MIN_ATTEMPT_MS) break;
           }
+          const proofMs = Math.max(0, now() - proofStartedAt);
+          const connectMs = Math.max(0, now() - connectStartedAt);
+          if (!routeVerification.verified) {
+            note("verifying-route", "ROUTE_UNVERIFIED", {
+              reason: String(routeVerification.reason || "probe_failed").toUpperCase(),
+              attempts,
+              ms: proofMs,
+              connectMs,
+            });
+            return { success: false, code: "ROUTE_UNVERIFIED",
+              message: APP_MESSAGES.ROUTE_UNVERIFIED };
+          }
+          note("verifying-route", "ROUTE_VERIFIED", { reason: "VERIFIED", attempts, ms: proofMs, connectMs });
           return { success: true, ...(state.route ? { route: state.route } : {}) };
         } catch (error) {
           // Antes de qualquer cancelamento: sem prova de saída do instalador, nada de rollback

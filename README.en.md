@@ -76,6 +76,10 @@ If WireSock is missing, Brisa opens the official installer on the first connecti
 | [Releasing](docs/releasing.md) | Version bumps, tags, update feed |
 | [Third-party notices](THIRD-PARTY-NOTICES.md) | Licenses of everything inside |
 
+## Notifications
+
+Brisa includes an in-app notifications bell that displays app update status and announcements from a read-only feed. Every remote notification payload is cryptographically signed and verified locally by the desktop app, and the client only accepts read-only data. The publishing backend, signing keys, deployment scripts and admin dashboard are intentionally kept outside this public repository so nobody can push unauthorized messages or tamper with the feed.
+
 ## Contributing
 
 Bugs and suggestions go to [Issues](https://github.com/insxnsive/brisa/issues). Never post passwords, verification codes, session files or VPN profiles there. The log from Advanced → Generate Log is safe to share: account names, paths and addresses are stripped before it is written.

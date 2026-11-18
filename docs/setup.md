@@ -13,7 +13,7 @@ You don't need the .NET SDK, Node or Go to use a release build.
 
 ## Installer
 
-Download `Brisa-win-Setup.exe` from [Brisa Releases](https://github.com/insxnsive/brisa/releases) and run it. It installs for your Windows account and adds a Start menu shortcut. Open that shortcut with **Run as administrator** to manage WireSock. You can browse the interface without elevation, but connection changes are blocked when ownership cannot be inspected reliably.
+Download `Brisa-win-Setup.exe` from [Brisa Releases](https://github.com/insxnsive/brisa/releases) and run it. It installs for your Windows account and adds a Start menu shortcut. Open that shortcut with **Run as administrator** to manage WireSock. You can browse the interface without elevation, but connection changes are blocked when ownership cannot be inspected reliably. If you open Brisa without administrator rights, the main button reads Restart as administrator. Choose it and answer the Windows prompt, and Brisa reopens with full rights. The button stays unavailable while a tunnel is running, so a restart never loses track of it.
 
 Brisa is not Authenticode-signed. Windows may show an unknown-publisher warning. Check that the download came from this repository; release checksums are in `SHA256SUMS`.
 
@@ -25,14 +25,20 @@ Extract the entire `Brisa-win-Portable.zip` into a folder you can write to. Keep
 
 1. If another GoLiveBypass or WireSock instance is connected, disconnect it using that app and quit it first. Brisa will not take over another app's tunnel.
 2. When no Proton account is signed in, Brisa opens the Account screen automatically. Enter your credentials in the app and complete any verification there. Create a Free Account opens Proton’s official registration page in your browser. Brisa does not import accounts from the old app.
-3. Alternatively, open Settings → Advanced and import your WireGuard profile.
-4. Choose Connect. On first use, if WireSock isn't installed, Brisa downloads the verified SDK installer from WireSock and opens it for you; complete its license and Windows elevation prompts. Brisa then continues the connection. Route selection stays under Route; normal browsing and other apps keep their existing connection.
+3. Alternatively, open Settings → Advanced and import your WireGuard profile. On the Account screen, Use a WireGuard .conf file instead takes you to the same place.
+4. Choose Connect. On first use, if WireSock isn't installed, Brisa downloads the verified SDK installer from WireSock and opens it for you; complete its license and Windows elevation prompts. Brisa then continues the connection. Route selection stays under Route; normal browsing and other apps keep their existing connection. The country you pick there is remembered, and the route check at launch reuses it until you choose Automatic again.
 
 The main interface is native WPF. WebView2 is used only for Proton verification, not for the application UI.
 
 ## Window and tray
 
-The window's X button normally hides Brisa in the tray without disconnecting or restarting Discord. Double-click its tray icon or choose Open to return. Choose Exit from the tray menu when you want to disconnect and quit. If the native service failed before the first status loaded and no native connection may be active, **Exit Brisa** and X close the failed window instead. That fallback never applies an update without a verified shutdown.
+The window's X button normally hides Brisa in the tray without disconnecting or restarting Discord. Double-click its tray icon or choose Open to return. Starting Brisa again while it is hidden brings the same window forward, even when the first copy runs as administrator. The tray menu shows the live status, for example Brisa: Connected (SV#43), and offers Open, the main action (Connect, Disconnect or Restart as administrator) and Exit. The main action is unavailable while a page is open or Brisa is busy. Choose Exit from the tray menu when you want to disconnect and quit. If the native service failed before the first status loaded and no native connection may be active, **Exit Brisa** and X close the failed window instead. That fallback never applies an update without a verified shutdown.
+
+## Starting with Windows
+
+Start with Windows adds Brisa to your account's sign-in list, and it opens on Home. Connecting needs administrator rights, so if you also turn on Connect when Brisa opens, Brisa registers a logon task for your account instead. The task is named `\Brisa\Startup-<id>` and starts Brisa at the highest available level, and the sign-in list entry is removed. Windows asks for administrator permission once when you switch between these modes.
+
+Turn Start with Windows off before you uninstall Brisa. The uninstaller tries to remove the sign-in entry and the task, but Windows may refuse to delete a task that was created with administrator rights. A leftover task only fails quietly at sign in. To remove it, open an elevated terminal and run `schtasks /Delete /TN \Brisa\Startup-<id> /F`, using the exact name shown in Task Scheduler under the Brisa folder.
 
 ## Updates and saved data
 

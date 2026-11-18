@@ -23,7 +23,7 @@ try {
 } finally {
   if($null -ne $p){$p.Dispose()};
 }`;
-const psLiteral = value => `'${value.replaceAll("'", "''")}'`;
+const psLiteral = value => `'${value.replace(/['\u2018\u2019\u201A\u201B]/g, "$&$&")}'`;
 
 const key = value => value.toLowerCase();
 

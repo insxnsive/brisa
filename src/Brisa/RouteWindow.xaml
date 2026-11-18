@@ -2,7 +2,7 @@
         Title="Brisa" Width="420" Height="520" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
   <Grid Margin="24">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="{loc:Loc ChooseRoute}"/><TextBlock Style="{StaticResource SecondaryText}" Margin="0,5,0,20" Text="{loc:Loc ChooseRouteHelper}"/></StackPanel>
+    <StackPanel><TextBlock Style="{StaticResource PageTitle}" Text="{loc:Loc ChooseRoute}"/><TextBlock x:Name="HelperText" Style="{StaticResource SecondaryText}" Margin="0,5,0,20" Text="{loc:Loc ChooseRouteHelper}"/><TextBlock x:Name="CurrentRouteText" Style="{StaticResource SecondaryText}" Margin="0,0,0,12" Visibility="Collapsed"/></StackPanel>
     <Border Grid.Row="1" Style="{StaticResource SettingsSurface}" Padding="4">
       <ListBox x:Name="CountryList" AutomationProperties.Name="{loc:Loc RouteCountry}" SelectedIndex="0" BorderThickness="0" Background="Transparent">
       </ListBox>

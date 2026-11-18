@@ -118,12 +118,15 @@ var tests = new (string Name, Action Run)[]
         Assert(decision.Warning is not null && !decision.SafeToApplyUpdate);
         Assert(!backend.Commands.Contains("disconnect"));
     }),
-    ("limited access keeps Connect disabled and is not an error", () =>
+    ("limited access offers Restart as administrator and is not an error", () =>
     {
         var snapshot = new NativeSnapshot(false, false, false, false, "", null, RequiresElevation: true);
         var state = HomeState.FromSnapshot(snapshot);
-        Assert(state.Phase == ConnectionPhase.Limited && !state.PrimaryEnabled && state.PrimaryLabel == "Connect");
+        Assert(state.Phase == ConnectionPhase.Limited && state.PrimaryEnabled && state.CanRestartElevated && state.PrimaryLabel == "Restart as administrator");
         Assert(state.Detail!.Contains("administrator") && !state.StartupFailed);
+        // A tunnel that may be ours keeps the button off: a restart must not orphan its supervision.
+        var running = HomeState.FromSnapshot(new NativeSnapshot(false, false, true, true, "u", null, OwnedTunnelPresent: true, RequiresElevation: true));
+        Assert(running.Phase == ConnectionPhase.Limited && !running.PrimaryEnabled && !running.CanRestartElevated);
     }),
     ("optimizing has its own busy text and disables the primary action", () =>
     {
@@ -467,6 +470,7 @@ var tests = new (string Name, Action Run)[]
         loc.Apply(before);
     }),
 };
+tests = [.. tests, .. NotificationTests.All(), .. StartupTests.All()];
 
 var failures = new List<string>();
 foreach (var test in tests) try { test.Run(); Console.WriteLine($"PASS {test.Name}"); } catch (Exception ex) { failures.Add($"FAIL {test.Name}: {ex.Message}"); }

@@ -17,6 +17,7 @@ const DATA_CODE = /^[A-Z][A-Z0-9_]{1,47}$/;
 const DATA_VALUES = new Set([
     "TRUSTED", "UNTRUSTED", "STABLE", "PTB", "CANARY", "OTHER",
     "PROTON", "CUSTOM", "NONE", "WIREGUARD_UDP",
+    "PROBE_FAILED", "DISCORD_FAILED", "SAME_AS_DIRECT", "PROBE_UNAVAILABLE", "VERIFIED",
     "starting-tunnel", "stopping-tunnel", "installing-wiresock", "idle",
 ]);
 const MAX_DATA_KEYS = 6;

@@ -48,7 +48,10 @@ func isEligible(cfg *config.Config, server *api.LogicalServer) bool {
 	if cfg.FreeOnly != (server.Tier == api.TierFree) {
 		return false
 	}
-	if slices.Contains(cfg.ExcludedCountries, server.ExitCountry) {
+	// Exclusions are about the physical path, so a Smart Routing host counts too:
+	// a BR-hosted server labelled SV still puts the traffic back in Brazil.
+	if isExcludedCountry(cfg.ExcludedCountries, server.ExitCountry) ||
+		isExcludedCountry(cfg.ExcludedCountries, server.HostCountry) {
 		return false
 	}
 	if len(cfg.Countries) > 0 && !slices.Contains(cfg.Countries, server.ExitCountry) {
@@ -59,6 +62,48 @@ func isEligible(cfg *config.Config, server *api.LogicalServer) bool {
 		return false
 	}
 	return !cfg.SecureCoreOnly || server.Features&api.FeatureSecureCore != 0
+}
+
+// isExcludedCountry compares a server country with the configured exclusions,
+// ignoring case and surrounding space. An empty country never matches.
+func isExcludedCountry(excluded []string, country string) bool {
+	country = strings.TrimSpace(country)
+	if country == "" {
+		return false
+	}
+	for _, value := range excluded {
+		if strings.EqualFold(strings.TrimSpace(value), country) {
+			return true
+		}
+	}
+	return false
+}
+
+// isSmartRouting reports a Proton Smart Routing location: the entry host sits in
+// a different country than the advertised exit. Those hosts can be physically
+// far from their label, and can defeat an exit-country exclusion.
+func isSmartRouting(server *api.LogicalServer) bool {
+	if server == nil {
+		return false
+	}
+	host := strings.TrimSpace(server.HostCountry)
+	return host != "" && !strings.EqualFold(host, strings.TrimSpace(server.ExitCountry))
+}
+
+// withoutSmartRouting removes Smart Routing locations for automatic selection.
+// If that would leave nothing, the input is returned unchanged so the rule can
+// never turn a workable scan into "no servers".
+func withoutSmartRouting(servers []api.LogicalServer) []api.LogicalServer {
+	filtered := make([]api.LogicalServer, 0, len(servers))
+	for i := range servers {
+		if !isSmartRouting(&servers[i]) {
+			filtered = append(filtered, servers[i])
+		}
+	}
+	if len(filtered) == 0 {
+		return servers
+	}
+	return filtered
 }
 
 // SelectBest selects the best server based on configuration
@@ -92,6 +137,13 @@ func (s *ServerSelector) SelectBestWithPing(servers []api.LogicalServer) (*api.L
 
 	if len(filtered) == 0 {
 		return nil, 0, s.buildNoServersError()
+	}
+
+	// Automatic selection treats a mislabelled Smart Routing host as ineligible;
+	// an explicit country or server request keeps it, because the user asked for
+	// that label. The fallback inside withoutSmartRouting keeps this non-fatal.
+	if s.config.ServerName == "" && len(s.config.Countries) == 0 {
+		filtered = withoutSmartRouting(filtered)
 	}
 
 	// Sort servers: lowest score first (Proton API convention: lower = better for Quick Connect),
@@ -232,7 +284,13 @@ func (s *ServerSelector) SpeedCandidates(servers []api.LogicalServer, limit int)
 // the measured ping for every route that was probed, allowing callers to show
 // the ranking without measuring the same endpoint a second time.
 func (s *ServerSelector) SpeedCandidatesWithProgress(servers []api.LogicalServer, limit int, progress PingProgressFunc) ([]api.LogicalServer, map[string]int, error) {
-	regional := regionalCandidates(EligibleServers(s.config, servers))
+	eligible := EligibleServers(s.config, servers)
+	// Same rule as SelectBestWithPing: automatic selection prefers a host that
+	// is really where its country label says it is.
+	if s.config.ServerName == "" && len(s.config.Countries) == 0 {
+		eligible = withoutSmartRouting(eligible)
+	}
+	regional := regionalCandidates(eligible)
 	candidates := make([]api.LogicalServer, 0, len(regional))
 	for _, candidate := range regional {
 		peer := GetBestWireGuardPhysicalServer(&candidate)

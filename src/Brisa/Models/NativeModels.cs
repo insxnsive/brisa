@@ -59,9 +59,12 @@ public sealed record HomeState(ConnectionPhase Phase, NativeSnapshot? Snapshot, 
 
     public bool RequiresSignIn => Snapshot is { SignedIn: false, Mode: "proton", HasOwnedTunnel: false, ExternalTunnel: false, Reliable: true };
     public bool StartupFailed => Phase == ConnectionPhase.Error && Snapshot is null;
-    public string PrimaryLabel => StartupFailed ? Loc("ExitBrisa") : Phase == ConnectionPhase.Limited ? Loc("Connect")
+    // Limited can offer a restart with administrator rights, but never while a tunnel may be ours or someone
+    // else's: a restart must not orphan the supervision of a running tunnel.
+    public bool CanRestartElevated => Phase == ConnectionPhase.Limited && Snapshot is { ExternalTunnel: false, HasOwnedTunnel: false };
+    public string PrimaryLabel => StartupFailed ? Loc("ExitBrisa") : CanRestartElevated ? Loc("RestartAsAdministrator") : Phase == ConnectionPhase.Limited ? Loc("Connect")
         : Snapshot?.HasOwnedTunnel == true ? Loc("Disconnect") : RequiresSignIn ? Loc("SignIn") : Loc("Connect");
-    public bool PrimaryEnabled => StartupFailed || (Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
+    public bool PrimaryEnabled => StartupFailed || CanRestartElevated || (Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
         && Snapshot is { ExternalTunnel: false, Reliable: true });
 
     public static HomeState FromSnapshot(NativeSnapshot snapshot) => snapshot switch

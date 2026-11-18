@@ -131,7 +131,12 @@ public static class BrisaStorageTransaction
             throw new IOException("Failed to remove original storage link: " + Marshal.GetLastWin32Error());
     }
 
-    public static void HoldLocksForTest(string basePath, string marker) {
+#if NET
+    internal
+#else
+    public
+#endif
+    static void HoldLocksForTest(string basePath, string marker) {
         var dirs = LockAncestors(basePath);
         try {
             dirs.Add(Open(Path.Combine(basePath, "native-data"), true, false));

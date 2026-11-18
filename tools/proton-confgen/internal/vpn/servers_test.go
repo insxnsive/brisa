@@ -317,3 +317,90 @@ func TestExcludedCountriesCannotWinAutomaticSelection(t *testing.T) {
 		t.Fatal("country preference must not override exclusion")
 	}
 }
+
+// smartServer builds an online Plus server with a valid WireGuard peer, so the
+// speed pipeline can normalize it without touching the network.
+func smartServer(name, exit, host string, load, score int) api.LogicalServer {
+	return api.LogicalServer{
+		Name:        name,
+		ExitCountry: exit,
+		HostCountry: host,
+		Tier:        api.TierPlus,
+		Status:      constants.StatusOnline,
+		Load:        load,
+		Score:       float64(score),
+		Servers: []api.PhysicalServer{{
+			Status:          constants.StatusOnline,
+			EntryIP:         "127.0.0.1",
+			X25519PublicKey: base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		}},
+	}
+}
+
+// G1: the exclusion is about where the machine is, not only the exit label.
+func TestExcludedHostCountryIsNotEligible(t *testing.T) {
+	hosted := smartServer("SV#43", "SV", "BR", 5, 1)
+	cfg := &config.Config{ExcludedCountries: []string{"BR"}}
+	if isEligible(cfg, &hosted) {
+		t.Fatal("a BR-hosted server labelled SV must not be eligible when BR is excluded")
+	}
+	if got := EligibleServers(cfg, []api.LogicalServer{hosted}); len(got) != 0 {
+		t.Fatalf("eligible list kept a BR-hosted server: %v", got)
+	}
+	// The same server stays eligible when Brazil is not excluded.
+	cfg.ExcludedCountries = nil
+	if !isEligible(cfg, &hosted) {
+		t.Fatal("host exclusion must only apply to configured countries")
+	}
+}
+
+// G2: automatic selection skips a cheaper Smart Routing host, and still returns
+// one when every candidate is Smart Routing.
+func TestAutomaticSelectionSkipsSmartRoutingHosts(t *testing.T) {
+	smart := smartServer("SV#43", "SV", "US", 5, 1)
+	plain := smartServer("AR#7", "AR", "", 40, 2)
+
+	cfg := &config.Config{AutoPing: false}
+	best, _, err := NewServerSelector(cfg).SelectBestWithPing([]api.LogicalServer{smart, plain})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if best.Name != "AR#7" {
+		t.Fatalf("automatic selection chose the Smart Routing host: %s", best.Name)
+	}
+
+	cfg.Countries = []string{"SV"}
+	best, _, err = NewServerSelector(cfg).SelectBestWithPing([]api.LogicalServer{smart})
+	if err != nil || best == nil || best.Name != "SV#43" {
+		t.Fatalf("an explicit country must keep its Smart Routing server: %v %v", best, err)
+	}
+
+	// Speed candidates: the same filter applies before the regional shortlist.
+	cfg = &config.Config{AutoPing: true}
+	finalists, _, err := NewServerSelector(cfg).SpeedCandidatesWithProgress([]api.LogicalServer{smart, plain}, 1, nil)
+	if err != nil || len(finalists) != 1 || finalists[0].Name != "AR#7" {
+		t.Fatalf("speed candidates kept the Smart Routing host: %v %v", finalists, err)
+	}
+
+	// Fallback: Smart Routing being the only option must still select it.
+	best, _, err = NewServerSelector(&config.Config{AutoPing: false}).SelectBestWithPing([]api.LogicalServer{smart})
+	if err != nil || best == nil || best.Name != "SV#43" {
+		t.Fatalf("fallback must return the only Smart Routing server: %v %v", best, err)
+	}
+}
+
+// G3: an explicit country request keeps Smart Routing servers, even when the
+// host country itself is excluded. A non-Smart-Routing alternative proves the
+// exclusion was not applied to this mode.
+func TestExplicitCountryKeepsSmartRoutingServer(t *testing.T) {
+	smart := smartServer("SV#43", "SV", "US", 5, 1)
+	plain := smartServer("SV#9", "SV", "", 40, 2)
+	cfg := &config.Config{Countries: []string{"SV"}, ExcludedCountries: []string{"BR"}, AutoPing: false}
+	if got := EligibleServers(cfg, []api.LogicalServer{smart, plain}); len(got) != 2 {
+		t.Fatalf("explicit country must keep both SV servers: %v", got)
+	}
+	best, _, err := NewServerSelector(cfg).SelectBestWithPing([]api.LogicalServer{smart, plain})
+	if err != nil || best == nil || best.Name != "SV#43" {
+		t.Fatalf("explicit country selection lost its Smart Routing server: %v %v", best, err)
+	}
+}
