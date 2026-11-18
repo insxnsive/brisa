@@ -137,8 +137,6 @@
   <data name="TrayStatusFormat" xml:space="preserve"><value>Brisa: {0}</value></data>
   <data name="UseConfFile" xml:space="preserve"><value>Usar um arquivo .conf do WireGuard</value></data>
   <data name="DiscordRestartNote" xml:space="preserve"><value>O Discord fecha e reabre por um instante ao conectar ou desconectar.</value></data>
-  <data name="SettingsSaved" xml:space="preserve"><value>Salvo</value></data>
-  <data name="SettingsClose" xml:space="preserve"><value>Fechar</value></data>
   <data name="RoutePingNoReply" xml:space="preserve"><value>Sem resposta</value></data>
   <data name="RoutePingUnavailable" xml:space="preserve"><value>Fora do seu plano</value></data>
   <data name="RoutePingAutomatic" xml:space="preserve"><value>Melhor rota</value></data>

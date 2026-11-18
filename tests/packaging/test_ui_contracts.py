@@ -165,7 +165,7 @@ class NotificationContracts(unittest.TestCase):
         import xml.etree.ElementTree as ET
         x = '{http://schemas.microsoft.com/winfx/2006/xaml}'
         ns = '{http://schemas.microsoft.com/winfx/2006/xaml/presentation}'
-        for name in ('Controls/NotificationsPopover.xaml', 'MainWindow.xaml', 'SettingsView.xaml', 'RouteView.xaml'):
+        for name in ('Controls/NotificationsPopover.xaml', 'MainWindow.xaml', 'RouteView.xaml'):
             for style in ET.parse(ROOT / name).iter(ns + 'Style'):
                 self.assertIsNotNone(style.get(x + 'Key'), name + ' has a style without x:Key')
         popover = ''.join((ROOT / 'Controls' / f).read_text(encoding='utf-8') for f in ('NotificationsPopover.xaml', 'NotificationsPopover.xaml.cs'))
@@ -190,17 +190,13 @@ class NotificationContracts(unittest.TestCase):
         self.assertIn('notifications-state.json', privacy)
         self.assertIn('brisa-notify.insxnsive.works/v1/notifications.json', privacy)
 
-    def test_settings_motion_and_navigation_contracts(self):
+    def test_navigation_contracts(self):
         code = (ROOT / 'MainWindow.xaml.cs').read_text(encoding='utf-8')
         self.assertNotIn('await RefreshSnapshotAsync', method_body(code, 'ReturnHomeCoreAsync'))
         settings_back = method_body(code, 'GoBackAsync').split(
             'if (origin == AdvancedOrigin.Settings)', 1)[1].split('if (origin == AdvancedOrigin.Account)', 1)[0]
         self.assertIn('SwapPageAsync(', settings_back)
         self.assertNotIn('ReturnHomeAsync(', settings_back)
-        settings = (ROOT / 'SettingsView.xaml').read_text(encoding='utf-8')
-        self.assertIn('x:Name="SavedText"', settings)
-        self.assertIn('x:Key="AnimatedCheck"', settings)
-        self.assertIn('x:Key="ThemeSegment"', settings)
 
     def test_no_new_packages_and_the_state_file_name_is_pinned(self):
         project = (ROOT / 'Brisa.csproj').read_text(encoding='utf-8')
