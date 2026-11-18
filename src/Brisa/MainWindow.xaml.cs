@@ -868,19 +868,13 @@ public partial class MainWindow : Window
     {
         var carried = _settingsDraft;
         _settingsDraft = null;
-        var view = new SettingsView(_settings, draft => _ = ShowAdvancedAsync(AdvancedOrigin.Settings, draft), carried, _allowMotion);
+        var view = new SettingsView(_settings, draft => _ = ShowAdvancedAsync(AdvancedOrigin.Settings, draft), carried);
         view.CloseRequested += async (_, _) =>
         {
             // A preferÃªncia do painel pode ter mudado: repinta o Home antes de voltar, senÃ£o o
             // painel sÃ³ apareceria no prÃ³ximo snapshot.
             if (_currentPage is SettingsView) SetState(_state);
             await ReturnHomeAsync();
-        };
-        view.Saved += (_, _) =>
-        {
-            // Saving stays on the page, so Home and the page title have to follow immediately.
-            SetState(_state);
-            PageTitle.Text = Localization.LocalizationManager.Current["SettingsTitle"];
         };
         return view;
     }

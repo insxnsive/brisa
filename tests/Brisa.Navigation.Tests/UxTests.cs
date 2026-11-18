@@ -24,7 +24,6 @@ internal static class UxTests
             SettingsDraft(store, check);
             SdkBanner(store, check);
             DiscordRestartConfirm(store, check);
-            SettingsMotion(store, check);
             ConnectUnlock(store, check);
             RoutePagePings(store, check);
             TrayMenu(store, check);
@@ -245,35 +244,6 @@ internal static class UxTests
     }
 
     private static NativeSnapshot SignedInIdle() => new(false, false, true, true, "fixture", null);
-
-    private static void SettingsMotion(SettingsStore store, Action<bool, string> check)
-    {
-        store.Save(new(AppTheme.System, false, true, "system", false));
-        var main = new MainWindow(new UxBackend(SignedInIdle()), store, exitWarning: _ => { });
-        main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
-        var page = (ContentControl)main.FindName("PageHost");
-        Click((Button)main.FindName("SettingsButton")); Pump(() => page.Content is SettingsView);
-        var view = (SettingsView)page.Content;
-        view.UpdateLayout();
-        var indicator = (Border)view.FindName("ThemeIndicator");
-        var system = (RadioButton)view.FindName("SystemTheme");
-        check(indicator.ActualWidth > 0
-            && Math.Abs(indicator.TranslatePoint(new Point(0, 0), view).X - system.TranslatePoint(new Point(0, 0), view).X) < 1,
-            "the theme indicator rests under the checked segment");
-        var dark = (RadioButton)view.FindName("DarkTheme");
-        dark.IsChecked = true;
-        Spin(260);
-        check(Math.Abs(indicator.TranslatePoint(new Point(0, 0), view).X - dark.TranslatePoint(new Point(0, 0), view).X) < 1,
-            "the theme indicator slides under the checked segment");
-        check(indicator.Width > 0, "the theme indicator keeps a measured width");
-        var details = (CheckBox)view.FindName("DetailsBox");
-        details.IsChecked = false; details.IsChecked = true; Spin(200);
-        details.ApplyTemplate();
-        check(details.Template.FindName("Glyph", details) is System.Windows.Shapes.Path { Opacity: 1 },
-            "the check glyph settles visible when checked");
-        Click((Button)view.FindName("CancelButton")); Pump(() => page.Content is null);
-        main.RequestExit(); Pump(() => !main.IsVisible);
-    }
 
     private static void ConnectUnlock(SettingsStore store, Action<bool, string> check)
     {
