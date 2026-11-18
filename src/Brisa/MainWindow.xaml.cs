@@ -995,6 +995,9 @@ public partial class MainWindow : Window
     private async void Route_Click(object sender, RoutedEventArgs e)
     {
         if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute) return;
+        // Opening Route ends the previous Connect intent, even when the dialog is cancelled.
+        _confirmDiscordRestart = false;
+        PrimaryButton.Content = _state.PrimaryLabel;
         var dialog = new RouteWindow(this, _settings.Current.PreferredRouteCountry, _state.Snapshot?.Route) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         // The modal pumps the dispatcher, so eligibility can change while it is open. The
@@ -1153,6 +1156,7 @@ public partial class MainWindow : Window
     {
         if (_canClose) return;
         _confirmDiscordRestart = false;
+        PrimaryButton.Content = _state.PrimaryLabel;
         CloseNotifications();
         PageTransition.Stop(PageHost);
         PageTransition.Stop(HomeContent);

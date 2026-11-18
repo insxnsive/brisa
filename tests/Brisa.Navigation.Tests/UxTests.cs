@@ -140,7 +140,8 @@ internal static class UxTests
         quiet.RequestExit(); Pump(() => !quiet.IsVisible);
 
         var backend = new UxBackend(new(false, false, true, true, "fixture", null, DiscordRunning: true));
-        var main = new MainWindow(backend, store, exitWarning: _ => { });
+        var discordOpen = true;
+        var main = new MainWindow(backend, store, exitWarning: _ => { }) { IsDiscordRunning = () => discordOpen };
         main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
         var primary = (Button)main.FindName("PrimaryButton");
         check(primary.Content as string == "Connect", "the primary action starts as Connect while Discord is open");
@@ -159,6 +160,44 @@ internal static class UxTests
         Click((Button)main.FindName("SettingsButton")); Pump(() => page.Content is SettingsView);
         Click((Button)main.FindName("BackButton")); Pump(() => page.Content is null && (primary.Content as string) == "Connect");
         check(primary.Content as string == "Connect", "opening a page resets the confirmation");
+
+        Click(primary);
+        var routeOpened = false;
+        var cancelRoute = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+        cancelRoute.Tick += (_, _) =>
+        {
+            var dialog = Application.Current.Windows.OfType<RouteWindow>().FirstOrDefault(candidate => candidate.IsVisible);
+            if (dialog is null) return;
+            routeOpened = true;
+            cancelRoute.Stop();
+            dialog.DialogResult = false;
+        };
+        try
+        {
+            cancelRoute.Start();
+            Click((Button)main.FindName("RouteButton"));
+        }
+        finally { cancelRoute.Stop(); }
+        check(routeOpened && !backend.Commands.Contains("connect"), "opening and cancelling Route never connects");
+        check(primary.Content as string == "Connect", "opening Route resets the Discord restart confirmation even when cancelled");
+
+        Click(primary);
+        main.Close(); Pump(() => !main.IsVisible);
+        main.Show();
+        check(primary.Content as string == "Connect", "closing to tray clears the confirmation label before the window is restored");
+
+        Click(primary);
+        backend.State = backend.State with { ExternalTunnel = true };
+        main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+        backend.State = backend.State with { ExternalTunnel = false };
+        main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+        check(primary.Content as string == "Connect", "leaving Disconnected clears the confirmation before returning Home");
+
+        Click(primary);
+        discordOpen = false;
+        main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+        check(primary.Content as string == "Connect", "Discord closing clears the armed confirmation on refresh");
+        discordOpen = true;
 
         Click(primary); Pump(() => (primary.Content as string) != "Connect");
         check(!backend.Commands.Contains("connect"), "the first click re-arms the confirmation");
