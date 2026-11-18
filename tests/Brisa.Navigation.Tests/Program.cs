@@ -42,6 +42,7 @@ internal static class Program
             Directory.CreateDirectory(root);
             File.WriteAllText(Path.Combine(root, "settings.json"), "{\"Theme\":2,\"CloseToTray\":false}");
             var store = new SettingsStore(root, false);
+            Check(!store.Current.AutoConnect, "legacy settings default AutoConnect to false");
             LanguageSwitchWhileConnected(store, Check);
             var startupFailure = new StartupProbeBackend { StartupCode = "INIT_DATA_DIR_INVALID" };
             startupFailure.Release.TrySetException(new BackendUnavailableException());
@@ -499,6 +500,121 @@ internal static class Program
             Check(!early.Commands.Contains("optimize"), "a user action before the scan starts skips it for this launch");
             earlyMain.RequestExit(); Pump(() => !earlyMain.IsVisible);
 
+            // F2: Connect when Brisa opens, persisted in Settings, coordinated with the Proton route scan.
+            var settingsProbe = new CountingBackend();
+            var settingsMain = new MainWindow(settingsProbe, store);
+            settingsMain.Show(); settingsMain.InitializeAsync().GetAwaiter().GetResult();
+            var settingsHost = (ContentControl)settingsMain.FindName("PageHost");
+            Click((Button)settingsMain.FindName("SettingsButton")); Pump(() => settingsHost.Content is SettingsView);
+            ((CheckBox)((SettingsView)settingsHost.Content).FindName("AutoConnectBox")).IsChecked = true;
+            Click((Button)((SettingsView)settingsHost.Content).FindName("CancelButton")); Pump(() => settingsHost.Content is null);
+            Check(!store.Current.AutoConnect, "Cancel discards an unsaved AutoConnect toggle");
+            Click((Button)settingsMain.FindName("SettingsButton")); Pump(() => settingsHost.Content is SettingsView);
+            ((CheckBox)((SettingsView)settingsHost.Content).FindName("AutoConnectBox")).IsChecked = true;
+            Click((Button)((SettingsView)settingsHost.Content).FindName("SaveButton")); Pump(() => settingsHost.Content is null);
+            Check(store.Current.AutoConnect && new SettingsStore(root, false).Current.AutoConnect, "Save persists AutoConnect to settings.json");
+            Check(settingsProbe.Commands.Count == 0, "saving AutoConnect in Settings never connects immediately");
+            settingsMain.RequestExit(); Pump(() => !settingsMain.IsVisible);
+
+            store.Save(store.Current with { AutoConnect = false });
+            var offLaunch = new AutoConnectBackend(idleProton);
+            var offMain = new MainWindow(offLaunch, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true);
+            offMain.Show(); offMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Spin(200);
+            Check(offLaunch.Commands.SequenceEqual(new[] { "optimize" }), "with AutoConnect off, launch only runs the quiet route scan");
+            offMain.RequestExit(); Pump(() => !offMain.IsVisible);
+
+            store.Save(store.Current with { AutoConnect = true });
+            var protonLaunch = new AutoConnectBackend(idleProton) { OptimizedRoute = new("US#12", "US", 24) };
+            var protonMain = new MainWindow(protonLaunch, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true);
+            protonMain.Show(); protonMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Spin(200);
+            Check(protonLaunch.Commands.SequenceEqual(new[] { "optimize", "connect" }) && protonLaunch.Cancels == 0,
+                "Proton auto-connect completes the route scan before connecting instead of cancelling it");
+            Check(((TextBlock)protonMain.FindName("StatusText")).Text == "Connected", "auto-connect reaches Connected");
+            Check(((TextBlock)protonMain.FindName("RouteServerText")).Text == "US#12, 24 ms",
+                "auto-connect keeps the freshly optimized route");
+            protonMain.RequestExit(); Pump(() => !protonMain.IsVisible);
+
+            var fallbackLaunch = new AutoConnectBackend(idleProton with { Route = new("BR#9", "BR", 18) })
+            { OptimizeResult = new(false, "NETWORK_ERROR", "offline") };
+            var fallbackNotices = new List<string?>();
+            var fallbackMain = new MainWindow(fallbackLaunch, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true)
+            { CommandFailureNotice = (code, _) => fallbackNotices.Add(code) };
+            fallbackMain.Show(); fallbackMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Pump(() => ((TextBlock)fallbackMain.FindName("StatusText")).Text == "Connected");
+            Check(fallbackLaunch.Commands.SequenceEqual(new[] { "optimize", "connect" }) && fallbackNotices.Count == 0,
+                "a failed launch route scan falls back to connect without a scan error dialog");
+            fallbackMain.RequestExit(); Pump(() => !fallbackMain.IsVisible);
+
+            var customLaunch = new AutoConnectBackend(new(false, false, true, false, "", null, Mode: "custom"));
+            var customAutoMain = new MainWindow(customLaunch, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true);
+            customAutoMain.Show(); customAutoMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Pump(() => ((TextBlock)customAutoMain.FindName("StatusText")).Text == "Connected");
+            Check(customLaunch.Commands.SequenceEqual(new[] { "connect" }),
+                "custom-mode auto-connect connects directly without a Proton route scan");
+            customAutoMain.RequestExit(); Pump(() => !customAutoMain.IsVisible);
+
+            var failedAuto = new AutoConnectBackend(idleProton) { ConnectResult = new(false, "DISCORD_UNAVAILABLE", "fixture") };
+            var failedAutoCodes = new List<string?>();
+            var failedAutoMain = new MainWindow(failedAuto, store, exitWarning: _ => { }, autoRouteScan: false, autoConnect: true)
+            { CommandFailureNotice = (code, _) => failedAutoCodes.Add(code) };
+            failedAutoMain.Show(); failedAutoMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Pump(() => failedAutoCodes.Count == 1 && ((Button)failedAutoMain.FindName("PrimaryButton")).IsEnabled);
+            Check(failedAutoCodes[0] == "DISCORD_UNAVAILABLE" && ((Button)failedAutoMain.FindName("SettingsButton")).IsEnabled,
+                "a failed auto-connect reports the failure code and restores Home controls");
+            failedAutoMain.RequestExit(); Pump(() => !failedAutoMain.IsVisible);
+
+            foreach (var (label, snapshot, openAccount) in new[]
+            {
+                ("signed out interactive", idleProton with { SignedIn = false }, true),
+                ("signed out logon", idleProton with { SignedIn = false }, false),
+                ("already connected", idleProton with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true }, false),
+                ("owned unverified tunnel", idleProton with { TunnelActive = true, OwnedTunnelPresent = true }, false),
+                ("unelevated limited launch", idleProton with { Reliable = false, RequiresElevation = true }, false),
+                ("external tunnel", idleProton with { ExternalTunnel = true }, false),
+                ("unreadable inspection", idleProton with { Reliable = false }, false),
+            })
+            {
+                var guardBackend = new AutoConnectBackend(snapshot);
+                var guardNotices = new List<string?>();
+                var guardMain = new MainWindow(guardBackend, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true)
+                { CommandFailureNotice = (code, _) => guardNotices.Add(code) };
+                guardMain.Show(); guardMain.InitializeAsync(openAccount: openAccount).GetAwaiter().GetResult();
+                Spin(200);
+                Check(guardBackend.Commands.Count == 0 && guardNotices.Count == 0, "no auto-connect or disconnect on " + label);
+                guardBackend.Settle();
+                guardMain.RequestExit(); Pump(() => !guardMain.IsVisible);
+            }
+
+            var isolatedDefault = new AutoConnectBackend(idleProton);
+            var isolatedMain = new MainWindow(isolatedDefault, store, exitWarning: _ => { });
+            isolatedMain.Show(); isolatedMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Spin(200);
+            Check(isolatedDefault.Commands.Count == 0, "default isolated MainWindow never auto-connects even when AutoConnect is saved");
+            isolatedMain.RequestExit(); Pump(() => !isolatedMain.IsVisible);
+
+            var earlyAuto = new AutoConnectBackend(idleProton);
+            var earlyAutoMain = new MainWindow(earlyAuto, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true);
+            earlyAutoMain.Show();
+            Check(earlyAutoMain.ImportConfigAsync(@"C:\picked\route.conf").GetAwaiter().GetResult().Success, "import runs before auto-connect starts");
+            earlyAutoMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Spin(200);
+            Check(earlyAuto.Commands.SequenceEqual(new[] { "importConfig" }), "an early user action skips auto-connect for this launch");
+            earlyAutoMain.RequestExit(); Pump(() => !earlyAutoMain.IsVisible);
+
+            var heldScan = new AutoConnectBackend(idleProton) { HoldOptimize = true };
+            var heldMain = new MainWindow(heldScan, store, exitWarning: _ => { }, autoRouteScan: true, autoConnect: true);
+            heldMain.Show(); heldMain.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
+            Check(((TextBlock)heldMain.FindName("StatusText")).Text == "Connecting…"
+                && !((Button)heldMain.FindName("PrimaryButton")).IsEnabled
+                && !((Button)heldMain.FindName("SettingsButton")).IsEnabled,
+                "auto-connect enters Connecting synchronously before InitializeAsync returns");
+            heldMain.RequestExit(); Pump(() => !heldMain.IsVisible);
+            Check(heldScan.Cancels >= 1 && !heldScan.Commands.Contains("connect"),
+                "exiting during the pre-connect route scan cancels cleanly without starting the tunnel");
+            store.Save(store.Current with { AutoConnect = false });
+
             Console.WriteLine($"{count} inline-navigation assertions passed");
             return 0;
         }
@@ -728,6 +844,54 @@ internal static class Program
         {
             Commands.Add("cancel");
             _optimize?.TrySetResult(new CommandResult(false, "CANCELLED", "Operation cancelled."));
+            return Task.CompletedTask;
+        }
+        public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class AutoConnectBackend(NativeSnapshot initial) : IBackendClient
+    {
+        private NativeSnapshot _snapshot = initial;
+        private TaskCompletionSource<CommandResult>? _optimize;
+        public RouteInfo? OptimizedRoute { get; init; }
+        public CommandResult OptimizeResult { get; init; } = new(true);
+        public CommandResult ConnectResult { get; init; } = new(true);
+        public bool HoldOptimize { get; init; }
+        public List<string> Commands { get; } = [];
+        public int Cancels { get; private set; }
+        public void Settle() => _snapshot = new NativeSnapshot(false, false, true, true, _snapshot.Username, _snapshot.Route);
+        public Task<NativeSnapshot> SnapshotAsync(CancellationToken token = default) => Task.FromResult(_snapshot);
+        public Task<CommandResult> CommandAsync(string command, object payload, CancellationToken token = default)
+        {
+            Commands.Add(command);
+            if (command == "optimize")
+            {
+                if (HoldOptimize)
+                {
+                    _optimize = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    return _optimize.Task.WaitAsync(token);
+                }
+                if (OptimizeResult.Success && OptimizedRoute is not null)
+                {
+                    _snapshot = _snapshot with { Route = OptimizedRoute };
+                    return Task.FromResult(OptimizeResult with { Route = OptimizedRoute });
+                }
+                return Task.FromResult(OptimizeResult);
+            }
+            if (command == "connect")
+            {
+                if (ConnectResult.Success)
+                    _snapshot = _snapshot with { Connected = true, TunnelActive = true, OwnedTunnelPresent = true };
+                return Task.FromResult(ConnectResult);
+            }
+            if (command == "disconnect")
+                _snapshot = _snapshot with { Connected = false, TunnelActive = false, OwnedTunnelPresent = false };
+            return Task.FromResult(new CommandResult(true));
+        }
+        public Task CancelAsync()
+        {
+            Cancels++;
+            _optimize?.TrySetResult(new CommandResult(false, "CAPTCHA_CANCELLED", "Operation cancelled."));
             return Task.CompletedTask;
         }
         public Task<string> DiagnosticsAsync(CancellationToken token = default) => Task.FromResult("fixture");

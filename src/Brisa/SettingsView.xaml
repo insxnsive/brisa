@@ -6,22 +6,23 @@
     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel>
-      <Border Style="{StaticResource SettingsSurface}">
+      <Border Style="{StaticResource SettingsSurface}" Padding="16,12">
         <StackPanel>
           <TextBlock FontWeight="SemiBold" Text="{loc:Loc ThemeLabel}"/>
-          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
             <RadioButton x:Name="SystemTheme" GroupName="Theme" Content="{loc:Loc ThemeSystem}" Margin="0,0,22,0"/>
             <RadioButton x:Name="LightTheme" GroupName="Theme" Content="{loc:Loc ThemeLight}" Margin="0,0,22,0"/>
             <RadioButton x:Name="DarkTheme" GroupName="Theme" Content="{loc:Loc ThemeDark}"/>
           </StackPanel>
         </StackPanel>
       </Border>
-      <Border Style="{StaticResource SettingsSurface}" Margin="0,8,0,0">
+      <Border Style="{StaticResource SettingsSurface}" Margin="0,8,0,0" Padding="16,12">
         <StackPanel>
-          <TextBlock FontWeight="SemiBold" Text="{loc:Loc General}" Margin="0,0,0,12"/>
+          <TextBlock FontWeight="SemiBold" Text="{loc:Loc General}" Margin="0,0,0,8"/>
           <CheckBox x:Name="StartupBox" Content="{loc:Loc StartWithWindows}"/>
-          <CheckBox x:Name="DetailsBox" Content="{loc:Loc ShowDetails}" Margin="0,10,0,0"/>
-          <Grid Margin="0,12,0,0">
+          <CheckBox x:Name="AutoConnectBox" Content="{loc:Loc AutoConnect}" Margin="0,4,0,0"/>
+          <CheckBox x:Name="DetailsBox" Content="{loc:Loc ShowDetails}" Margin="0,4,0,0"/>
+          <Grid Margin="0,8,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock x:Name="LanguageLabel" Text="{loc:Loc LanguageLabel}" VerticalAlignment="Center"/>
             <ComboBox x:Name="LanguageBox" Grid.Column="1" MinWidth="240" VerticalAlignment="Center"
@@ -31,12 +32,12 @@
               <ComboBoxItem x:Name="LanguagePortugueseItem" Tag="pt-BR" Content="{loc:Loc LanguagePortuguese}"/>
             </ComboBox>
           </Grid>
-          <TextBlock Style="{StaticResource SecondaryText}" Margin="0,8,0,0" FontSize="12" TextWrapping="Wrap" Text="{loc:Loc CloseToTrayNote}"/>
+          <TextBlock Style="{StaticResource SecondaryText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap" Text="{loc:Loc CloseToTrayNote}"/>
         </StackPanel>
       </Border>
     </StackPanel>
     </ScrollViewer>
-    <Grid Grid.Row="1" Margin="0,16,0,0">
+    <Grid Grid.Row="1" Margin="0,12,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Button x:Name="AdvancedButton" Click="Advanced_Click" Content="{loc:Loc Advanced}" ToolTip="{loc:Loc AdvancedTooltip}"/>
       <Button x:Name="CancelButton" Grid.Column="2" Click="Cancel_Click" Content="{loc:Loc Cancel}" MinWidth="80"/>

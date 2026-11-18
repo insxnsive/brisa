@@ -13,6 +13,7 @@ public partial class SettingsView : UserControl
     {
         InitializeComponent(); _store = store; _openAdvanced = openAdvanced;
         StartupBox.IsChecked = store.Current.StartWithWindows;
+        AutoConnectBox.IsChecked = store.Current.AutoConnect;
         DetailsBox.IsChecked = store.Current.ShowDetails;
         SystemTheme.IsChecked = store.Current.Theme == AppTheme.System;
         LightTheme.IsChecked = store.Current.Theme == AppTheme.Light;
@@ -30,7 +31,7 @@ public partial class SettingsView : UserControl
     {
         var theme = DarkTheme.IsChecked == true ? AppTheme.Dark : LightTheme.IsChecked == true ? AppTheme.Light : AppTheme.System;
         var language = (LanguageBox.SelectedItem as ComboBoxItem)?.Tag as string ?? LocalizationManager.System;
-        try { _store.Save(new(theme, StartupBox.IsChecked == true, DetailsBox.IsChecked == true, language)); }
+        try { _store.Save(_store.Current with { Theme = theme, StartWithWindows = StartupBox.IsChecked == true, ShowDetails = DetailsBox.IsChecked == true, Language = language, AutoConnect = AutoConnectBox.IsChecked == true }); }
         catch
         {
             MessageBox.Show(Window.GetWindow(this), LocalizationManager.Current["SettingsSaveFailed"], LocalizationManager.Current["SettingsTitle"], MessageBoxButton.OK, MessageBoxImage.Warning);

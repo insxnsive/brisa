@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private bool _nativeOperationMayBeActive;
     private bool _terminalBackendFailure;
     private readonly bool _autoRouteScan;
+    private readonly bool _autoConnect;
     private bool _routeScanClaimed;
     private Task? _routeScan;
     // Snapshot commit bookkeeping. Every snapshot-derived state write goes through one gate:
@@ -151,7 +152,7 @@ public partial class MainWindow : Window
         SetState(_state.Snapshot is { } snapshot ? HomeState.FromSnapshot(snapshot) : new(ConnectionPhase.Disconnected, null));
     }
 
-    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null, bool autoRouteScan = false)
+    public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null, bool autoRouteScan = false, bool autoConnect = false)
     {
         InitializeComponent(); TrafficCard.Height = TrafficCardHeight; _backend = backend;
         // O servidor encosta no país; quando o nome do país não cabe, ele trima e o servidor não.
@@ -207,6 +208,7 @@ public partial class MainWindow : Window
         IsVisibleChanged += (_, e) => { if (e.NewValue is true) { RefreshStatus(this, EventArgs.Empty); SyncDetailsTimer(); } else SyncDetailsTimer(); };
         _allowMotion = allowMotion;
         _autoRouteScan = autoRouteScan;
+        _autoConnect = autoConnect;
         PreviewKeyDown += OnNavigationKeyDown;
         // A última entrada decide se um anel de foco é cortesia ou ruído.
         PreviewKeyDown += (_, _) => _keyboardInput = true;
@@ -237,9 +239,24 @@ public partial class MainWindow : Window
         // instead of jumping the user into a sign-in they did not ask for. Onboarding also
         // waits for an accepted snapshot, so a stale or rejected one cannot open Account.
         if (openAccount && accepted && _state.RequiresSignIn && _currentPage is null && !_closing) OpenAccount();
-        if (accepted) StartRouteScan();
+        if (accepted && !StartAutoConnect()) StartRouteScan();
         if (!_terminalBackendFailure) _statusTimer.Start();
         if (_smokeOutput is not null) await RunSmokeAsync(_smokeOutput);
+    }
+
+    private bool StartAutoConnect()
+    {
+        if (!_autoConnect || !_settings.Current.AutoConnect || _routeScanClaimed || _closing || _canClose || _smokeOutput is not null) return false;
+        if (_currentPage is not null || _navigationBusy || UiMutationBusy) return false;
+        if (_state.Phase != ConnectionPhase.Disconnected || _state.RequiresSignIn) return false;
+        if (_state.Snapshot is not { HasOwnedTunnel: false, ExternalTunnel: false, TunnelActive: false, Connected: false, Reliable: true, RequiresElevation: false }) return false;
+        if (!_operation.Wait(0)) return false;
+        _routeScanClaimed = true;
+        BeginUiMutation();
+        var scanFirst = _autoRouteScan && _state.Snapshot.Mode == "proton";
+        SetState(_state with { Phase = ConnectionPhase.Connecting, DetailKey = scanFirst ? "StagePreparingRoute" : null });
+        _ = RunPrimaryMutationAsync("connect", scanFirst);
+        return true;
     }
 
     // F1: the saved automatic route is reused by every connect until the user opens Route, so one
@@ -558,17 +575,56 @@ public partial class MainWindow : Window
         if (_state.StartupFailed) { RequestExit(); return; }
         if (UiMutationBusy || !await _operation.WaitAsync(0)) return;
         BeginUiMutation();
+        if (_state.RequiresSignIn)
+        {
+            try { OpenAccount(); }
+            finally { EndUiMutation(); LeaveBusyPhase(); _operation.Release(); UpdateActionAvailability(); }
+            return;
+        }
+        var command = _state.Snapshot?.HasOwnedTunnel == true ? "disconnect" : "connect";
+        SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, DetailKey = null });
+        await RunPrimaryMutationAsync(command, scanFirst: false);
+    }
+
+    internal Action<string?, string?>? CommandFailureNotice { get; init; }
+
+    private async Task RunPrimaryMutationAsync(string command, bool scanFirst)
+    {
+        var lifetime = _lifetime.Token;
         try
         {
-            if (_state.RequiresSignIn) { OpenAccount(); return; }
-            var command = _state.Snapshot?.HasOwnedTunnel == true ? "disconnect" : "connect";
+            if (scanFirst)
+            {
+                try
+                {
+                    using var scanBudget = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+                    scanBudget.CancelAfter(TimeSpan.FromSeconds(75));
+                    var scan = await _backend.CommandAsync("optimize", new { }, scanBudget.Token);
+                    if (scan.Success && scan.Route is { } freshRoute && !_closing && _state.Snapshot is { } current)
+                        SetState(_state with { Snapshot = current with { Route = freshRoute } });
+                }
+                catch (OperationCanceledException)
+                {
+                    var cancelTimedOut = false;
+                    try { await _backend.CancelAsync().WaitAsync(TimeSpan.FromSeconds(12)); }
+                    catch (TimeoutException) { cancelTimedOut = true; }
+                    catch { }
+                    if (lifetime.IsCancellationRequested || _closing) throw;
+                    if (cancelTimedOut) { await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); return; }
+                }
+                catch (BackendUnavailableException) { throw; }
+                catch { }
+            }
+            if (_closing) return;
             if (command == "connect") _nativeOperationMayBeActive = true;
-            SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, DetailKey = null });
             var pending = ExecuteWithVerificationAsync(command, (token, method) => new { humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
             if (!result.Success)
-                Localization.BackendText.Show(this, result.Code, result.Message, "Brisa");
+            {
+                if (CommandFailureNotice is not null) CommandFailureNotice(result.Code, result.Message);
+                else Localization.BackendText.Show(this, result.Code, result.Message, "Brisa");
+            }
             await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
         catch (OperationCanceledException) { if (!_closing) await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20)); }

@@ -161,6 +161,20 @@ internal static class Program
                         Check(details.IsChecked == true, "the details panel is on by default");
                         Check(details.TranslatePoint(new Point(), view).Y > ((CheckBox)view.FindName("StartupBox")).TranslatePoint(new Point(), view).Y,
                             "the details checkbox sits under Start with Windows in General");
+                        var autoConnect = (CheckBox)view.FindName("AutoConnectBox");
+                        Check(autoConnect.Content as string == "Connect when Brisa opens", "the auto-connect preference is labelled Connect when Brisa opens");
+                        Check(autoConnect.IsChecked == false, "auto-connect is off by default");
+                        var startupTop = ((CheckBox)view.FindName("StartupBox")).TranslatePoint(new Point(), view).Y;
+                        var autoConnectTop = autoConnect.TranslatePoint(new Point(), view).Y;
+                        Check(autoConnectTop > startupTop && details.TranslatePoint(new Point(), view).Y > autoConnectTop,
+                            "auto-connect sits between Start with Windows and Show connection details");
+                        var beforeSettingsLang = Brisa.Localization.LocalizationManager.Current.Language;
+                        Brisa.Localization.LocalizationManager.Current.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+                        window.UpdateLayout();
+                        Check(autoConnect.Content as string == "Conectar ao abrir o Brisa", "Portuguese Settings translates AutoConnect");
+                        Check(settingsScroll.ScrollableHeight == 0, "Portuguese Settings does not scroll at minimum size: scrollable=" + settingsScroll.ScrollableHeight.ToString("0.#"));
+                        Brisa.Localization.LocalizationManager.Current.Apply(beforeSettingsLang);
+                        window.UpdateLayout();
                         // O anel de foco só aparece com foco de teclado: UIA SetFocus não pinta,
                         // então a evidência do anel sai daqui e os estados checados saem do app real.
                         var startup = (CheckBox)view.FindName("StartupBox");

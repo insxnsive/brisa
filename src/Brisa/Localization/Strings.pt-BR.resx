@@ -11,6 +11,7 @@
   <data name="Back" xml:space="preserve"><value>Voltar</value></data>
   <data name="General" xml:space="preserve"><value>Geral</value></data>
   <data name="StartWithWindows" xml:space="preserve"><value>Iniciar com o Windows</value></data>
+  <data name="AutoConnect" xml:space="preserve"><value>Conectar ao abrir o Brisa</value></data>
   <data name="CloseToTrayNote" xml:space="preserve"><value>Fechar a janela mantém o Brisa na bandeja. Use Sair no menu da bandeja para encerrar.</value></data>
   <data name="ThemeLabel" xml:space="preserve"><value>Tema</value></data>
   <data name="ThemeSystem" xml:space="preserve"><value>Sistema</value></data>

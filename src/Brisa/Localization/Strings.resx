@@ -11,6 +11,7 @@
   <data name="Back" xml:space="preserve"><value>Back</value></data>
   <data name="General" xml:space="preserve"><value>General</value></data>
   <data name="StartWithWindows" xml:space="preserve"><value>Start with Windows</value></data>
+  <data name="AutoConnect" xml:space="preserve"><value>Connect when Brisa opens</value></data>
   <data name="CloseToTrayNote" xml:space="preserve"><value>Closing the window keeps Brisa running in the tray. Use Exit in the tray menu to quit.</value></data>
   <data name="ThemeLabel" xml:space="preserve"><value>Theme</value></data>
   <data name="ThemeSystem" xml:space="preserve"><value>System</value></data>
