@@ -165,7 +165,7 @@ class NotificationContracts(unittest.TestCase):
         import xml.etree.ElementTree as ET
         x = '{http://schemas.microsoft.com/winfx/2006/xaml}'
         ns = '{http://schemas.microsoft.com/winfx/2006/xaml/presentation}'
-        for name in ('Controls/NotificationsPopover.xaml', 'MainWindow.xaml'):
+        for name in ('Controls/NotificationsPopover.xaml', 'MainWindow.xaml', 'SettingsView.xaml'):
             for style in ET.parse(ROOT / name).iter(ns + 'Style'):
                 self.assertIsNotNone(style.get(x + 'Key'), name + ' has a style without x:Key')
         popover = ''.join((ROOT / 'Controls' / f).read_text(encoding='utf-8') for f in ('NotificationsPopover.xaml', 'NotificationsPopover.xaml.cs'))
@@ -189,6 +189,15 @@ class NotificationContracts(unittest.TestCase):
         privacy = (REPO / 'docs/privacy.md').read_text(encoding='utf-8')
         self.assertIn('notifications-state.json', privacy)
         self.assertIn('brisa-notify.insxnsive.works/v1/notifications.json', privacy)
+
+    def test_settings_motion_and_navigation_contracts(self):
+        code = (ROOT / 'MainWindow.xaml.cs').read_text(encoding='utf-8')
+        self.assertNotIn('await RefreshSnapshotAsync', method_body(code, 'ReturnHomeCoreAsync'))
+        self.assertIn('SwapPageAsync(', method_body(code, 'GoBackAsync'))
+        settings = (ROOT / 'SettingsView.xaml').read_text(encoding='utf-8')
+        self.assertIn('x:Name="SavedText"', settings)
+        self.assertIn('x:Key="AnimatedCheck"', settings)
+        self.assertIn('x:Key="ThemeSegment"', settings)
 
     def test_no_new_packages_and_the_state_file_name_is_pinned(self):
         project = (ROOT / 'Brisa.csproj').read_text(encoding='utf-8')

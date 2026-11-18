@@ -137,6 +137,8 @@
   <data name="TrayStatusFormat" xml:space="preserve"><value>Brisa: {0}</value></data>
   <data name="UseConfFile" xml:space="preserve"><value>Usar um arquivo .conf do WireGuard</value></data>
   <data name="DiscordRestartNote" xml:space="preserve"><value>O Discord fecha e reabre por um instante ao conectar ou desconectar.</value></data>
+  <data name="SettingsSaved" xml:space="preserve"><value>Salvo</value></data>
+  <data name="SettingsClose" xml:space="preserve"><value>Fechar</value></data>
   <data name="ConnectConfirmDiscordRestart" xml:space="preserve"><value>Tem certeza? O Brisa vai reiniciar o Discord</value></data>
   <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
   <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>

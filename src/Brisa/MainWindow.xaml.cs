@@ -25,8 +25,8 @@ public partial class MainWindow : Window
     private readonly Action<string> _exitWarning;
     private readonly Action<string> _notice;
     private readonly Func<string, bool> _exitConfirm;
-    // Último instante em que o instalador visível do fornecedor estava na tela, em ticks (0 =
-    // nenhum). A UI escreve e a tarefa do prazo lê, então o valor é lido e escrito com Volatile:
+    // Ãšltimo instante em que o instalador visÃ­vel do fornecedor estava na tela, em ticks (0 =
+    // nenhum). A UI escreve e a tarefa do prazo lÃª, entÃ£o o valor Ã© lido e escrito com Volatile:
     // um DateTime? de 16 bytes poderia ser lido pela metade.
     private long _installerStageSeenTicks;
     private readonly SemaphoreSlim _operation = new(1, 1);
@@ -55,11 +55,11 @@ public partial class MainWindow : Window
     private long _appliedSequence;
     private bool _operationOwnsUi;
     private readonly System.Windows.Threading.DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(10) };
-    // Painel de detalhes: um único timer de 1 s, que só roda com o painel na tela e a janela
-    // visível. Sessenta amostras dão uma janela de um minuto, que é o que cabe no gráfico.
+    // Painel de detalhes: um Ãºnico timer de 1 s, que sÃ³ roda com o painel na tela e a janela
+    // visÃ­vel. Sessenta amostras dÃ£o uma janela de um minuto, que Ã© o que cabe no grÃ¡fico.
     private const int ChartSamples = 60;
-    // O país recebe o espaço que sobra depois do servidor e do ping, e só ele trima. Lido da coluna
-    // que contém a linha, não da própria linha, senão o cálculo se alimenta do próprio resultado.
+    // O paÃ­s recebe o espaÃ§o que sobra depois do servidor e do ping, e sÃ³ ele trima. Lido da coluna
+    // que contÃ©m a linha, nÃ£o da prÃ³pria linha, senÃ£o o cÃ¡lculo se alimenta do prÃ³prio resultado.
     private void FitRouteText()
     {
         var serverWidth = RouteServerText.Visibility == Visibility.Visible
@@ -69,8 +69,8 @@ public partial class MainWindow : Window
         if (Math.Abs(RouteText.MaxWidth - available) > 0.5) RouteText.MaxWidth = available;
     }
 
-    // Altura fixa do cartão de tráfego: cabeçalho mais gráfico. Nenhum número novo, e nada que dependa
-    // dos valores, para o cartão não pular enquanto os contadores sobem.
+    // Altura fixa do cartÃ£o de trÃ¡fego: cabeÃ§alho mais grÃ¡fico. Nenhum nÃºmero novo, e nada que dependa
+    // dos valores, para o cartÃ£o nÃ£o pular enquanto os contadores sobem.
     private const double TrafficCardHeight = 108;
 
     private readonly System.Windows.Threading.DispatcherTimer _detailsTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -163,7 +163,7 @@ public partial class MainWindow : Window
     public MainWindow(IBackendClient backend, SettingsStore settings, string? smokeOutput = null, IUpdateService? updates = null, Action<string>? exitWarning = null, Action<string>? notice = null, Func<string, bool>? exitConfirm = null, ITrafficSource? traffic = null, Func<bool>? allowMotion = null, bool autoRouteScan = false, bool autoConnect = false, INotificationService? notifications = null)
     {
         InitializeComponent(); TrafficCard.Height = TrafficCardHeight; _backend = backend;
-        // O servidor encosta no país; quando o nome do país não cabe, ele trima e o servidor não.
+        // O servidor encosta no paÃ­s; quando o nome do paÃ­s nÃ£o cabe, ele trima e o servidor nÃ£o.
         RouteValueRow.SizeChanged += (_, _) => FitRouteText();
         RouteDetails.SizeChanged += (_, _) => FitRouteText(); _settings = settings; _smokeOutput = smokeOutput; _updates = updates;
         _traffic = traffic ?? new InterfaceTrafficSource();
@@ -173,8 +173,8 @@ public partial class MainWindow : Window
         _exitConfirm = exitConfirm ?? (message => MessageBox.Show(this, message, "Exit Brisa", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes);
         _notice = notice ?? (message => { MessageBox.Show(this, message, "Route", MessageBoxButton.OK, MessageBoxImage.Warning); });
         SetState(_state);
-        // Troca de idioma repinta esta janela, que continua a mesma: nada é fechado, então o túnel
-        // não passa por OnClosing nem pelo ExitGuard.
+        // Troca de idioma repinta esta janela, que continua a mesma: nada Ã© fechado, entÃ£o o tÃºnel
+        // nÃ£o passa por OnClosing nem pelo ExitGuard.
         _languageChanged = (_, _) =>
         {
             if (_closing) return;
@@ -182,8 +182,8 @@ public partial class MainWindow : Window
             RenderDetails();
             // The bell's spoken unread count is text too: refresh it with the language.
             if (_notifications is not null) ApplyNotificationBadge(_notifications.Snapshot);
-            // O título da página aberta também é texto do produto: sem isto ele ficaria no idioma
-            // anterior até a próxima navegação.
+            // O tÃ­tulo da pÃ¡gina aberta tambÃ©m Ã© texto do produto: sem isto ele ficaria no idioma
+            // anterior atÃ© a prÃ³xima navegaÃ§Ã£o.
             var loc = Localization.LocalizationManager.Current;
             PageTitle.Text = PageHost.Content switch
             {
@@ -209,8 +209,8 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _statusTimer.Stop(); _detailsTimer.Stop();
-            // O gerenciador é um singleton: um handler anônimo manteria esta janela viva depois de
-            // fechada, e um Apply posterior pintaria uma árvore já descartada.
+            // O gerenciador Ã© um singleton: um handler anÃ´nimo manteria esta janela viva depois de
+            // fechada, e um Apply posterior pintaria uma Ã¡rvore jÃ¡ descartada.
             Localization.LocalizationManager.Current.PropertyChanged -= _languageChanged;
             if (_notifications is not null) _notifications.SnapshotChanged -= OnNotificationsChanged;
         };
@@ -221,7 +221,7 @@ public partial class MainWindow : Window
         _autoRouteScan = autoRouteScan;
         _autoConnect = autoConnect;
         PreviewKeyDown += OnNavigationKeyDown;
-        // A última entrada decide se um anel de foco é cortesia ou ruído.
+        // A Ãºltima entrada decide se um anel de foco Ã© cortesia ou ruÃ­do.
         PreviewKeyDown += (_, _) => _keyboardInput = true;
         PreviewMouseDown += (_, _) => _keyboardInput = false;
         _notifications = notifications;
@@ -331,7 +331,7 @@ public partial class MainWindow : Window
     private void SetError(Exception error, NativeSnapshot? snapshot)
     {
         if (error is BackendUnavailableException) { _terminalBackendFailure = true; _statusTimer.Stop(); }
-        // Uma chave: HomeState resolve o texto na pintura, então o erro também acompanha
+        // Uma chave: HomeState resolve o texto na pintura, entÃ£o o erro tambÃ©m acompanha
         // uma troca de idioma. A frase pronta continua existindo para quem chama MessageBox.
         SetState(new(ConnectionPhase.Error, snapshot, SafeMessageKey(error)));
     }
@@ -371,8 +371,8 @@ public partial class MainWindow : Window
         {
             var country = CountryName(route.Country);
             RouteText.Text = country;
-            // País e servidor dividem uma linha: o país trima, o servidor e o ping nunca. O peso do
-            // texto separa os dois, então não entra pontuação nenhuma na tela.
+            // PaÃ­s e servidor dividem uma linha: o paÃ­s trima, o servidor e o ping nunca. O peso do
+            // texto separa os dois, entÃ£o nÃ£o entra pontuaÃ§Ã£o nenhuma na tela.
             var server = route.Server?.Trim() ?? "";
             if (server.Length == 0)
             {
@@ -398,22 +398,22 @@ public partial class MainWindow : Window
             RouteServerText.Visibility = Visibility.Collapsed;
             System.Windows.Automation.AutomationProperties.SetName(RouteButton, loc["ChooseRoute"]);
         }
-        // Enquanto existe um túnel a rota não pode mudar, e o botão desabilitado sozinho não diz por
-        // quê: o chevron vira cadeado, o texto esmaece e a linha explica o que fazer.
+        // Enquanto existe um tÃºnel a rota nÃ£o pode mudar, e o botÃ£o desabilitado sozinho nÃ£o diz por
+        // quÃª: o chevron vira cadeado, o texto esmaece e a linha explica o que fazer.
         var routeLocked = state.Snapshot?.HasOwnedTunnel == true
             || state.Phase is ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Connected;
         RouteChevron.Text = routeLocked ? "\uE72E" : "\uE76C";
-        // A rota continua travada enquanto há túnel ativo, mas o motivo fica no hover: uma linha de
-        // texto dentro do cartão só aumentava o bloco do servidor.
+        // A rota continua travada enquanto hÃ¡ tÃºnel ativo, mas o motivo fica no hover: uma linha de
+        // texto dentro do cartÃ£o sÃ³ aumentava o bloco do servidor.
         var routeReason = routeLocked ? Localization.LocalizationManager.Current["DisconnectToChangeRoute"] : null;
-        // O cartão é quem recebe o hover: um botão desabilitado não é um alvo confiável de tooltip.
+        // O cartÃ£o Ã© quem recebe o hover: um botÃ£o desabilitado nÃ£o Ã© um alvo confiÃ¡vel de tooltip.
         RouteCard.ToolTip = routeReason;
         RouteButton.ToolTip = routeReason;
         System.Windows.Automation.AutomationProperties.SetHelpText(RouteButton, routeReason ?? string.Empty);
-        // O esmaecimento vem do próprio botão desabilitado. Somar opacidade aqui escurecia a linha de
-        // ajuda abaixo do mínimo de contraste, e a instrução é justamente o que precisa ser lido.
-        // Conectado é o único estado com acento: o resto fica neutro, e o Limited usa o escudo de
-        // administrador porque um cadeado aberto lê como "livre", o oposto do que ele significa.
+        // O esmaecimento vem do prÃ³prio botÃ£o desabilitado. Somar opacidade aqui escurecia a linha de
+        // ajuda abaixo do mÃ­nimo de contraste, e a instruÃ§Ã£o Ã© justamente o que precisa ser lido.
+        // Conectado Ã© o Ãºnico estado com acento: o resto fica neutro, e o Limited usa o escudo de
+        // administrador porque um cadeado aberto lÃª como "livre", o oposto do que ele significa.
         var connected = state.Phase == ConnectionPhase.Connected;
         var glyph = connected ? "\uE73E"
             : state.Phase == ConnectionPhase.Limited ? "\uEA18"
@@ -427,13 +427,13 @@ public partial class MainWindow : Window
         StatusBadge.SetResourceReference(Border.BackgroundProperty, connected ? "NativeStatusConnectedSurface" : "NativeIconSurface");
         StatusIcon.SetResourceReference(TextBlock.ForegroundProperty, connected ? "NativeStatusConnected" : "NativeForeground");
 
-        // Conectado e com a preferência ligada, o painel substitui o bloco centralizado. Em
-        // qualquer outro estado ele não existe: zero e travessão mentem mais do que a ausência.
+        // Conectado e com a preferÃªncia ligada, o painel substitui o bloco centralizado. Em
+        // qualquer outro estado ele nÃ£o existe: zero e travessÃ£o mentem mais do que a ausÃªncia.
         var showDetails = connected && _settings.Current.ShowDetails;
         if (showDetails && !_detailsVisible)
         {
-            // A sessão conta a partir do momento em que o painel aparece, então o número na tela é
-            // o mesmo intervalo que o gráfico cobre.
+            // A sessÃ£o conta a partir do momento em que o painel aparece, entÃ£o o nÃºmero na tela Ã©
+            // o mesmo intervalo que o grÃ¡fico cobre.
             _connectedSince = DateTime.UtcNow;
             _lastReading = _traffic.Read();
             _totalReceived = _totalSent = 0;
@@ -452,8 +452,8 @@ public partial class MainWindow : Window
             }
             else
             {
-                // Some primeiro, recolhe depois: o bloco centralizado só volta quando o painel
-                // terminou de sair, senão os dois aparecem ao mesmo tempo.
+                // Some primeiro, recolhe depois: o bloco centralizado sÃ³ volta quando o painel
+                // terminou de sair, senÃ£o os dois aparecem ao mesmo tempo.
                 StatusBlock.Visibility = Visibility.Collapsed;
                 StatusMotion.FadeOut(DetailsHost, () =>
                 {
@@ -477,8 +477,8 @@ public partial class MainWindow : Window
     public event EventHandler<HomeState>? HomeStateChanged;
 
     // A palavra do estado troca com um cross-fade: o texto antigo sai por baixo enquanto o novo
-    // entra, no mesmo lugar, e o valor real é escrito na hora para que nenhuma leitura dependa do
-    // fim da animação.
+    // entra, no mesmo lugar, e o valor real Ã© escrito na hora para que nenhuma leitura dependa do
+    // fim da animaÃ§Ã£o.
     private void RenderStatusText(string text)
     {
         StatusText.Text = text;
@@ -490,8 +490,8 @@ public partial class MainWindow : Window
         StatusMotion.CrossFade(StatusText, StatusTextGhost, _allowMotion);
     }
 
-    // O anel só existe enquanto há trabalho a caminho. Com o anel desligado ele fica
-    // parado, mas continua visível: o estado ainda precisa ser lido sem movimento.
+    // O anel sÃ³ existe enquanto hÃ¡ trabalho a caminho. Com o anel desligado ele fica
+    // parado, mas continua visÃ­vel: o estado ainda precisa ser lido sem movimento.
     private void SetStatusRing(bool busy)
     {
         var wanted = busy ? Visibility.Visible : Visibility.Collapsed;
@@ -510,13 +510,13 @@ public partial class MainWindow : Window
     // O nome do pais vem do .NET, sem pacote e sem tabela. EnglishName e nao DisplayName: o ICU
     // desta maquina devolve o nome nativo (Brasil, Deutschland, Haiti), o que misturaria idiomas
     // numa tela em ingles. Quando o seletor de idioma existir, ele troca esta chamada.
-    // Um único lugar resolve o nome do país, como no item 2: a tabela CLDR em português e o
-    // RegionInfo em inglês, porque DisplayName devolve o idioma do próprio país.
+    // Um Ãºnico lugar resolve o nome do paÃ­s, como no item 2: a tabela CLDR em portuguÃªs e o
+    // RegionInfo em inglÃªs, porque DisplayName devolve o idioma do prÃ³prio paÃ­s.
     private static string CountryName(string code) =>
         Localization.CountryNames.Name(code, Localization.LocalizationManager.Current.Language);
 
-    // Um timer só, e só enquanto o painel está na tela: minimizado ou na bandeja ele para, porque
-    // ninguém está lendo os números.
+    // Um timer sÃ³, e sÃ³ enquanto o painel estÃ¡ na tela: minimizado ou na bandeja ele para, porque
+    // ninguÃ©m estÃ¡ lendo os nÃºmeros.
     private void SyncDetailsTimer()
     {
         var shouldRun = _detailsVisible && IsVisible && WindowState != WindowState.Minimized && !_closing;
@@ -531,8 +531,8 @@ public partial class MainWindow : Window
         double down = 0, up = 0;
         if (reading is { } current && _lastReading is { } previous)
         {
-            // Os contadores são cumulativos e voltam a zero quando o adaptador sobe; um decréscimo
-            // vira zero, nunca um pico negativo no gráfico.
+            // Os contadores sÃ£o cumulativos e voltam a zero quando o adaptador sobe; um decrÃ©scimo
+            // vira zero, nunca um pico negativo no grÃ¡fico.
             down = current.Received >= previous.Received ? current.Received - previous.Received : 0;
             up = current.Sent >= previous.Sent ? current.Sent - previous.Sent : 0;
             _totalReceived += (ulong)down;
@@ -565,7 +565,7 @@ public partial class MainWindow : Window
         var down = Ordered(_downSamples, count, _sampleCount);
         var up = Ordered(_upSamples, count, _sampleCount);
         var peak = Math.Max(MetricsFormat.MinimumChartScale, Math.Max(down.Max(), up.Max()) * MetricsFormat.ChartHeadroom);
-        // Espaçamento fixo: a amostra mais nova encosta na direita e a linha anda para a esquerda,
+        // EspaÃ§amento fixo: a amostra mais nova encosta na direita e a linha anda para a esquerda,
         // em vez de esticar e comprimir a cada segundo.
         var step = width / (ChartSamples - 1);
         var area = new PointCollection(count + 2) { new System.Windows.Point(width - (count - 1) * step, height) };
@@ -576,8 +576,8 @@ public partial class MainWindow : Window
             var x = width - (count - 1 - i) * step;
             var downPoint = new System.Windows.Point(x, height - Math.Min(height, down[i] / peak * height));
             area.Add(downPoint);
-            // A linha de baixo é um traço próprio: o polígono do preenchimento não tem contorno,
-            // senão as arestas de fechamento desenhavam uma barra vertical nas bordas.
+            // A linha de baixo Ã© um traÃ§o prÃ³prio: o polÃ­gono do preenchimento nÃ£o tem contorno,
+            // senÃ£o as arestas de fechamento desenhavam uma barra vertical nas bordas.
             downLine.Add(downPoint);
             line.Add(new System.Windows.Point(x, height - Math.Min(height, up[i] / peak * height)));
         }
@@ -587,8 +587,8 @@ public partial class MainWindow : Window
         UpLine.Points = line;
     }
 
-    // O anel guarda a amostra mais nova na posição escrita por último. Quando encheu, a mais velha
-    // é a próxima a ser sobrescrita, que é onde a leitura começa.
+    // O anel guarda a amostra mais nova na posiÃ§Ã£o escrita por Ãºltimo. Quando encheu, a mais velha
+    // Ã© a prÃ³xima a ser sobrescrita, que Ã© onde a leitura comeÃ§a.
     private static double[] Ordered(double[] ring, int count, int written)
     {
         var result = new double[count];
@@ -734,8 +734,8 @@ public partial class MainWindow : Window
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                 timeout.CancelAfter(TimeSpan.FromSeconds(2));
                 var progress = await _backend.CommandAsync("progress", new { }, timeout.Token);
-                // Uma chave, não uma frase: o detalhe é resolvido na pintura, então uma troca de
-                // idioma no meio da operação alcança o texto que já está na tela.
+                // Uma chave, nÃ£o uma frase: o detalhe Ã© resolvido na pintura, entÃ£o uma troca de
+                // idioma no meio da operaÃ§Ã£o alcanÃ§a o texto que jÃ¡ estÃ¡ na tela.
                 var detailKey = progress.Stage switch
                 {
                     "preparing-profile" => "StagePreparingRoute",
@@ -768,17 +768,17 @@ public partial class MainWindow : Window
         var ceilingExpired = false;
         var connectExpired = false;
         Volatile.Write(ref _installerStageSeenTicks, 0L);
-        // O prazo de três minutos mede o tempo em que o app está trabalhando. Enquanto o
-        // instalador visível do fornecedor está aberto, esse tempo não corre; o teto de trinta
-        // minutos continua correndo e é o que impede uma janela ocupada para sempre.
+        // O prazo de trÃªs minutos mede o tempo em que o app estÃ¡ trabalhando. Enquanto o
+        // instalador visÃ­vel do fornecedor estÃ¡ aberto, esse tempo nÃ£o corre; o teto de trinta
+        // minutos continua correndo e Ã© o que impede uma janela ocupada para sempre.
         var startedAt = DateTime.UtcNow;
         var waited = TimeSpan.Zero;
         var lastTick = startedAt;
-        // O laço tem o próprio CTS: ele pode terminar depois que este método retornar e descartar
-        // `timeout`, e cancelar um CTS descartado lançaria em uma tarefa não observada.
+        // O laÃ§o tem o prÃ³prio CTS: ele pode terminar depois que este mÃ©todo retornar e descartar
+        // `timeout`, e cancelar um CTS descartado lanÃ§aria em uma tarefa nÃ£o observada.
         using var watchdog = new CancellationTokenSource();
-        // Descartar não cancela: sem o Cancel no finally do try abaixo, o laço ainda pode passar
-        // pela checagem e cancelar um `timeout` já descartado em uma tarefa não observada.
+        // Descartar nÃ£o cancela: sem o Cancel no finally do try abaixo, o laÃ§o ainda pode passar
+        // pela checagem e cancelar um `timeout` jÃ¡ descartado em uma tarefa nÃ£o observada.
         _ = Task.Run(async () =>
         {
             while (!watchdog.IsCancellationRequested)
@@ -861,17 +861,28 @@ public partial class MainWindow : Window
     }
     private void OpenSettings()
     {
+        ShowPage(CreateSettingsView(), Localization.LocalizationManager.Current["SettingsTitle"]);
+    }
+
+    private SettingsView CreateSettingsView()
+    {
         var carried = _settingsDraft;
         _settingsDraft = null;
-        var view = new SettingsView(_settings, draft => _ = ShowAdvancedAsync(AdvancedOrigin.Settings, draft), carried);
+        var view = new SettingsView(_settings, draft => _ = ShowAdvancedAsync(AdvancedOrigin.Settings, draft), carried, _allowMotion);
         view.CloseRequested += async (_, _) =>
         {
-            // A preferência do painel pode ter mudado: repinta o Home antes de voltar, senão o
-            // painel só apareceria no próximo snapshot.
+            // A preferÃªncia do painel pode ter mudado: repinta o Home antes de voltar, senÃ£o o
+            // painel sÃ³ apareceria no prÃ³ximo snapshot.
             if (_currentPage is SettingsView) SetState(_state);
             await ReturnHomeAsync();
         };
-        ShowPage(view, Localization.LocalizationManager.Current["SettingsTitle"]);
+        view.Saved += (_, _) =>
+        {
+            // Saving stays on the page, so Home and the page title have to follow immediately.
+            SetState(_state);
+            PageTitle.Text = Localization.LocalizationManager.Current["SettingsTitle"];
+        };
+        return view;
     }
     private void Account_Click(object sender, RoutedEventArgs e)
     {
@@ -893,28 +904,40 @@ public partial class MainWindow : Window
         CloseNotifications();
         UpdateNotificationsHost();
         PageTransition.Show(PageHost);
-        // O foco vai para a página, não para o Voltar: quem abre pelo mouse não deve ver um anel
-        // de foco no botão, e quem usa teclado continua com Shift+Tab chegando nele.
+        // O foco vai para a pÃ¡gina, nÃ£o para o Voltar: quem abre pelo mouse nÃ£o deve ver um anel
+        // de foco no botÃ£o, e quem usa teclado continua com Shift+Tab chegando nele.
         page.Focusable = true;
         page.Focus();
     }
     private async void Back_Click(object sender, RoutedEventArgs e) => await GoBackAsync();
 
     /// <summary>
-    /// Advanced fica um passo à frente de Settings: voltar leva de volta à página que o abriu,
-    /// não ao início, senão o caminho de volta perde um passo.
+    /// Advanced fica um passo Ã  frente de Settings: voltar leva de volta Ã  pÃ¡gina que o abriu,
+    /// nÃ£o ao inÃ­cio, senÃ£o o caminho de volta perde um passo.
     /// </summary>
     private async Task GoBackAsync()
     {
-        // Advanced fica um passo à frente da página que o abriu. Só volta para ela se ela ainda
-        // fizer sentido: depois de importar um .conf, o modo vira custom e a conta não é mais
-        // necessária, então o caminho certo é Home.
+        // Advanced fica um passo Ã  frente da pÃ¡gina que o abriu. Settings e Account voltam por
+        // troca direta: passar por Home piscaria a tela e esperaria um snapshot Ã  toa.
         var origin = _currentPage is AdvancedView ? _advancedOrigin : AdvancedOrigin.None;
         _advancedOrigin = AdvancedOrigin.None;
+        if (origin == AdvancedOrigin.Settings)
+        {
+            await SwapPageAsync(CreateSettingsView, Localization.LocalizationManager.Current["SettingsTitle"]);
+            return;
+        }
+        if (origin == AdvancedOrigin.Account)
+        {
+            // Importing a .conf changes the mode: read it before deciding whether the account
+            // page still applies. This wait is on the page path only, never on Home.
+            await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(5));
+            if (_state.RequiresSignIn)
+            {
+                await SwapPageAsync(() => new AccountView(_backend, this, _state.Snapshot), Localization.LocalizationManager.Current["Account"]);
+                return;
+            }
+        }
         await ReturnHomeAsync();
-        if (_closing || _currentPage is not null) return;
-        if (origin == AdvancedOrigin.Settings) OpenSettings();
-        else if (origin == AdvancedOrigin.Account && _state.RequiresSignIn) OpenAccount();
     }
     private async void OnNavigationKeyDown(object sender, KeyEventArgs e)
     {
@@ -944,12 +967,11 @@ public partial class MainWindow : Window
             HomeContent.Visibility = HomeActions.Visibility = Visibility.Visible;
             UpdateNotificationsHost();
             PageTransition.Show(HomeContent);
-            // A home não tem título: o nome do app já está na barra, e qualquer palavra acima do
-            // estado ("Connected") só repete o estado.
+            // A home nÃ£o tem tÃ­tulo: o nome do app jÃ¡ estÃ¡ na barra, e qualquer palavra acima do
+            // estado ("Connected") sÃ³ repete o estado.
             PageTitle.Text = "";
             PageTitle.Visibility = Visibility.Collapsed;
             _navigationEpoch++;
-            await RefreshSnapshotAsync(IssueTicket(), TimeSpan.FromSeconds(5));
         }
         catch { if (!_closing) MessageBox.Show(this, Localization.LocalizationManager.Current["AccountOperationStopping"], "Brisa", MessageBoxButton.OK, MessageBoxImage.Warning); }
         finally
@@ -957,13 +979,22 @@ public partial class MainWindow : Window
             _navigationBusy = false; BackButton.IsEnabled = true; UpdateActionAvailability();
             if (_currentPage is null && !_closing)
             {
-                // Voltar o foco para o botão que abriu a página é certo no teclado. No mouse, o anel
-                // de foco apareceria sem o usuário ter pedido: nesse caso o foco vai para a página,
-                // que não pinta retângulo.
+                // Voltar o foco para o botÃ£o que abriu a pÃ¡gina Ã© certo no teclado. No mouse, o anel
+                // de foco apareceria sem o usuÃ¡rio ter pedido: nesse caso o foco vai para a pÃ¡gina,
+                // que nÃ£o pinta retÃ¢ngulo.
                 if (_keyboardInput) (page is SettingsView ? SettingsButton : AccountButton).Focus();
                 else HomeContent.Focus();
             }
         }
+        // Outside _returnHomeTask: hiding the window must not wait for a status poll, and an
+        // immediate Connect must not be delayed by one either. Snapshot commits keep the ticket
+        // gate, so this background refresh can never overwrite a newer operation.
+        _ = RefreshAfterReturnAsync(IssueTicket());
+    }
+
+    private async Task RefreshAfterReturnAsync(SnapshotTicket ticket)
+    {
+        try { await RefreshSnapshotAsync(ticket, TimeSpan.FromSeconds(5)); } catch { }
     }
     private void UpdateActionAvailability()
     {
@@ -1028,23 +1059,34 @@ public partial class MainWindow : Window
 
     internal async Task ShowAdvancedAsync(AdvancedOrigin origin, UserSettings? draft = null)
     {
-        // Advanced é página, não diálogo: mesma janela, mesmo botão Voltar do cabeçalho. O guarda
-        // continua porque navegar durante uma transição ou uma mutação trabalharia com um snapshot
-        // que já não corresponde ao estado.
+        // Advanced Ã© pÃ¡gina, nÃ£o diÃ¡logo: mesma janela, mesmo botÃ£o Voltar do cabeÃ§alho. O guarda
+        // continua porque navegar durante uma transiÃ§Ã£o ou uma mutaÃ§Ã£o trabalharia com um snapshot
+        // que jÃ¡ nÃ£o corresponde ao estado.
         if (_navigationBusy || _closing || UiMutationBusy || _currentPage is not (SettingsView or AccountView)) return;
-        var page = _currentPage;
         _advancedOrigin = origin;
         _settingsDraft = origin == AdvancedOrigin.Settings ? draft : null;
+        await SwapPageAsync(
+            () => new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart),
+            Localization.LocalizationManager.Current["Advanced"]);
+    }
+
+    /// <summary>
+    /// Replaces one page with another without showing Home in between. The page being left is
+    /// disposed first, so its lifetime and any pending work end before the next page starts.
+    /// </summary>
+    private async Task SwapPageAsync(Func<UserControl> next, string title)
+    {
+        if (_navigationBusy || _closing || UiMutationBusy || _currentPage is null) return;
+        var page = _currentPage;
         _navigationBusy = true; BackButton.IsEnabled = false; page.IsEnabled = false;
         UpdateActionAvailability();
         try
         {
-            // AccountView cancela o próprio login ao ser descartada: Advanced não pode abrir
-            // enquanto essa limpeza ainda está rodando.
             if (page is IAsyncDisposable disposable) await disposable.DisposeAsync();
             if (_closing) return;
             PageHost.Content = null; _currentPage = null;
-            ShowPage(new AdvancedView(_backend, _state.Snapshot, ImportConfigAsync, updates: _updates, restartForUpdate: RequestUpdateRestart), Localization.LocalizationManager.Current["Advanced"]);
+            ShowPage(next(), title);
+            PageTransition.Show(PageHost);
         }
         finally
         {

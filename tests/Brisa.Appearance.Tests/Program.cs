@@ -287,6 +287,10 @@ internal static class Program
                     }
                     foreach (var control in Descendants(view).OfType<Control>())
                     {
+                        // The Settings motion styles are keyed and intentionally replace the
+                        // Fluent template for the segmented radios and the animated checks.
+                        if (control.Style == (Style?)view.TryFindResource("AnimatedCheck")
+                            || control.Style == (Style?)view.TryFindResource("ThemeSegment")) continue;
                         var key = control switch { PasswordBox => "DefaultPasswordBoxStyle", TextBox => "DefaultTextBoxStyle", ListBox => "DefaultListBoxStyle", CheckBox => "DefaultCheckBoxStyle", RadioButton => "DefaultRadioButtonStyle", _ => null };
                         if (key is not null) Check(MatchesTemplate(control, key), control.GetType().Name + " retains its Fluent template");
                     }

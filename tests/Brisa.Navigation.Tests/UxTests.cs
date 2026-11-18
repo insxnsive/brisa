@@ -23,6 +23,8 @@ internal static class UxTests
             SettingsDraft(store, check);
             SdkBanner(store, check);
             DiscordRestartConfirm(store, check);
+            SettingsMotion(store, check);
+            ConnectUnlock(store, check);
             TrayMenu(store, check);
             TrayLimits(store, check);
             RouteWindowChoices(store, check);
@@ -84,10 +86,14 @@ internal static class UxTests
         check(page.Content is AdvancedView, "Settings opens Advanced as a page");
         check(store.Current.ShowDetails, "opening Advanced does not save the draft");
 
+        var homeContent = (Grid)main.FindName("HomeContent");
+        var homeFlashed = false;
+        homeContent.IsVisibleChanged += (_, e) => homeFlashed |= e.NewValue is true;
         Click((Button)main.FindName("BackButton")); Pump(() => page.Content is SettingsView);
         settings = (SettingsView)page.Content;
         check(((CheckBox)settings.FindName("DetailsBox")).IsChecked == false, "Back restores the unsaved draft");
         check(store.Current.ShowDetails, "Back does not save the draft either");
+        check(!homeFlashed, "Advanced back to Settings never shows Home");
 
         Click((Button)settings.FindName("CancelButton")); Pump(() => page.Content is null);
         Click((Button)main.FindName("SettingsButton")); Pump(() => page.Content is SettingsView);
@@ -207,6 +213,49 @@ internal static class UxTests
     }
 
     private static NativeSnapshot SignedInIdle() => new(false, false, true, true, "fixture", null);
+
+    private static void SettingsMotion(SettingsStore store, Action<bool, string> check)
+    {
+        store.Save(new(AppTheme.System, false, true, "system", false));
+        var main = new MainWindow(new UxBackend(SignedInIdle()), store, exitWarning: _ => { });
+        main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
+        var page = (ContentControl)main.FindName("PageHost");
+        Click((Button)main.FindName("SettingsButton")); Pump(() => page.Content is SettingsView);
+        var view = (SettingsView)page.Content;
+        view.UpdateLayout();
+        var indicator = (Border)view.FindName("ThemeIndicator");
+        var system = (RadioButton)view.FindName("SystemTheme");
+        check(indicator.ActualWidth > 0
+            && Math.Abs(indicator.TranslatePoint(new Point(0, 0), view).X - system.TranslatePoint(new Point(0, 0), view).X) < 1,
+            "the theme indicator rests under the checked segment");
+        var dark = (RadioButton)view.FindName("DarkTheme");
+        dark.IsChecked = true;
+        Spin(260);
+        check(Math.Abs(indicator.TranslatePoint(new Point(0, 0), view).X - dark.TranslatePoint(new Point(0, 0), view).X) < 1,
+            "the theme indicator slides under the checked segment");
+        check(indicator.Width > 0, "the theme indicator keeps a measured width");
+        var details = (CheckBox)view.FindName("DetailsBox");
+        details.IsChecked = false; details.IsChecked = true; Spin(200);
+        details.ApplyTemplate();
+        check(details.Template.FindName("Glyph", details) is System.Windows.Shapes.Path { Opacity: 1 },
+            "the check glyph settles visible when checked");
+        Click((Button)view.FindName("CancelButton")); Pump(() => page.Content is null);
+        main.RequestExit(); Pump(() => !main.IsVisible);
+    }
+
+    private static void ConnectUnlock(SettingsStore store, Action<bool, string> check)
+    {
+        var backend = new UxBackend(SignedInIdle());
+        var main = new MainWindow(backend, store, exitWarning: _ => { });
+        main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
+        backend.SnapshotDelay = TimeSpan.FromMilliseconds(1500);
+        var page = (ContentControl)main.FindName("PageHost");
+        Click((Button)main.FindName("SettingsButton")); Pump(() => page.Content is SettingsView);
+        Click((Button)((SettingsView)page.Content).FindName("CancelButton")); Pump(() => page.Content is null);
+        check(((Button)main.FindName("PrimaryButton")).IsEnabled,
+            "Connect is enabled as soon as Home shows, before the status refresh");
+        main.RequestExit(); Pump(() => !main.IsVisible);
+    }
 
     private static void TrayMenu(SettingsStore store, Action<bool, string> check)
     {
@@ -479,6 +528,7 @@ internal static class UxTests
     private sealed class UxBackend(NativeSnapshot state) : IBackendClient
     {
         public NativeSnapshot State { get; set; } = state;
+        public TimeSpan SnapshotDelay { get; set; } = TimeSpan.Zero;
         public CommandResult ConnectResult { get; set; } = new(true);
         public List<string> Commands { get; } = [];
         // Every command with its payload as JSON, so a test can see exactly what was sent.
@@ -486,7 +536,11 @@ internal static class UxTests
         public TaskCompletionSource<CommandResult>? ConnectGate { get; set; }
         public TaskCompletionSource<CommandResult>? ImportGate { get; set; }
         public CommandResult OptimizeResult { get; set; } = new(true);
-        public Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(State);
+        public async Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default)
+        {
+            if (SnapshotDelay > TimeSpan.Zero) await Task.Delay(SnapshotDelay, cancellationToken);
+            return State;
+        }
         public async Task<CommandResult> CommandAsync(string command, object payload, CancellationToken cancellationToken = default)
         {
             Commands.Add(command);
