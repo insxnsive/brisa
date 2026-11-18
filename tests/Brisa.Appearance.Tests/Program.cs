@@ -76,26 +76,33 @@ internal static class Program
                 Check(routeBottom + 12 <= primaryTop, "minimum-size Home retains route/action separation");
                 Check(((TextBlock)main.FindName("DetailText")).ActualHeight >= 38, "blocked explanation keeps its space at minimum size");
                 Capture(main, theme + "-Blocked-Minimum");
-                // The Discord note is static and sits under the primary action: Home must still
-                // fit at the minimum size in both languages, without adding a scrolling surface.
+                // The static Discord note is gone, so the traffic graph owns that space. A
+                // connected Home must fit the graph above the route card at the minimum size.
                 var noteWindow = new MainWindow(new UiTestBackendClient(new(false, false, true, true, "fixture", null)), store);
                 noteWindow.Show(); noteWindow.InitializeAsync().GetAwaiter().GetResult();
                 noteWindow.Width = noteWindow.MinWidth; noteWindow.Height = noteWindow.MinHeight; noteWindow.UpdateLayout();
-                var home = (Grid)noteWindow.FindName("HomeContent");
-                var discordNote = (TextBlock)noteWindow.FindName("DiscordRestartNote");
-                Check(discordNote.Visibility == Visibility.Visible, "Home shows the Discord restart note when disconnected");
-                Check(!Descendants(home).OfType<ScrollViewer>().Any(), "Home has no scrolling surface at minimum size");
-                Check(discordNote.TranslatePoint(new Point(0, discordNote.ActualHeight), home).Y <= home.ActualHeight + 0.5,
-                    "the Discord note fits inside Home at minimum size");
-                var noteLanguage = Brisa.Localization.LocalizationManager.Current.Preference;
-                Brisa.Localization.LocalizationManager.Current.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
-                noteWindow.UpdateLayout();
-                Check(discordNote.Text == "O Discord fecha e reabre por um instante ao conectar ou desconectar.",
-                    "Portuguese Home translates the Discord note");
-                Check(discordNote.TranslatePoint(new Point(0, discordNote.ActualHeight), home).Y <= home.ActualHeight + 0.5,
-                    "the Portuguese Discord note fits inside Home at minimum size");
-                Brisa.Localization.LocalizationManager.Current.Apply(noteLanguage);
+                Check(noteWindow.FindName("DiscordRestartNote") is null, "Home no longer carries the static Discord restart note");
                 noteWindow.RequestExit();
+                Spin(200);
+
+                var graphWindow = new MainWindow(new UiTestBackendClient(
+                    new(true, false, true, true, "fixture", new RouteInfo("AR#63", "AR", 38),
+                        TunnelActive: true, Readiness: "verified", DiscordRunning: true, OwnedTunnelPresent: true)), store);
+                graphWindow.Show(); graphWindow.InitializeAsync().GetAwaiter().GetResult();
+                graphWindow.Width = graphWindow.MinWidth; graphWindow.Height = graphWindow.MinHeight; graphWindow.UpdateLayout();
+                var graphHome = (Grid)graphWindow.FindName("HomeContent");
+                var graphSurface = (FrameworkElement)graphWindow.FindName("ConnectionSurface");
+                var graphDetailsHost = (FrameworkElement)graphWindow.FindName("DetailsHost");
+                var graphTrafficCard = (FrameworkElement)graphWindow.FindName("TrafficCard");
+                var graphChartHost = (FrameworkElement)graphWindow.FindName("ChartHost");
+                var graphRoute = (FrameworkElement)graphWindow.FindName("RouteButton");
+                Check(graphDetailsHost.IsVisible, "a connected Home shows the details host");
+                Check(graphTrafficCard.IsVisible && graphChartHost.IsVisible, "a connected Home shows the Discord traffic graph");
+                Check(!Descendants(graphHome).OfType<ScrollViewer>().Any(), "Home has no scrolling surface at minimum size");
+                Check(graphTrafficCard.TranslatePoint(new Point(0, graphTrafficCard.ActualHeight), graphSurface).Y
+                    <= graphRoute.TranslatePoint(new Point(0, 0), graphSurface).Y + 0.5,
+                    "the Discord traffic graph fits above the route card at minimum size");
+                graphWindow.RequestExit();
                 Spin(200);
                 foreach (var pageName in new[] { "Settings", "Account", "Route", "Advanced" })
                 {
