@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Brisa;
 using Brisa.Models;
@@ -25,9 +26,10 @@ internal static class UxTests
             DiscordRestartConfirm(store, check);
             SettingsMotion(store, check);
             ConnectUnlock(store, check);
+            RoutePagePings(store, check);
             TrayMenu(store, check);
             TrayLimits(store, check);
-            RouteWindowChoices(store, check);
+            RouteViewChoices(store, check);
             ScansUseTheSavedCountry(store, check);
             RouteClickRemembers(store, check);
         }
@@ -168,22 +170,11 @@ internal static class UxTests
         check(primary.Content as string == "Connect", "opening a page resets the confirmation");
 
         Click(primary);
-        var routeOpened = false;
-        var cancelRoute = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
-        cancelRoute.Tick += (_, _) =>
-        {
-            var dialog = Application.Current.Windows.OfType<RouteWindow>().FirstOrDefault(candidate => candidate.IsVisible);
-            if (dialog is null) return;
-            routeOpened = true;
-            cancelRoute.Stop();
-            dialog.DialogResult = false;
-        };
-        try
-        {
-            cancelRoute.Start();
-            Click((Button)main.FindName("RouteButton"));
-        }
-        finally { cancelRoute.Stop(); }
+        Click((Button)main.FindName("RouteButton"));
+        Pump(() => page.Content is RouteView);
+        var routeOpened = page.Content is RouteView;
+        if (routeOpened) Click((Button)((RouteView)page.Content).FindName("CancelButton"));
+        Pump(() => page.Content is null);
         check(routeOpened && !backend.Commands.Contains("connect"), "opening and cancelling Route never connects");
         check(primary.Content as string == "Connect", "opening Route resets the Discord restart confirmation even when cancelled");
 
@@ -210,6 +201,41 @@ internal static class UxTests
         Click(primary); Pump(() => backend.Commands.Contains("connect"));
         check(backend.Commands.Contains("connect"), "the second click connects");
         main.RequestExit(); Pump(() => !main.IsVisible);
+    }
+
+    private static void RoutePagePings(SettingsStore store, Action<bool, string> check)
+    {
+        store.Save(store.Current with { PreferredRouteCountry = null });
+        var backend = new UxBackend(SignedInIdle());
+        var main = new MainWindow(backend, store, exitWarning: _ => { });
+        main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
+        var page = (ContentControl)main.FindName("PageHost");
+        Click((Button)main.FindName("RouteButton")); Pump(() => page.Content is RouteView);
+        var view = (RouteView)page.Content;
+        Spin(300);
+        var list = (ListBox)view.FindName("CountryList");
+        var texts = VisualDescendants(list).OfType<TextBlock>().Select(t => t.Text).Where(t => t.Length > 0).ToList();
+        check(texts.Contains("270 ms") && texts.Contains("Best route"), "the route page shows measured pings and the automatic label");
+        var indicator = (Border)view.FindName("SelectionIndicator");
+        var before = indicator.TranslatePoint(new Point(0, 0), view).Y;
+        list.SelectedIndex = 1; Spin(260);
+        var after = indicator.TranslatePoint(new Point(0, 0), view).Y;
+        check(Math.Abs(after - before) > 1, "the selection indicator slides with the selected row");
+        Click((Button)view.FindName("CancelButton")); Pump(() => page.Content is null);
+        Click((Button)main.FindName("RouteButton")); Pump(() => page.Content is RouteView);
+        check(backend.Commands.Count(c => c == "routePings") == 1, "reopening Route within 120 s reuses the cached pings");
+        Click((Button)((RouteView)page.Content).FindName("CancelButton")); Pump(() => page.Content is null);
+        main.RequestExit(); Pump(() => !main.IsVisible);
+    }
+
+    private static IEnumerable<DependencyObject> VisualDescendants(DependencyObject root)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var nested in VisualDescendants(child)) yield return nested;
+        }
     }
 
     private static NativeSnapshot SignedInIdle() => new(false, false, true, true, "fixture", null);
@@ -399,36 +425,36 @@ internal static class UxTests
         check(NativeMethods.RegisterWindowMessage("TaskbarCreated") != 0 && TrayService.AllowTaskbarCreated(), "the TaskbarCreated message can be allowed");
     }
 
-    private static void RouteWindowChoices(SettingsStore store, Action<bool, string> check)
+    private static void RouteViewChoices(SettingsStore store, Action<bool, string> check)
     {
-        var main = new MainWindow(new UxBackend(SignedInIdle()), store, exitWarning: _ => { });
-        // A constructed window stays in Application.Windows until it is closed, so every probe closes its window.
-        static string Tag(string? preferred = null, bool argument = true)
+        static int Selected(string? preferred = null)
         {
-            var window = argument ? new RouteWindow(null!, preferred) : new RouteWindow(null!);
-            try { return (string)((ListBoxItem)((ListBox)window.FindName("CountryList")).SelectedItem).Tag; }
-            finally { window.Close(); }
+            var view = new RouteView(preferred, null, null);
+            var host = new Window { Content = view, Width = 440, Height = 520 };
+            host.Show(); host.UpdateLayout();
+            var index = ((ListBox)view.FindName("CountryList")).SelectedIndex;
+            host.Close();
+            return index;
         }
         static (Visibility Visible, string Text, double HelperGap) Caption(RouteInfo? current, string? preferred = null)
         {
-            var window = new RouteWindow(null!, preferred, current);
-            try
-            {
-                var text = (TextBlock)window.FindName("CurrentRouteText");
-                return (text.Visibility, text.Text, ((TextBlock)window.FindName("HelperText")).Margin.Bottom);
-            }
-            finally { window.Close(); }
+            var view = new RouteView(preferred, current, null);
+            var host = new Window { Content = view, Width = 440, Height = 520 };
+            host.Show(); host.UpdateLayout();
+            var text = (TextBlock)view.FindName("CurrentRouteText");
+            var result = (text.Visibility, text.Text, ((TextBlock)view.FindName("HelperText")).Margin.Bottom);
+            host.Close();
+            return result;
         }
-        check(Tag(argument: false) == "", "the one argument form still starts on Automatic");
-        check(Tag("JP") == "JP" && Tag("jp") == "JP", "a saved country that is offered is preselected, in any case");
-        check(Tag("SV") == "" && Tag(null) == "" && Tag("") == "" && Tag("  ") == "", "an unknown or empty one falls back to Automatic");
+        check(Selected() == 0, "the one argument form still starts on Automatic");
+        check(Selected("JP") == 3 && Selected("jp") == 3, "a saved country that is offered is preselected, in any case");
+        check(Selected("SV") == 0 && Selected(null) == 0 && Selected("") == 0 && Selected("  ") == 0, "an unknown or empty one falls back to Automatic");
 
         var loc = Brisa.Localization.LocalizationManager.Current;
         var none = Caption(null);
-        check(none.Visible == Visibility.Collapsed && none.HelperGap == 20, "no route, no caption, and the layout is unchanged");
+        check(none.Visible == Visibility.Collapsed, "no route, no caption");
         var withPing = Caption(new RouteInfo("JP#28", "JP", 34), "NL");
         check(withPing.Visible == Visibility.Visible && withPing.Text == "Current route: Japan JP#28, 34 ms", "caption with a ping: " + withPing.Text);
-        check(withPing.HelperGap == 8, "the caption takes its room from the gap above the list");
         check(Caption(new RouteInfo("JP#28", "JP")).Text == "Current route: Japan JP#28", "caption without a ping");
         check(Caption(new RouteInfo("JP#28", "")).Text == "Current route: JP#28", "caption without a country has no double space");
         check(Caption(new RouteInfo("", "")).Visible == Visibility.Collapsed, "an empty route shows nothing");
@@ -436,7 +462,6 @@ internal static class UxTests
         var portuguese = Caption(new RouteInfo("JP#28", "JP", 34));
         check(portuguese.Text == "Rota atual: " + Brisa.Localization.CountryNames.Name("JP", "pt-BR") + " JP#28, 34 ms", "caption in Portuguese: " + portuguese.Text);
         loc.Apply(Brisa.Localization.LocalizationManager.English);
-        main.RequestExit(); Pump(() => !main.IsVisible);
     }
 
     private static void ScansUseTheSavedCountry(SettingsStore store, Action<bool, string> check)
@@ -478,22 +503,18 @@ internal static class UxTests
         string? caption = null;
         void ClickRoute(string wanted)
         {
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
-            timer.Tick += (_, _) =>
-            {
-                var window = Application.Current.Windows.OfType<RouteWindow>().FirstOrDefault(candidate => candidate.IsVisible);
-                if (window is null) return;
-                timer.Stop();
-                var list = (ListBox)window.FindName("CountryList");
-                preselected = (string)((ListBoxItem)list.SelectedItem).Tag;
-                var text = (TextBlock)window.FindName("CurrentRouteText");
-                caption = text.Visibility == Visibility.Visible ? text.Text : null;
-                list.SelectedItem = list.Items.OfType<ListBoxItem>().First(item => (string)item.Tag == wanted);
-                ((Button)window.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            };
-            timer.Start();
             Click((Button)main.FindName("RouteButton"));
-            timer.Stop();
+            var page = (ContentControl)main.FindName("PageHost");
+            Pump(() => page.Content is RouteView);
+            var view = (RouteView)page.Content;
+            var list = (ListBox)view.FindName("CountryList");
+            string[] codes = ["", "CA", "DE", "JP", "NL", "US"];
+            preselected = codes[Math.Max(0, list.SelectedIndex)];
+            var text = (TextBlock)view.FindName("CurrentRouteText");
+            caption = text.Visibility == Visibility.Visible ? text.Text : null;
+            list.SelectedIndex = Array.IndexOf(codes, wanted);
+            Click((Button)view.FindName("UseRouteButton"));
+            Pump(() => page.Content is null);
         }
 
         ClickRoute("DE");
@@ -536,6 +557,9 @@ internal static class UxTests
         public TaskCompletionSource<CommandResult>? ConnectGate { get; set; }
         public TaskCompletionSource<CommandResult>? ImportGate { get; set; }
         public CommandResult OptimizeResult { get; set; } = new(true);
+        public CommandResult RoutePingsResult { get; set; } = new(true,
+            Pings: new() { ["CA"] = 120, ["DE"] = 190, ["JP"] = 270, ["NL"] = 200, ["US"] = 130 },
+            Unavailable: new HashSet<string>());
         public async Task<NativeSnapshot> SnapshotAsync(CancellationToken cancellationToken = default)
         {
             if (SnapshotDelay > TimeSpan.Zero) await Task.Delay(SnapshotDelay, cancellationToken);
@@ -546,6 +570,7 @@ internal static class UxTests
             Commands.Add(command);
             Calls.Add((command, System.Text.Json.JsonSerializer.Serialize(payload)));
             if (command == "optimize") return OptimizeResult;
+            if (command == "routePings") return RoutePingsResult;
             if (command == "connect")
             {
                 if (ConnectGate is not null) await ConnectGate.Task;

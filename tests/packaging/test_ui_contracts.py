@@ -165,7 +165,7 @@ class NotificationContracts(unittest.TestCase):
         import xml.etree.ElementTree as ET
         x = '{http://schemas.microsoft.com/winfx/2006/xaml}'
         ns = '{http://schemas.microsoft.com/winfx/2006/xaml/presentation}'
-        for name in ('Controls/NotificationsPopover.xaml', 'MainWindow.xaml', 'SettingsView.xaml'):
+        for name in ('Controls/NotificationsPopover.xaml', 'MainWindow.xaml', 'SettingsView.xaml', 'RouteView.xaml'):
             for style in ET.parse(ROOT / name).iter(ns + 'Style'):
                 self.assertIsNotNone(style.get(x + 'Key'), name + ' has a style without x:Key')
         popover = ''.join((ROOT / 'Controls' / f).read_text(encoding='utf-8') for f in ('NotificationsPopover.xaml', 'NotificationsPopover.xaml.cs'))
@@ -386,12 +386,16 @@ class TrayAndRouteContracts(unittest.TestCase):
         self.assertIn('"optimize", RoutePayload(), scanBudget.Token)', method_body(code, 'RunPrimaryMutationAsync'))
         self.assertIn('string.IsNullOrEmpty(_settings.Current.PreferredRouteCountry)', code)
         route = method_body(code, 'Route_Click')
-        self.assertIn('new RouteWindow(this, _settings.Current.PreferredRouteCountry, _state.Snapshot?.Route)', route)
-        self.assertIn('if (result.Success) RememberRoute(dialog.SelectedCountry);', route)
+        self.assertIn('new RouteView(_settings.Current.PreferredRouteCountry, _state.Snapshot?.Route, LoadRoutePingsAsync, _allowMotion)', route)
+        self.assertIn('if (result.Success) RememberRoute(country);', method_body(code, 'RunRouteOptimizeAsync'))
         self.assertIn('_settings.Save(_settings.Current with { PreferredRouteCountry = country })', method_body(code, 'RememberRoute'))
-        window = (ROOT / 'RouteWindow.xaml.cs').read_text(encoding='utf-8')
-        self.assertIn('public RouteWindow(MainWindow _, string? preferred = null, RouteInfo? current = null)', window)
-        for name in ('InitializeAsync', 'StartAutoConnect', 'StartRouteScan', 'Primary_Click', 'RunPrimaryMutationAsync', 'TrackProgressAsync', 'ExecuteWithVerificationAsync', 'Route_Click'):
+        self.assertFalse((ROOT / 'RouteWindow.xaml').exists())
+        view = (ROOT / 'RouteView.xaml.cs').read_text(encoding='utf-8')
+        self.assertIn('public RouteView(string? preferred, RouteInfo? current, Func<CancellationToken, Task<RoutePingResult>>? loadPings, Func<bool>? allowMotion = null)', view)
+        backend = (REPO / 'backend/src/backend.mjs').read_text(encoding='utf-8')
+        self.assertIn('"routePings"', backend)
+        self.assertIn('ROUTE_PINGS_BUSY', backend)
+        for name in ('InitializeAsync', 'StartAutoConnect', 'StartRouteScan', 'Primary_Click', 'RunPrimaryMutationAsync', 'TrackProgressAsync', 'ExecuteWithVerificationAsync', 'Route_Click', 'RunRouteOptimizeAsync'):
             self.assertNotRegex(method_body(code, name), r'[Nn]otification', name)
 
     def test_light_links_use_a_shade_that_passes_contrast_on_the_page_and_on_cards(self):

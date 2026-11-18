@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 namespace Brisa.Models;
 
 public sealed record RouteInfo(string Server, string Country, int? PingMs = null);
+public sealed record RoutePingResult(Dictionary<string, int?> Pings, HashSet<string> Unavailable);
 public sealed record NativeSnapshot(
     bool Connected, bool ExternalTunnel, bool Reliable, bool SignedIn, string Username, RouteInfo? Route,
     string Mode = "proton", bool TunnelActive = false, string Readiness = "inactive", bool DiscordRunning = false,
@@ -22,12 +23,15 @@ public sealed record NativeSnapshot(
     [JsonIgnore]
     public bool HasOwnedTunnel => OwnedTunnelPresent || TunnelActive || Connected;
 }
-public sealed record CommandResult(bool Success, string? Code = null, string? Message = null, string? CaptchaUrl = null, RouteInfo? Route = null, string? Stage = null);
+public sealed record CommandResult(bool Success, string? Code = null, string? Message = null, string? CaptchaUrl = null, RouteInfo? Route = null, string? Stage = null,
+    [property: JsonPropertyName("pings")] Dictionary<string, int?>? Pings = null,
+    [property: JsonPropertyName("unavailable")] HashSet<string>? Unavailable = null);
 public sealed record BackendEnvelope(string Id, bool Ok, JsonElement Result, string? Error = null, string? Code = null);
 public sealed record BackendRequest(string Id, string Command, object Payload);
 
 [JsonSerializable(typeof(NativeSnapshot))]
 [JsonSerializable(typeof(CommandResult))]
+[JsonSerializable(typeof(RoutePingResult))]
 [JsonSerializable(typeof(BackendEnvelope))]
 [JsonSerializable(typeof(BackendRequest))]
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]

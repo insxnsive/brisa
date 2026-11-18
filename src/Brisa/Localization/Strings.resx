@@ -139,6 +139,11 @@
   <data name="DiscordRestartNote" xml:space="preserve"><value>Discord closes and reopens for a moment when you connect or disconnect.</value></data>
   <data name="SettingsSaved" xml:space="preserve"><value>Saved</value></data>
   <data name="SettingsClose" xml:space="preserve"><value>Close</value></data>
+  <data name="RoutePingNoReply" xml:space="preserve"><value>No reply</value></data>
+  <data name="RoutePingUnavailable" xml:space="preserve"><value>Not on your plan</value></data>
+  <data name="RoutePingAutomatic" xml:space="preserve"><value>Best route</value></data>
+  <data name="RoutePingMeasuring" xml:space="preserve"><value>measuring</value></data>
+  <data name="RoutePingMeasuredFormat" xml:space="preserve"><value>{0} ms</value></data>
   <data name="ConnectConfirmDiscordRestart" xml:space="preserve"><value>Are you sure? Brisa will restart Discord</value></data>
   <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
   <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>

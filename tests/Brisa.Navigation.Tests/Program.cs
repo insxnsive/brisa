@@ -429,14 +429,19 @@ internal static class Program
 
             // A3: the already-fixed null selection. Clearing the list and confirming must not
             // throw, and Automatic must stay null rather than becoming an invalid country.
-            var routeWindow = new RouteWindow(a1Main) { Owner = a1Main };
-            routeWindow.Loaded += (_, _) =>
+            string? chosen = "unset";
+            var routeView = new RouteView(null, null, null);
+            var routeHost = new Window { Content = routeView, Width = 440, Height = 520 };
+            routeView.Chosen += (_, args) => chosen = args.Country;
+            routeView.Loaded += (_, _) =>
             {
-                ((ListBox)routeWindow.FindName("CountryList")).SelectedIndex = -1;
-                ((Button)routeWindow.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ((ListBox)routeView.FindName("CountryList")).SelectedIndex = -1;
+                ((Button)routeView.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             };
-            var confirmed = routeWindow.ShowDialog();
-            Check(confirmed == true && routeWindow.SelectedCountry is null, "clearing the country list selects Automatic without throwing");
+            routeHost.Show();
+            Pump(() => chosen != "unset");
+            Check(chosen is null, "clearing the country list selects Automatic without throwing");
+            routeHost.Close();
 
             // A4: a verification window that cannot start is reported, not silently cancelled.
             var verification = new MainWindow(new CaptchaBackend(), store)

@@ -1023,16 +1023,49 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    private Dictionary<string, int?>? _routePings;
+    private DateTime _routePingsAt;
+
     private async void Route_Click(object sender, RoutedEventArgs e)
     {
         if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute) return;
-        // Opening Route ends the previous Connect intent, even when the dialog is cancelled.
+        // Opening Route ends the previous Connect intent, even when the page is cancelled.
         _confirmDiscordRestart = false;
         PrimaryButton.Content = _state.PrimaryLabel;
-        var dialog = new RouteWindow(this, _settings.Current.PreferredRouteCountry, _state.Snapshot?.Route) { Owner = this };
-        if (dialog.ShowDialog() != true) return;
-        // The modal pumps the dispatcher, so eligibility can change while it is open. The
-        // selection is never queued or replayed later; the user is told instead.
+        // Choosing a route supersedes the quiet launch scan; it would otherwise hold the backend slot.
+        await PreemptRouteScanAsync();
+        if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute) return;
+        var view = new RouteView(_settings.Current.PreferredRouteCountry, _state.Snapshot?.Route, LoadRoutePingsAsync, _allowMotion);
+        view.CancelRequested += async (_, _) => await ReturnHomeAsync();
+        view.Chosen += async (_, args) =>
+        {
+            await ReturnHomeAsync();
+            await RunRouteOptimizeAsync(args.Country);
+        };
+        ShowPage(view, Localization.LocalizationManager.Current["ChooseRoute"]);
+    }
+
+    private async Task<RoutePingResult> LoadRoutePingsAsync(CancellationToken token)
+    {
+        string[] countries = ["CA", "DE", "JP", "NL", "US"];
+        if (_routePings is { } cached && (DateTime.UtcNow - _routePingsAt).TotalSeconds < 120)
+            return new RoutePingResult(new Dictionary<string, int?>(cached), new HashSet<string>());
+        try
+        {
+            var result = await _backend.CommandAsync("routePings", new { countries }, token);
+            if (!result.Success)
+                return new RoutePingResult(new Dictionary<string, int?>(), new HashSet<string>());
+            _routePings = result.Pings ?? new Dictionary<string, int?>();
+            _routePingsAt = DateTime.UtcNow;
+            return new RoutePingResult(_routePings, result.Unavailable ?? new HashSet<string>());
+        }
+        catch { return new RoutePingResult(new Dictionary<string, int?>(), new HashSet<string>()); }
+    }
+
+    private async Task RunRouteOptimizeAsync(string? country)
+    {
+        // The page can be open while eligibility changes, so the re-check stays. The selection is
+        // never queued or replayed later; the user is told instead.
         if (_currentPage is not null || _navigationBusy || _closing || !CanChooseRoute)
         { _notice(Localization.LocalizationManager.Current["RouteStateChanged"]); return; }
         if (!await _operation.WaitAsync(0))
@@ -1043,10 +1076,10 @@ public partial class MainWindow : Window
             // Optimization can take minutes, so the window says so instead of looking idle.
             // The detail stays generic: the backend does not promise a useful optimize stage.
             SetState(new HomeState(ConnectionPhase.Optimizing, _state.Snapshot, "DetailOptimizing"));
-            var pending = ExecuteWithVerificationAsync("optimize", (token, method) => new { country = dialog.SelectedCountry, humanVerificationToken = token, humanVerificationMethod = method });
+            var pending = ExecuteWithVerificationAsync("optimize", (token, method) => new { country, humanVerificationToken = token, humanVerificationMethod = method });
             await TrackProgressAsync(pending, _operationEpoch);
             var result = await pending;
-            if (result.Success) RememberRoute(dialog.SelectedCountry);
+            if (result.Success) RememberRoute(country);
             else Localization.BackendText.Show(this, result.Code, result.Message, Localization.LocalizationManager.Current["Route"]);
             await RefreshSnapshotAsync(IssueTicket(fromOperation: true), TimeSpan.FromSeconds(20));
         }
@@ -1127,23 +1160,17 @@ public partial class MainWindow : Window
             using var stream = File.Create(file); encoder.Save(stream);
         }
         Capture(this, output);
-        foreach (var button in new[] { SettingsButton, AccountButton })
+        foreach (var button in new[] { SettingsButton, AccountButton, RouteButton })
         {
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            // Route_Click preempts the quiet scan before it shows the page, so wait for it.
+            for (var attempt = 0; attempt < 50 && _currentPage is null; attempt++)
+                await Task.Delay(20);
             await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             if (_currentPage is null || System.Windows.Application.Current.Windows.Count != 1 || HomeContent.IsVisible)
                 throw new InvalidOperationException("Inline navigation must use the same window.");
             Capture(this, Path.Combine(directory ?? ".", Path.GetFileNameWithoutExtension(output) + "-" + _currentPage.GetType().Name + ".png"));
             await ReturnHomeAsync();
-        }
-        var surfaces = new Window[] { new RouteWindow(this) };
-        foreach (var view in surfaces)
-        {
-            view.Owner = this; view.Show();
-            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-            if (view.ActualWidth < 200 || view.ActualHeight < 100) throw new InvalidOperationException(LocalizationManager.Current["SecondaryWindowFailed"]);
-            Capture(view, Path.Combine(directory ?? ".", Path.GetFileNameWithoutExtension(output) + "-" + view.GetType().Name + ".png"));
-            view.Close();
         }
         RequestExit();
     }
