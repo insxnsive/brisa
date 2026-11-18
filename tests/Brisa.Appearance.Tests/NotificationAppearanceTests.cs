@@ -82,6 +82,11 @@ internal static class NotificationAppearanceTests
                 check(Descendants(panel).OfType<ScrollViewer>().Any(v => v.ScrollableHeight > 0), label + ": a long list scrolls instead of growing past 390");
                 check(Descendants(panel).OfType<Button>().All(b => b.ActualHeight >= 24 || !b.IsVisible), label + ": every control keeps a usable height");
                 check(Descendants(panel).OfType<ToggleButton>().All(t => t.ActualHeight >= 28), label + ": filter pills keep their height");
+                var indicator = (Border)panel.FindName("ActiveFilterIndicator");
+                var allPill = (ToggleButton)panel.FindName("AllPill");
+                var track = (FrameworkElement)panel.FindName("FilterTrack");
+                check(indicator.ActualWidth > 0 && Math.Abs(indicator.ActualWidth - allPill.ActualWidth) < 0.5 && indicator.ActualWidth <= track.ActualWidth + 0.5,
+                    label + ": the filter indicator sits behind All inside the pill track, got " + indicator.ActualWidth + " of " + track.ActualWidth);
                 popup.IsOpen = false;
                 spin(60);
                 main.RequestExit();

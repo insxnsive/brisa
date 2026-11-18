@@ -3,16 +3,21 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Brisa.Localization;
 using Brisa.Models;
 using Brisa.Security;
 using Brisa.Services;
 using Application = System.Windows.Application;
 using Brush = System.Windows.Media.Brush;
+using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using HAlign = System.Windows.HorizontalAlignment;
+using Point = System.Windows.Point;
 using ProgressBar = System.Windows.Controls.ProgressBar;
 
 namespace Brisa.Controls;
@@ -26,8 +31,36 @@ public partial class NotificationsPopover : UserControl
     private INotificationService? _service;
     private NotificationSnapshot _snapshot = NotificationSnapshot.Empty;
     private bool _unreadOnly;
+    private bool _indicatorRetryPending;
+    private bool _syncingIndicator;
+    private ButtonBase? _bell;
 
-    public NotificationsPopover() => InitializeComponent();
+    // Motion follows Emil Kowalski's rules: short, ease-out, never in the way of input. Every
+    // animation stops on completion (FillBehavior.Stop) after the resting value was already set,
+    // so layout, DPI and focus checks always read the settled state.
+    private static readonly IEasingFunction EaseOut = Frozen(new CubicEase { EasingMode = EasingMode.EaseOut });
+    private static readonly IEasingFunction Swing = Frozen(new SineEase { EasingMode = EasingMode.EaseInOut });
+
+    public NotificationsPopover()
+    {
+        InitializeComponent();
+        AttachButtonPressMotion(AllPill);
+        AttachButtonPressMotion(UnreadPill);
+        AttachButtonPressMotion(MarkAllButton);
+        IsVisibleChanged += (_, e) =>
+        {
+            if (e.NewValue is not true) return;
+            HookBell();
+            PlayOpenAnimation();
+        };
+        // A language switch or the first measure changes the pill widths; the indicator follows.
+        // A running slide already ends at the measured target, so a resize mid-slide waits.
+        FilterPillsPanel.SizeChanged += (_, _) => { if (!IndicatorTranslate.HasAnimatedProperties) UpdateFilterIndicator(animate: false); };
+        Loaded += (_, _) => { HookBell(); UpdateFilterIndicator(animate: false); };
+    }
+
+    /// <summary>Motion gate; null follows Windows' "Show animations" setting.</summary>
+    public Func<bool>? AllowMotion { get; set; }
 
     /// <summary>Raised on Escape so the host can close the popup and return focus to the bell.</summary>
     public event EventHandler? CloseRequested;
@@ -44,6 +77,9 @@ public partial class NotificationsPopover : UserControl
     {
         _service = service;
         Render(service.Snapshot);
+        HookBell();
+        // The popup's PlacementTarget binding can resolve after the host constructor runs.
+        if (_bell is null) Dispatcher.BeginInvoke(HookBell, DispatcherPriority.Loaded);
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
@@ -61,6 +97,12 @@ public partial class NotificationsPopover : UserControl
     public void FocusFirst() => Keyboard.Focus(AllPill);
 
     public void Render(NotificationSnapshot snapshot)
+    {
+        RenderList(snapshot);
+        UpdateFilterIndicator(animate: false);
+    }
+
+    private void RenderList(NotificationSnapshot snapshot)
     {
         _snapshot = snapshot;
         var loc = LocalizationManager.Current;
@@ -101,8 +143,212 @@ public partial class NotificationsPopover : UserControl
     private void Filter_Click(object sender, RoutedEventArgs e)
     {
         _unreadOnly = ReferenceEquals(sender, UnreadPill);
-        Render(_snapshot);
+        // RenderList, not Render: Render would snap the indicator to the new pill first and
+        // leave nothing to slide from.
+        RenderList(_snapshot);
+        UpdateFilterIndicator(animate: true);
+        PlayFilterListTransition();
     }
+
+    private void UpdateFilterIndicator(bool animate)
+    {
+        if (_syncingIndicator) return;
+        _syncingIndicator = true;
+        try { SyncFilterIndicator(animate); }
+        finally { _syncingIndicator = false; }
+    }
+
+    private void SyncFilterIndicator(bool animate)
+    {
+        // Where the indicator is now, before anything moves.
+        var fromX = IndicatorTranslate.X;
+        var fromWidth = ActiveFilterIndicator.Width > 0 && !double.IsNaN(ActiveFilterIndicator.Width) ? ActiveFilterIndicator.Width : 0;
+        // The checked pill turns SemiBold, which changes both pill widths. Measure after that.
+        if (FilterPillsPanel.IsVisible) FilterPillsPanel.UpdateLayout();
+        var target = _unreadOnly ? UnreadPill : AllPill;
+        if (target.ActualWidth <= 0)
+        {
+            // Not measured yet (closed popup or first layout pass): align once, after layout.
+            if (!_indicatorRetryPending)
+            {
+                _indicatorRetryPending = true;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    _indicatorRetryPending = false;
+                    if ((_unreadOnly ? UnreadPill : AllPill).ActualWidth > 0) UpdateFilterIndicator(animate: false);
+                }, DispatcherPriority.Loaded);
+            }
+            return;
+        }
+        double targetX;
+        try { targetX = target.TranslatePoint(new Point(0, 0), FilterPillsPanel).X; }
+        catch (InvalidOperationException) { targetX = ReferenceEquals(target, AllPill) ? 0 : AllPill.ActualWidth + UnreadPill.Margin.Left; }
+        var targetWidth = target.ActualWidth;
+        if (fromWidth <= 0) fromWidth = targetWidth;
+
+        Stop(IndicatorTranslate, TranslateTransform.XProperty);
+        Stop(ActiveFilterIndicator, WidthProperty);
+        Stop(IndicatorScale, ScaleTransform.ScaleXProperty);
+        IndicatorTranslate.X = targetX;
+        ActiveFilterIndicator.Width = targetWidth;
+        IndicatorScale.ScaleX = 1;
+
+        if (!animate || !StatusMotion.Allowed(AllowMotion) || fromWidth <= 0) return;
+        if (Math.Abs(fromX - targetX) < 0.5 && Math.Abs(fromWidth - targetWidth) < 0.5) return;
+        Animate(IndicatorTranslate, TranslateTransform.XProperty, Ease(fromX, targetX, 220));
+        Animate(ActiveFilterIndicator, WidthProperty, Ease(fromWidth, targetWidth, 220));
+        var stretch = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(220), FillBehavior = FillBehavior.Stop };
+        stretch.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        stretch.KeyFrames.Add(new EasingDoubleKeyFrame(1.05, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90)), EaseOut));
+        stretch.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220)), EaseOut));
+        Animate(IndicatorScale, ScaleTransform.ScaleXProperty, stretch);
+    }
+
+    private void PlayFilterListTransition()
+    {
+        Stop(ListHost, OpacityProperty);
+        Stop(ListTranslate, TranslateTransform.YProperty);
+        ListHost.Opacity = 1;
+        ListTranslate.Y = 0;
+        if (!StatusMotion.Allowed(AllowMotion)) return;
+        Animate(ListHost, OpacityProperty, Ease(0.25, 1, 160));
+        Animate(ListTranslate, TranslateTransform.YProperty, Ease(5, 0, 160));
+    }
+
+    private void PlayOpenAnimation()
+    {
+        Stop(CardBorder, OpacityProperty);
+        Stop(CardScale, ScaleTransform.ScaleXProperty);
+        Stop(CardScale, ScaleTransform.ScaleYProperty);
+        Stop(CardTranslate, TranslateTransform.YProperty);
+        CardBorder.Opacity = 1;
+        CardScale.ScaleX = CardScale.ScaleY = 1;
+        CardTranslate.Y = 0;
+        if (!StatusMotion.Allowed(AllowMotion)) return;
+        Animate(CardBorder, OpacityProperty, Ease(0, 1, 200));
+        Animate(CardScale, ScaleTransform.ScaleXProperty, Ease(0.95, 1, 200));
+        Animate(CardScale, ScaleTransform.ScaleYProperty, Ease(0.95, 1, 200));
+        Animate(CardTranslate, TranslateTransform.YProperty, Ease(-6, 0, 200));
+        // The host renders the fresh snapshot in Popup.Opened, which can run after this. Stagger
+        // the rows once that list is in place, or the animation would land on discarded rows.
+        Dispatcher.BeginInvoke(StaggerRows, DispatcherPriority.Loaded);
+    }
+
+    private void StaggerRows()
+    {
+        if (!IsVisible || !StatusMotion.Allowed(AllowMotion)) return;
+        var index = 0;
+        foreach (UIElement child in ListHost.Children)
+        {
+            if (index == 6) break;
+            if (child.Visibility != Visibility.Visible) continue;
+            // A delayed BeginTime would show the row at full opacity until its turn and then
+            // blink to 0. Holding 0 in a key frame from time zero keeps the stagger clean.
+            var delay = TimeSpan.FromMilliseconds(index * 28);
+            Animate(child, OpacityProperty, Held(0, 1, delay, 170));
+            var shift = child.RenderTransform as TranslateTransform is { IsFrozen: false } existing ? existing : new TranslateTransform();
+            child.RenderTransform = shift;
+            Animate(shift, TranslateTransform.YProperty, Held(6, 0, delay, 170));
+            index++;
+        }
+    }
+
+    private void AttachButtonPressMotion(ButtonBase button)
+    {
+        button.RenderTransformOrigin = new Point(0.5, 0.5);
+        // Click, not mouse down: it also covers Space and Enter, and never delays the click itself.
+        button.Click += (_, _) => Press(button, 0.96, 140);
+    }
+
+    private void Press(UIElement element, double from, int milliseconds)
+    {
+        var scale = EnsureScale(element);
+        Stop(scale, ScaleTransform.ScaleXProperty);
+        Stop(scale, ScaleTransform.ScaleYProperty);
+        scale.ScaleX = scale.ScaleY = 1;
+        if (!StatusMotion.Allowed(AllowMotion)) return;
+        Animate(scale, ScaleTransform.ScaleXProperty, Ease(from, 1, milliseconds));
+        Animate(scale, ScaleTransform.ScaleYProperty, Ease(from, 1, milliseconds));
+    }
+
+    private void HookBell()
+    {
+        if (_bell is not null || (Parent as Popup)?.PlacementTarget is not ButtonBase bell) return;
+        _bell = bell;
+        bell.RenderTransformOrigin = new Point(0.5, 0.5);
+        bell.Click += Bell_Click;
+    }
+
+    private void Bell_Click(object sender, RoutedEventArgs e)
+    {
+        if (_bell is null) return;
+        Press(_bell, 0.92, 160);
+        if (_bell is not ContentControl { Content: TextBlock glyph }) return;
+        glyph.RenderTransformOrigin = new Point(0.5, 0.15);
+        var rotate = glyph.RenderTransform as RotateTransform is { IsFrozen: false } existing ? existing : new RotateTransform();
+        glyph.RenderTransform = rotate;
+        Stop(rotate, RotateTransform.AngleProperty);
+        rotate.Angle = 0;
+        if (!StatusMotion.Allowed(AllowMotion)) return;
+        var ring = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(260), FillBehavior = FillBehavior.Stop };
+        foreach (var (angle, at) in new[] { (0.0, 0), (-14.0, 65), (10.0, 130), (-4.0, 195), (0.0, 260) })
+            ring.KeyFrames.Add(new EasingDoubleKeyFrame(angle, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(at)), Swing));
+        Animate(rotate, RotateTransform.AngleProperty, ring);
+    }
+
+    private static ScaleTransform EnsureScale(UIElement element)
+    {
+        switch (element.RenderTransform)
+        {
+            case ScaleTransform { IsFrozen: false } scale: return scale;
+            case TransformGroup { IsFrozen: false } group when group.Children.OfType<ScaleTransform>().FirstOrDefault(t => !t.IsFrozen) is { } found: return found;
+        }
+        var created = new ScaleTransform(1, 1);
+        var current = element.RenderTransform;
+        // Keep any transform someone else set; only the shared, frozen Identity is replaced.
+        element.RenderTransform = current is null || ReferenceEquals(current, Transform.Identity)
+            ? created
+            : new TransformGroup { Children = { current, created } };
+        return created;
+    }
+
+    // FillBehavior.Stop only stops the clock; WPF keeps it attached to the property, so
+    // HasAnimatedProperties would stay true forever. Each run detaches its own clock when it
+    // completes, unless a newer run on the same property already replaced it.
+    private readonly Dictionary<(DependencyObject Target, DependencyProperty Property), AnimationTimeline> _running = new();
+
+    private void Animate(IAnimatable target, DependencyProperty property, AnimationTimeline animation)
+    {
+        var key = ((DependencyObject)target, property);
+        _running[key] = animation;
+        animation.Completed += (_, _) =>
+        {
+            if (!_running.TryGetValue(key, out var current) || !ReferenceEquals(current, animation)) return;
+            _running.Remove(key);
+            target.BeginAnimation(property, null);
+        };
+        target.BeginAnimation(property, animation);
+    }
+
+    private void Stop(IAnimatable target, DependencyProperty property)
+    {
+        _running.Remove(((DependencyObject)target, property));
+        target.BeginAnimation(property, null);
+    }
+
+    private static DoubleAnimation Ease(double from, double to, int milliseconds) =>
+        new(from, to, TimeSpan.FromMilliseconds(milliseconds)) { EasingFunction = EaseOut, FillBehavior = FillBehavior.Stop };
+
+    private static DoubleAnimationUsingKeyFrames Held(double from, double to, TimeSpan delay, int milliseconds)
+    {
+        var animation = new DoubleAnimationUsingKeyFrames { Duration = delay + TimeSpan.FromMilliseconds(milliseconds), FillBehavior = FillBehavior.Stop };
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(delay)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromTimeSpan(delay + TimeSpan.FromMilliseconds(milliseconds)), EaseOut));
+        return animation;
+    }
+
+    private static IEasingFunction Frozen(EasingFunctionBase easing) { easing.Freeze(); return easing; }
 
     private static TextBlock BuildHeading(string text) => new()
     {
@@ -164,6 +410,7 @@ public partial class NotificationsPopover : UserControl
         };
         AutomationProperties.SetName(row, item.Title + ", " + kind + ", " + age);
         AutomationProperties.SetHelpText(row, item.IsUnread ? loc["NotificationsMarkRead"] : "");
+        AttachButtonPressMotion(row);
         row.Click += (_, _) => _service?.MarkRead(item.Id);
 
         var panel = new StackPanel();
@@ -177,6 +424,7 @@ public partial class NotificationsPopover : UserControl
                 Margin = new Thickness(22, -6, 12, 6),
                 Tag = "link:" + item.Id,
             };
+            AttachButtonPressMotion(link);
             // The link is checked again at click time, then the item counts as read.
             link.Click += (_, _) => { NotificationUrlPolicy.TryOpen(url, LinkLauncher); _service?.MarkRead(item.Id); };
             panel.Children.Add(link);
@@ -219,6 +467,7 @@ public partial class NotificationsPopover : UserControl
                 Margin = new Thickness(0, 10, 0, 0),
                 Tag = "install",
             };
+            AttachButtonPressMotion(install);
             install.Click += (_, _) => InstallRequested?.Invoke(this, EventArgs.Empty);
             panel.Children.Add(install);
         }
