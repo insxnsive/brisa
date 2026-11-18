@@ -440,7 +440,7 @@ export function normalizeProtonPlanResult(value: any): ProtonPlanResult {
  * Queries the account plan through the saved Proton session only. This does
  * not request a certificate, select a server, or create a WireGuard tunnel.
  */
-export async function getProtonPlan(installDir: string, username: string): Promise<ProtonPlanResult> {
+export async function getProtonPlan(installDir: string, username: string, signal?: AbortSignal): Promise<ProtonPlanResult> {
   if (!username || !username.trim()) {
     return { success: false, status: 'unknown', error: 'Sessão Proton não encontrada.' };
   }
@@ -465,6 +465,7 @@ export async function getProtonPlan(installDir: string, username: string): Promi
         '-json',
       ],
       timeoutMs: 10000,
+      signal,
       exePath,
     });
   } catch {

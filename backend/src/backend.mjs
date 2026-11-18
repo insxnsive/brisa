@@ -210,6 +210,7 @@ export function createBackend(deps, paths) {
   let mutationSeq = 0;
   let mutationDone = Promise.resolve();
   let releaseMutation = () => {};
+  let routePreview = null;
   let sessionApps = [];
   let routeVerification = { verified: false, reason: "not_checked" };
   let stage = "idle";
@@ -524,6 +525,7 @@ export function createBackend(deps, paths) {
         generation += 1;
         activeOperation?.controller.abort();
         activeOperation = null;
+        routePreview?.controller.abort();
         // Abort the background probes too; the generation bump already discards their
         // result, this stops the processes instead of leaving them to time out.
         routeRecheck?.controller.abort();
@@ -649,29 +651,34 @@ export function createBackend(deps, paths) {
       }
 
       if (command === "routePings") {
-        if (mutationBusy) return { success: false, code: "ROUTE_PINGS_BUSY" };
+        if (generation !== enteredGeneration) return cancelled();
+        if (mutationBusy || routePreview) return { success: false, code: "ROUTE_PINGS_BUSY" };
         if (typeof deps.routePings !== "function") return { success: false, code: "ROUTE_PINGS_UNAVAILABLE" };
-        const operation = begin();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 15_000);
         timer.unref?.();
-        const onAbort = () => controller.abort();
-        operation.controller.signal.addEventListener("abort", onAbort, { once: true });
-        try {
+        const staleResult = () => generation !== enteredGeneration
+          ? cancelled()
+          : { success: false, code: "ROUTE_PINGS_FAILED" };
+        const completion = (async () => {
           const currentUsername = await username();
-          if (!operation.isCurrent()) return cancelled();
+          if (controller.signal.aborted || generation !== enteredGeneration) return staleResult();
           if (!currentUsername) return { success: false, message: APP_MESSAGES.NOT_SIGNED_IN, code: "NOT_SIGNED_IN" };
-          const plan = await deps.getPlan(paths.dataDir, currentUsername);
+          const plan = await deps.getPlan(paths.dataDir, currentUsername, controller.signal);
+          if (controller.signal.aborted) return staleResult();
           const freeOnly = !(plan?.success === true && plan.status === "premium");
           const summary = await deps.routePings(paths.dataDir, payload.countries, freeOnly, currentUsername, controller.signal);
-          if (!operation.isCurrent()) return cancelled();
+          if (controller.signal.aborted) return staleResult();
           return { success: true, pings: summary?.pings ?? {}, unavailable: summary?.unavailable ?? [] };
+        })();
+        routePreview = { controller, completion };
+        try {
+          return await completion;
         } catch {
-          return operation.isCurrent() ? { success: false, code: "ROUTE_PINGS_FAILED" } : cancelled();
+          return staleResult();
         } finally {
           clearTimeout(timer);
-          operation.controller.signal.removeEventListener("abort", onAbort);
-          finish(operation);
+          routePreview = null;
         }
       }
 
@@ -681,8 +688,15 @@ export function createBackend(deps, paths) {
       const refreshUsername = ["login", "logout"].includes(command);
       if (refreshUsername) invalidateUsername();
       mutationDone = new Promise(resolve => { releaseMutation = resolve; });
-      const connectOperation = command === "connect" ? begin() : null;
+      let connectOperation = null;
       try {
+        // Listing servers may refresh the saved session. Let its helper close before
+        // starting a mutation, while the reserved mutation slot prevents new previews.
+        if (routePreview) {
+          await routePreview.completion.catch(() => {});
+          if (generation !== enteredGeneration) return cancelled();
+        }
+        if (command === "connect") connectOperation = begin();
         const guarded = command === "connect" || command === "disconnect" ? await mutationGuard()
           : command === "login" || command === "importConfig" ? { status: null }
           : command === "logout" ? await profileMutationGuard("Disconnect the native tunnel before signing out.")

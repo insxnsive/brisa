@@ -193,7 +193,10 @@ class NotificationContracts(unittest.TestCase):
     def test_settings_motion_and_navigation_contracts(self):
         code = (ROOT / 'MainWindow.xaml.cs').read_text(encoding='utf-8')
         self.assertNotIn('await RefreshSnapshotAsync', method_body(code, 'ReturnHomeCoreAsync'))
-        self.assertIn('SwapPageAsync(', method_body(code, 'GoBackAsync'))
+        settings_back = method_body(code, 'GoBackAsync').split(
+            'if (origin == AdvancedOrigin.Settings)', 1)[1].split('if (origin == AdvancedOrigin.Account)', 1)[0]
+        self.assertIn('SwapPageAsync(', settings_back)
+        self.assertNotIn('ReturnHomeAsync(', settings_back)
         settings = (ROOT / 'SettingsView.xaml').read_text(encoding='utf-8')
         self.assertIn('x:Name="SavedText"', settings)
         self.assertIn('x:Key="AnimatedCheck"', settings)
@@ -395,6 +398,11 @@ class TrayAndRouteContracts(unittest.TestCase):
         backend = (REPO / 'backend/src/backend.mjs').read_text(encoding='utf-8')
         self.assertIn('"routePings"', backend)
         self.assertIn('ROUTE_PINGS_BUSY', backend)
+        preview = backend.rsplit('if (command === "routePings") {', 1)[1].split(
+            'if (mutationBusy) return { success: false, message:', 1)[0]
+        self.assertNotRegex(preview, r'\bmutationBusy\s*=(?!=)')
+        self.assertIn('new DiscreteDoubleKeyFrame(dim, offset)', view)
+        self.assertIn('new LinearDoubleKeyFrame(dim, TimeSpan.FromMilliseconds(900))', view)
         for name in ('InitializeAsync', 'StartAutoConnect', 'StartRouteScan', 'Primary_Click', 'RunPrimaryMutationAsync', 'TrackProgressAsync', 'ExecuteWithVerificationAsync', 'Route_Click', 'RunRouteOptimizeAsync'):
             self.assertNotRegex(method_body(code, name), r'[Nn]otification', name)
 

@@ -62,7 +62,11 @@ internal static class Program
             Click((Button)unavailable.FindName("SettingsButton"));
             var failedHost = (ContentControl)unavailable.FindName("PageHost");
             Click((Button)((SettingsView)failedHost.Content).FindName("SaveButton"));
-            Pump(() => ((SettingsView)failedHost.Content).FindName("SavedText") is TextBlock { IsVisible: true });
+            Pump(() => failedHost.Content is not SettingsView settings
+                || settings.FindName("SavedText") is TextBlock { IsVisible: true });
+            Check(failedHost.Content is SettingsView savedSettings
+                && savedSettings.FindName("SavedText") is TextBlock { IsVisible: true },
+                "Save stays on Settings and shows Saved when the backend is unavailable");
             Click((Button)((SettingsView)failedHost.Content).FindName("CancelButton"));
             Pump(() => failedHost.Content is null);
             Check(((TextBlock)unavailable.FindName("DetailText")).Text.Contains("native service"), "returning from Settings preserves actionable terminal-failure details");

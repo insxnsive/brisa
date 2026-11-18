@@ -1935,3 +1935,47 @@ test("routePings rejects malformed country payloads", () => {
   assert.throws(() => validateCommandPayload("routePings", { countries: ["CA", "DE", "JP", "NL", "US", "CA", "DE"] }));
   assert.throws(() => validateCommandPayload("routePings", { countries: "CA" }));
 });
+
+test("optimize waits for a route preview that may refresh the Proton session", async () => {
+  let releasePreview;
+  let notifyPreview;
+  const previewStarted = new Promise(resolve => { notifyPreview = resolve; });
+  const held = new Promise(resolve => { releasePreview = resolve; });
+  let generated = false;
+  const { backend } = harness({
+    routePings: async () => { notifyPreview(); await held; return { pings: { CA: 120 } }; },
+    generate: async () => { generated = true; return { success: true, server: "NL#1", country: "NL" }; },
+  });
+  const preview = backend.execute("routePings", { countries: ["CA"] });
+  await previewStarted;
+  const optimizing = backend.execute("optimize", {});
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(generated, false, "optimize must wait for the preview helper to close");
+  } finally {
+    releasePreview();
+    await Promise.all([preview, optimizing]);
+  }
+  assert.equal((await preview).success, true);
+  assert.equal((await optimizing).success, true, "preview must not take the mutation slot");
+  assert.equal(generated, true);
+});
+
+test("cancel aborts the preview plan lookup before launching the server list", async () => {
+  let notifyPlan;
+  const planStarted = new Promise(resolve => { notifyPlan = resolve; });
+  let listed = false;
+  const { backend } = harness({
+    getPlan: async (_dir, _username, signal) => {
+      notifyPlan();
+      await new Promise(resolve => signal?.addEventListener("abort", resolve, { once: true }));
+      return { success: false };
+    },
+    routePings: async () => { listed = true; return {}; },
+  });
+  const preview = backend.execute("routePings", { countries: ["CA"] });
+  await planStarted;
+  await backend.execute("cancel", {});
+  assert.equal((await preview).code, "CAPTCHA_CANCELLED");
+  assert.equal(listed, false);
+});

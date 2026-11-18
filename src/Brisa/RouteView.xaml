@@ -35,7 +35,8 @@
         <Grid Grid.Column="1">
           <TextBlock Text="{Binding PingText}" Visibility="{Binding PingVisibility}" HorizontalAlignment="Right" VerticalAlignment="Center"
                      Foreground="{DynamicResource NativeSecondary}" Typography.NumeralAlignment="Tabular" TextTrimming="CharacterEllipsis"/>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="{Binding DotsVisibility}">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="{Binding DotsVisibility}"
+                      IsVisibleChanged="PingDotsVisibilityChanged">
             <Ellipse Width="4" Height="4" Margin="0,0,3,0" Fill="{DynamicResource NativeSecondary}" Opacity="0.25"/>
             <Ellipse Width="4" Height="4" Margin="0,0,3,0" Fill="{DynamicResource NativeSecondary}" Opacity="0.6"/>
             <Ellipse Width="4" Height="4" Fill="{DynamicResource NativeSecondary}" Opacity="0.25"/>

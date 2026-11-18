@@ -231,6 +231,7 @@ func TestLatencyFirstWithCongestionGuard(t *testing.T) {
 		{"a much faster route wins over a far slower empty one", [2]int{80, 20}, [2]int{10, 200}, "A"},
 		{"equal pings prefer the emptier server", [2]int{30, 70}, [2]int{50, 50}, "A"},
 		{"a 97 percent server never hides a healthy one", [2]int{97, 40}, [2]int{40, 60}, "B"},
+		{"a 95 percent server is skipped even when its weighted cost is lower", [2]int{95, 40}, [2]int{5, 100}, "B"},
 		{"failed ping never beats reachable server", [2]int{0, 95}, [2]int{999, 200}, "B"},
 		{"unknown ping never beats reachable server", [2]int{0, 95}, [2]int{0, 200}, "B"},
 	}

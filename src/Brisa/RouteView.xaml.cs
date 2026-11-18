@@ -38,6 +38,7 @@ public partial class RouteView : UserControl, IAsyncDisposable
         _loadPings = loadPings;
         _allowMotion = allowMotion;
         var language = LocalizationManager.Current.Language;
+        var animatePings = StatusMotion.Allowed(_allowMotion);
         var selected = 0;
         for (var i = 0; i < Offered.Length; i++)
         {
@@ -45,9 +46,9 @@ public partial class RouteView : UserControl, IAsyncDisposable
             var automatic = code.Length == 0;
             var option = new RouteOption(code, automatic ? LocalizationManager.Current["Automatic"] : CountryNames.Name(code, language))
             {
-                PingText = automatic ? LocalizationManager.Current["RoutePingAutomatic"] : "",
-                PingVisibility = automatic ? Visibility.Visible : Visibility.Collapsed,
-                DotsVisibility = automatic ? Visibility.Collapsed : Visibility.Visible,
+                PingText = automatic ? LocalizationManager.Current["RoutePingAutomatic"] : "...",
+                PingVisibility = automatic || !animatePings ? Visibility.Visible : Visibility.Collapsed,
+                DotsVisibility = !automatic && animatePings ? Visibility.Visible : Visibility.Collapsed,
             };
             _options.Add(option);
             if (code.Length > 0 && preferred is { Length: > 0 } && code.Equals(preferred, StringComparison.OrdinalIgnoreCase)) selected = i;
@@ -91,6 +92,26 @@ public partial class RouteView : UserControl, IAsyncDisposable
                 SetPing(option, string.Format(LocalizationManager.Current["RoutePingMeasuredFormat"], value), false);
             else
                 SetPing(option, LocalizationManager.Current["RoutePingNoReply"], false);
+        }
+    }
+
+    private void PingDotsVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is not StackPanel panel) return;
+        const double dim = 0.25;
+        for (var i = 0; i < panel.Children.Count; i++)
+        {
+            var dot = panel.Children[i];
+            dot.BeginAnimation(OpacityProperty, null);
+            dot.Opacity = dim;
+            if (!panel.IsVisible || !StatusMotion.Allowed(_allowMotion)) continue;
+            var offset = TimeSpan.FromMilliseconds(i * 150);
+            var pulse = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
+            pulse.KeyFrames.Add(new DiscreteDoubleKeyFrame(dim, offset));
+            pulse.KeyFrames.Add(new LinearDoubleKeyFrame(1, offset + TimeSpan.FromMilliseconds(150)));
+            pulse.KeyFrames.Add(new LinearDoubleKeyFrame(dim, offset + TimeSpan.FromMilliseconds(300)));
+            pulse.KeyFrames.Add(new LinearDoubleKeyFrame(dim, TimeSpan.FromMilliseconds(900)));
+            dot.BeginAnimation(OpacityProperty, pulse);
         }
     }
 

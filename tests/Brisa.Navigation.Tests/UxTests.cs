@@ -218,9 +218,15 @@ internal static class UxTests
         check(texts.Contains("270 ms") && texts.Contains("Best route"), "the route page shows measured pings and the automatic label");
         var indicator = (Border)view.FindName("SelectionIndicator");
         var before = indicator.TranslatePoint(new Point(0, 0), view).Y;
+        // Invalidate the layout just before selection, as a size change can do.
+        var selectedRow = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(1);
+        selectedRow.Height = selectedRow.ActualHeight + 4;
         list.SelectedIndex = 1; Spin(260);
         var after = indicator.TranslatePoint(new Point(0, 0), view).Y;
         check(Math.Abs(after - before) > 1, "the selection indicator slides with the selected row");
+        check(Math.Abs(after - selectedRow.TranslatePoint(new Point(0, 0), view).Y) < 0.5
+            && Math.Abs(indicator.ActualHeight - selectedRow.ActualHeight) < 0.5,
+            "the selection indicator fits the selected row after a pending layout change");
         Click((Button)view.FindName("CancelButton")); Pump(() => page.Content is null);
         Click((Button)main.FindName("RouteButton")); Pump(() => page.Content is RouteView);
         check(backend.Commands.Count(c => c == "routePings") == 1, "reopening Route within 120 s reuses the cached pings");
