@@ -8,6 +8,7 @@ import { createRouteVerifier } from "./route-verification.mjs";
 import {
   generateOptimalProtonConfig,
   getProtonPlan,
+  getRoutePings,
   getSavedSessionUsername,
   loginProton,
 } from "./network/proton.ts";
@@ -136,6 +137,8 @@ export function createProductionBackend() {
     getPlan: getProtonPlan,
     login: loginProton,
     generate: generateOptimalProtonConfig,
+    routePings: (installDir: string, countries: string[], freeOnly: boolean, username: string, signal?: AbortSignal) =>
+      getRoutePings(installDir, { username, countries, freeOnly, signal }),
     validateConfig: validateWireGuardConfig,
     sanitizeConfig: sanitizeWireGuardConfig,
     helperAvailable: () => existingRegularFile(helperPath),

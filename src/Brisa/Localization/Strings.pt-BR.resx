@@ -183,6 +183,9 @@
   <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>O WireSock iniciou, mas o Brisa não conseguiu confirmar que ele está rodando com o perfil do próprio Brisa. Tente de novo.</value></data>
   <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>Não foi possível iniciar o túnel do Brisa. Confira o WireSock e o seu perfil de VPN e tente de novo.</value></data>
   <data name="Backend.START_FAILED_UNCLASSIFIED" xml:space="preserve"><value>Não foi possível concluir a conexão. Se o Discord não reabriu, abra-o manualmente. Depois vá em Configurações &gt; Avançado &gt; Gerar log e anexe o log em uma nova issue em github.com/insxnsive/brisa/issues.</value></data>
+  <data name="Backend.ROUTE_PINGS_BUSY" xml:space="preserve"><value>A prévia de rotas fica indisponível enquanto outra operação está em andamento.</value></data>
+  <data name="Backend.ROUTE_PINGS_UNAVAILABLE" xml:space="preserve"><value>A prévia de rotas está indisponível nesta sessão.</value></data>
+  <data name="Backend.ROUTE_PINGS_FAILED" xml:space="preserve"><value>Não foi possível medir a prévia de rotas. Tente de novo.</value></data>
   <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>O Brisa não conseguiu ler o estado do WireSock com confiança, então não alterou nada. Abra o Brisa como administrador e tente de novo.</value></data>
   <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Digite o código de dois fatores do Proton e tente de novo.</value></data>
   <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>O código de dois fatores do Proton foi recusado ou expirou.</value></data>

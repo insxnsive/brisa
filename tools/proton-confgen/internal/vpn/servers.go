@@ -243,26 +243,40 @@ func regionalCandidates(servers []api.LogicalServer) []api.LogicalServer {
 // Lower load is an estimate of available capacity, NOT measured bandwidth.
 // Normalize both signals so 70% capacity / 30% latency has a stable meaning.
 // API Score breaks ties only; its undocumented scale must not dominate RTT.
+// Latency decides. Load only matters once a server is congested: below 60 % it is free,
+// from 60 % to 100 % it inflates the measured RTT by up to 2x. A full server never hides a
+// much faster one, and two similar RTTs still prefer the emptier server.
 func routeCost(load, ping int) float64 {
-	capacityPenalty := math.Max(0, math.Min(100, float64(load))) / 100
-	latencyPenalty := math.Min(float64(ping), 500) / 500
-	return 0.7*capacityPenalty + 0.3*latencyPenalty
+	l := math.Max(0, math.Min(100, float64(load)))
+	congestion := math.Max(0, l-60) / 40 // 0 at <=60 %, 1 at 100 %
+	return float64(ping) * (1 + congestion)
 }
 
 func bestMeasuredCandidate(candidates []api.LogicalServer, pings map[string]int) (*api.LogicalServer, int, error) {
-	var best *api.LogicalServer
-	bestPing := 0
-	bestCost := math.Inf(1)
-	for i := range candidates {
-		srv := &candidates[i]
-		ping := pings[srv.Name]
-		if ping <= 0 || ping >= 999 {
-			continue
+	consider := func(skipFull bool) (*api.LogicalServer, int) {
+		var best *api.LogicalServer
+		bestPing := 0
+		bestCost := math.Inf(1)
+		for i := range candidates {
+			srv := &candidates[i]
+			// A near-full server degrades voice regardless of RTT, so it is only a last resort.
+			if skipFull && srv.Load >= 95 {
+				continue
+			}
+			ping := pings[srv.Name]
+			if ping <= 0 || ping >= 999 {
+				continue
+			}
+			cost := routeCost(srv.Load, ping)
+			if best == nil || cost < bestCost || (cost == bestCost && (ping < bestPing || (ping == bestPing && (srv.Score < best.Score || (srv.Score == best.Score && srv.Name < best.Name))))) {
+				best, bestPing, bestCost = srv, ping, cost
+			}
 		}
-		cost := routeCost(srv.Load, ping)
-		if best == nil || cost < bestCost || (cost == bestCost && (ping < bestPing || (ping == bestPing && (srv.Score < best.Score || (srv.Score == best.Score && srv.Name < best.Name))))) {
-			best, bestPing, bestCost = srv, ping, cost
-		}
+		return best, bestPing
+	}
+	best, bestPing := consider(true)
+	if best == nil {
+		best, bestPing = consider(false)
 	}
 	if best == nil {
 		return nil, 0, errors.New("nenhum servidor respondeu ao teste de latência; tente novamente ou escolha outra região")

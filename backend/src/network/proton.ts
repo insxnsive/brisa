@@ -856,3 +856,53 @@ function finitePositive(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+export interface RoutePingSummary {
+  pings: Record<string, number | null>;
+  unavailable: string[];
+}
+
+/**
+ * Per-country minimum entry ping for the Route page preview. The helper flags mirror
+ * generateOptimalProtonConfig, so the preview ranks the same server set optimize uses.
+ */
+export async function getRoutePings(
+  installDir: string,
+  options: { username: string; countries: string[]; freeOnly: boolean; signal?: AbortSignal }
+): Promise<RoutePingSummary> {
+  const countries = options.countries.filter(code => /^[A-Z]{2}$/.test(code));
+  const summary: RoutePingSummary = { pings: {}, unavailable: [] };
+  for (const code of countries) summary.pings[code] = null;
+  if (!countries.length) return summary;
+
+  let exePath: string;
+  try { exePath = await ensureProtonConfgen(installDir); }
+  catch { return summary; }
+
+  const args = [
+    '-username', options.username,
+    '-session-file', getProtonSessionFile(installDir),
+    '-list-servers', '-json', '-auto-ping', '-ipv6',
+    '-exclude-countries', 'BR',
+    '-countries', countries.join(','),
+  ];
+  if (options.freeOnly) args.push('-free-only');
+
+  let res;
+  try { res = await runConfgen({ args, timeoutMs: 15000, signal: options.signal, exePath }); }
+  catch { return summary; }
+  if (res.code !== 0 || !Array.isArray(res.json)) return summary;
+
+  const seen = new Set<string>();
+  for (const row of res.json) {
+    const code = typeof row?.country === 'string' ? row.country.toUpperCase() : '';
+    if (!code || !(code in summary.pings)) continue;
+    seen.add(code);
+    const ping = Number(row.pingMs);
+    if (!finitePositive(ping) || ping >= 999) continue;
+    const current = summary.pings[code];
+    if (current === null || ping < current) summary.pings[code] = ping;
+  }
+  for (const code of countries) if (!seen.has(code)) summary.unavailable.push(code);
+  return summary;
+}
+

@@ -2,6 +2,7 @@ package vpn
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -98,5 +99,57 @@ func TestProbeCandidatesCancelsInFlightProbe(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("scan did not stop")
+	}
+}
+
+func TestPhaseBOnlyProbesFailedLocations(t *testing.T) {
+	mk := func(name, country, city, ip string) api.LogicalServer {
+		srv := server(country, api.TierFree, 0)
+		srv.Name, srv.City = name, city
+		srv.Servers[0].EntryIP = ip
+		return srv
+	}
+	jp1 := mk("JP#1", "JP", "Tokyo", "192.0.2.10")
+	jp2 := mk("JP#2", "JP", "Tokyo", "192.0.2.11")
+	nl1 := mk("NL#1", "NL", "Amsterdam", "192.0.2.20")
+	nl2 := mk("NL#2", "NL", "Amsterdam", "192.0.2.21")
+	var mu sync.Mutex
+	var calls []string
+	probeCandidates(context.Background(), []api.LogicalServer{jp1, jp2, nl1, nl2}, func(_ context.Context, ip string) int {
+		mu.Lock()
+		calls = append(calls, ip)
+		mu.Unlock()
+		switch ip {
+		case "192.0.2.10":
+			return 24
+		case "192.0.2.11":
+			t.Error("phase B probed a location whose first candidate answered")
+		}
+		return 999
+	})
+	seen := map[string]bool{}
+	for _, ip := range calls {
+		seen[ip] = true
+	}
+	if !seen["192.0.2.10"] || !seen["192.0.2.20"] || !seen["192.0.2.21"] {
+		t.Fatalf("expected both first candidates and the failed location second: %v", calls)
+	}
+}
+
+func TestCandidateScanHonoursDeadline(t *testing.T) {
+	a := server("US", api.TierFree, 0)
+	a.Servers[0].EntryIP = "192.0.2.1"
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	result := probeCandidates(ctx, []api.LogicalServer{a}, func(ctx context.Context, _ string) int {
+		<-ctx.Done()
+		return 999
+	})
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("deadline was not honoured: %v", elapsed)
+	}
+	if result[a.Name] != 999 {
+		t.Fatalf("timed out probe is not a failure: %v", result)
 	}
 }

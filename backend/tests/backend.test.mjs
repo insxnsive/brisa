@@ -6,7 +6,7 @@ import { sanitizeWireGuardConfig, validateWireGuardConfig } from "../src/network
 import { createDiagnostics } from "../src/diagnostics.mjs";
 import { WireSockStartError } from "../src/wiresock-start-result.mjs";
 
-import { createBackend } from "../src/backend.mjs";
+import { createBackend, validateCommandPayload } from "../src/backend.mjs";
 import { DiscordCompatibilityError, createDiscordSelectionGuard } from "../src/discord-compatibility.mjs";
 
 const goodConfig = `[Interface]\nPrivateKey = ${"A".repeat(43)}=\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = ${"B".repeat(43)}=\nAllowedIPs = 0.0.0.0/0\nEndpoint = vpn.example:51820\n`;
@@ -1900,4 +1900,38 @@ test("speed T3 preserves username rejection while inspection is pending", async 
   await new Promise(resolve => setImmediate(resolve));
   releaseInspect();
   await checked;
+});
+
+test("routePings returns per-country previews without taking the mutation slot", async () => {
+  const { backend, files, setInspection } = harness({
+    routePings: async () => ({ pings: { CA: 120, JP: null }, unavailable: ["JP"] }),
+    start: async () => setInspection({ active: true, owned: true, reliable: true }),
+  });
+  const result = await backend.execute("routePings", { countries: ["CA", "JP"] });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.pings, { CA: 120, JP: null });
+  assert.deepEqual(result.unavailable, ["JP"]);
+  files.set("C:\\native-data\\wireguard.conf", goodConfig);
+  const connect = await backend.execute("connect", {});
+  assert.equal(connect.success, true, JSON.stringify(connect));
+});
+
+test("routePings refuses while a mutation owns the slot", async () => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const { backend } = harness({
+    generate: async () => { await held; return { success: true, server: "NL#1", country: "NL" }; },
+  });
+  const optimizing = backend.execute("optimize", {});
+  await new Promise(resolve => setImmediate(resolve));
+  const refused = await backend.execute("routePings", { countries: ["CA"] });
+  assert.equal(refused.code, "ROUTE_PINGS_BUSY");
+  release();
+  await optimizing;
+});
+
+test("routePings rejects malformed country payloads", () => {
+  assert.throws(() => validateCommandPayload("routePings", { countries: ["usa"] }));
+  assert.throws(() => validateCommandPayload("routePings", { countries: ["CA", "DE", "JP", "NL", "US", "CA", "DE"] }));
+  assert.throws(() => validateCommandPayload("routePings", { countries: "CA" }));
 });

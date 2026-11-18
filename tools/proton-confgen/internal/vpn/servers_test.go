@@ -220,15 +220,17 @@ func TestRegionalCandidatesCoverLocationsBeyondGlobalTopTen(t *testing.T) {
 	}
 }
 
-func TestCapacityPriorityAndLatencyTiebreak(t *testing.T) {
+func TestLatencyFirstWithCongestionGuard(t *testing.T) {
 	tests := []struct {
 		name         string
 		loads, pings [2]int
 		want         string
 	}{
-		{"low load beats much lower ping", [2]int{80, 10}, [2]int{20, 200}, "B"},
-		{"same load prefers lower ping", [2]int{20, 20}, [2]int{160, 80}, "B"},
-		{"small load difference does not justify huge latency", [2]int{20, 21}, [2]int{400, 30}, "B"},
+		{"9 ms beats 130 ms even with more load", [2]int{20, 1}, [2]int{9, 130}, "A"},
+		{"congestion can still beat a slightly faster full-ish route", [2]int{85, 10}, [2]int{20, 30}, "B"},
+		{"a much faster route wins over a far slower empty one", [2]int{80, 20}, [2]int{10, 200}, "A"},
+		{"equal pings prefer the emptier server", [2]int{30, 70}, [2]int{50, 50}, "A"},
+		{"a 97 percent server never hides a healthy one", [2]int{97, 40}, [2]int{40, 60}, "B"},
 		{"failed ping never beats reachable server", [2]int{0, 95}, [2]int{999, 200}, "B"},
 		{"unknown ping never beats reachable server", [2]int{0, 95}, [2]int{0, 200}, "B"},
 	}
@@ -236,13 +238,25 @@ func TestCapacityPriorityAndLatencyTiebreak(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			candidates := []api.LogicalServer{{Name: "A", Load: tt.loads[0]}, {Name: "B", Load: tt.loads[1], Score: 10000}}
 			got, ping, err := bestMeasuredCandidate(candidates, map[string]int{"A": tt.pings[0], "B": tt.pings[1]})
-			if err != nil || got.Name != tt.want || ping != tt.pings[1] {
+			wantPing := tt.pings[0]
+			if tt.want == "B" {
+				wantPing = tt.pings[1]
+			}
+			if err != nil || got.Name != tt.want || ping != wantPing {
 				t.Fatalf("got %v, %d, %v", got, ping, err)
 			}
 		})
 	}
 	if got, _, err := bestMeasuredCandidate([]api.LogicalServer{{Name: "A"}}, nil); err == nil || got != nil {
 		t.Fatal("all failed probes must fail selection")
+	}
+}
+
+func TestFullServersOnlyWhenNothingElse(t *testing.T) {
+	candidates := []api.LogicalServer{{Name: "full", Load: 97}, {Name: "fuller", Load: 99, Score: 2}}
+	got, ping, err := bestMeasuredCandidate(candidates, map[string]int{"full": 20, "fuller": 10})
+	if err != nil || got.Name != "fuller" || ping != 10 {
+		t.Fatalf("all full servers should still select the least costly: %v, %d, %v", got, ping, err)
 	}
 }
 

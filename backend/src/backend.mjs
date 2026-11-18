@@ -7,7 +7,7 @@ import { probeWireSock } from "./wiresock-probe.mjs";
 import { DiscordCompatibilityError, discordCompatibilityFailure } from "./discord-compatibility.mjs";
 
 const METHODS = new Set(["captcha", "ownership-email", "ownership-sms"]);
-const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle"]);
+const COMMANDS = new Set(["snapshot", "login", "logout", "optimize", "connect", "disconnect", "importConfig", "cancel", "diagnostics", "progress", "waitForIdle", "routePings"]);
 const USERNAME_CACHE_TTL_MS = 60_000;
 const EMPTY_USERNAME_CACHE_TTL_MS = 15_000;
 const installRoot = app => {
@@ -184,6 +184,11 @@ export function validateCommandPayload(command, payload) {
     exactKeys(payload, [], ["country", "humanVerificationToken", "humanVerificationMethod"]);
     const country = stringField(payload, "country", { max: 2 });
     if (country !== undefined && country !== "" && !/^[A-Za-z]{2}$/.test(country)) throw new Error("Payload schema is invalid.");
+  } else if (command === "routePings") {
+    exactKeys(payload, ["countries"]);
+    if (!Array.isArray(payload.countries) || payload.countries.length < 1 || payload.countries.length > 6
+      || !payload.countries.every(code => typeof code === "string" && /^[A-Z]{2}$/.test(code)))
+      throw new Error("Payload schema is invalid.");
   } else if (command === "importConfig") {
     exactKeys(payload, ["path"]);
     stringField(payload, "path", { required: true, max: 2048 });
@@ -641,6 +646,33 @@ export function createBackend(deps, paths) {
             events: deps.diag?.recent?.(20) ?? [],
           }),
         };
+      }
+
+      if (command === "routePings") {
+        if (mutationBusy) return { success: false, code: "ROUTE_PINGS_BUSY" };
+        if (typeof deps.routePings !== "function") return { success: false, code: "ROUTE_PINGS_UNAVAILABLE" };
+        const operation = begin();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15_000);
+        timer.unref?.();
+        const onAbort = () => controller.abort();
+        operation.controller.signal.addEventListener("abort", onAbort, { once: true });
+        try {
+          const currentUsername = await username();
+          if (!operation.isCurrent()) return cancelled();
+          if (!currentUsername) return { success: false, message: APP_MESSAGES.NOT_SIGNED_IN, code: "NOT_SIGNED_IN" };
+          const plan = await deps.getPlan(paths.dataDir, currentUsername);
+          const freeOnly = !(plan?.success === true && plan.status === "premium");
+          const summary = await deps.routePings(paths.dataDir, payload.countries, freeOnly, currentUsername, controller.signal);
+          if (!operation.isCurrent()) return cancelled();
+          return { success: true, pings: summary?.pings ?? {}, unavailable: summary?.unavailable ?? [] };
+        } catch {
+          return operation.isCurrent() ? { success: false, code: "ROUTE_PINGS_FAILED" } : cancelled();
+        } finally {
+          clearTimeout(timer);
+          operation.controller.signal.removeEventListener("abort", onAbort);
+          finish(operation);
+        }
       }
 
       if (mutationBusy) return { success: false, message: APP_MESSAGES.MUTATION_BUSY, code: "MUTATION_BUSY" };
