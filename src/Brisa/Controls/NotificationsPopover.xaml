@@ -27,8 +27,10 @@
       <Setter Property="Padding" Value="12,2"/>
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Foreground" Value="{DynamicResource NativeSecondary}"/>
+      <!-- The pill itself stays clear: ActiveFilterIndicator slides behind the selected one and
+           carries the fill and the outline, so the selection moves instead of blinking. -->
       <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource NativeStroke}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -38,9 +40,14 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Pill" Property="Background" Value="{DynamicResource NativeIconSurfaceHover}"/></Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsMouseOver" Value="True"/>
+                  <Condition Property="IsChecked" Value="False"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Pill" Property="Background" Value="{DynamicResource NativeIconSurfaceHover}"/>
+              </MultiTrigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Pill" Property="Background" Value="{DynamicResource NativeIconSurfacePressed}"/>
                 <Setter Property="Foreground" Value="{DynamicResource NativeForeground}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
               </Trigger>
@@ -51,8 +58,15 @@
       </Setter>
     </Style>
   </UserControl.Resources>
-  <Border Margin="8" Background="{DynamicResource NativeSurface}" BorderBrush="{DynamicResource NativeStroke}"
-          BorderThickness="1" CornerRadius="8" SnapsToDevicePixels="True">
+  <!-- The card grows out of the bell's corner: the transform origin sits near the top-left. -->
+  <Border x:Name="CardBorder" Margin="8" Background="{DynamicResource NativeSurface}" BorderBrush="{DynamicResource NativeStroke}"
+          BorderThickness="1" CornerRadius="8" SnapsToDevicePixels="True" RenderTransformOrigin="0.08,0">
+    <Border.RenderTransform>
+      <TransformGroup>
+        <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"/>
+        <TranslateTransform x:Name="CardTranslate" X="0" Y="0"/>
+      </TransformGroup>
+    </Border.RenderTransform>
     <Border.Effect><DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.22" Color="Black"/></Border.Effect>
     <Grid>
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -62,16 +76,29 @@
           <Button x:Name="MarkAllButton" Style="{StaticResource NotificationTextButton}" HorizontalAlignment="Right" Margin="0,0,-8,0"
                   Content="{loc:Loc NotificationsMarkAllRead}" Click="MarkAll_Click"/>
         </Grid>
-        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-          <ToggleButton x:Name="AllPill" Style="{StaticResource NotificationPill}" IsChecked="True"
-                        Content="{loc:Loc NotificationsFilterAll}" Click="Filter_Click"/>
-          <ToggleButton x:Name="UnreadPill" Style="{StaticResource NotificationPill}" Margin="8,0,0,0"
-                        Content="{loc:Loc NotificationsFilterUnread}" Click="Filter_Click"/>
-        </StackPanel>
+        <Grid x:Name="FilterTrack" Margin="0,8,0,0" HorizontalAlignment="Left">
+          <Border x:Name="ActiveFilterIndicator" Height="28" CornerRadius="14" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False"
+                  Background="{DynamicResource NativeIconSurfacePressed}" BorderBrush="{DynamicResource NativeStroke}" BorderThickness="1" RenderTransformOrigin="0.5,0.5">
+            <Border.RenderTransform>
+              <TransformGroup>
+                <ScaleTransform x:Name="IndicatorScale" ScaleX="1" ScaleY="1"/>
+                <TranslateTransform x:Name="IndicatorTranslate" X="0" Y="0"/>
+              </TransformGroup>
+            </Border.RenderTransform>
+          </Border>
+          <StackPanel x:Name="FilterPillsPanel" Orientation="Horizontal">
+            <ToggleButton x:Name="AllPill" Style="{StaticResource NotificationPill}" IsChecked="True"
+                          Content="{loc:Loc NotificationsFilterAll}" Click="Filter_Click"/>
+            <ToggleButton x:Name="UnreadPill" Style="{StaticResource NotificationPill}" Margin="8,0,0,0"
+                          Content="{loc:Loc NotificationsFilterUnread}" Click="Filter_Click"/>
+          </StackPanel>
+        </Grid>
       </StackPanel>
       <Border Grid.Row="1" BorderBrush="{DynamicResource NativeStroke}" BorderThickness="0,1,0,0" Padding="0,0,0,5">
         <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
-          <StackPanel x:Name="ListHost"/>
+          <StackPanel x:Name="ListHost">
+            <StackPanel.RenderTransform><TranslateTransform x:Name="ListTranslate" X="0" Y="0"/></StackPanel.RenderTransform>
+          </StackPanel>
         </ScrollViewer>
       </Border>
     </Grid>

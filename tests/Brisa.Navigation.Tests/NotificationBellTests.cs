@@ -32,6 +32,8 @@ internal static class NotificationBellTests
             RestartFromThePopover(store, check);
             TextAndLinks(store, check);
             Sections(store, check);
+            Motion(store, check, allowMotion: true);
+            Motion(store, check, allowMotion: false);
         }
         finally { loc.Apply(savedLanguage); }
     }
@@ -247,6 +249,79 @@ internal static class NotificationBellTests
         check(System.Windows.Automation.AutomationProperties.GetName((DependencyObject)main.FindName("NotificationsButton")) == "Notifica\u00E7\u00F5es", "the bell's accessible name follows the language");
         check(Texts().Any(t => t.StartsWith("Vers\u00E3o \u00B7 ")), "the kind and age are localized");
         loc.Apply(Brisa.Localization.LocalizationManager.English);
+        main.RequestExit(); Pump(() => !main.IsVisible);
+    }
+
+    // The sliding filter pill, the press feedback and the bell ring. Every check reads settled
+    // values, and the same flow runs with motion on and off so neither path can break the other.
+    private static void Motion(SettingsStore store, Action<bool, string> check, bool allowMotion)
+    {
+        var label = allowMotion ? "with motion" : "without motion";
+        var fake = new FakeNotifications();
+        var main = new MainWindow(SignedIn(), store, notifications: fake);
+        main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
+        var panel = (NotificationsPopover)main.FindName("NotificationsPanel");
+        panel.AllowMotion = () => allowMotion;
+        var popup = (Popup)main.FindName("NotificationsPopup");
+        var bell = (Button)main.FindName("NotificationsButton");
+        var items = new[]
+        {
+            Item("motion-unread", "Motion unread", "Body.", NotificationKind.Release, unread: true),
+            Item("motion-older", "Motion older", "Body.", NotificationKind.Announcement, unread: false),
+        };
+        fake.Set(new NotificationSnapshot(1, 1, null, items));
+        OpenPopup(main);
+        Spin(320);
+        var indicator = (Border)panel.FindName("ActiveFilterIndicator");
+        var slide = (TranslateTransform)panel.FindName("IndicatorTranslate");
+        var pills = (UIElement)panel.FindName("FilterPillsPanel");
+        var all = (ToggleButton)panel.FindName("AllPill");
+        var unread = (ToggleButton)panel.FindName("UnreadPill");
+        List<string> Texts() { panel.UpdateLayout(); return Flatten(panel).OfType<TextBlock>().Select(t => t.Text).ToList(); }
+
+        check(all.ActualWidth > 0 && Math.Abs(slide.X) < 0.5 && Math.Abs(indicator.Width - all.ActualWidth) < 0.5, label + ": the filter indicator starts under All");
+        unread.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        check(slide.HasAnimatedProperties == allowMotion, label + ": the indicator slides only when motion is allowed");
+        Spin(320);
+        var unreadX = unread.TranslatePoint(new Point(0, 0), pills).X;
+        check(slide.X > 0 && Math.Abs(slide.X - unreadX) < 0.5 && Math.Abs(indicator.Width - unread.ActualWidth) < 0.5, label + ": the indicator rests under Unread, got x " + slide.X + " width " + indicator.Width);
+        check(!Texts().Contains("Motion older") && Texts().Contains("Motion unread"), label + ": Unread still filters the list");
+        check(!slide.HasAnimatedProperties && !indicator.HasAnimatedProperties, label + ": the slide stops once it lands");
+        all.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Spin(320);
+        check(Math.Abs(slide.X) < 0.5 && Math.Abs(indicator.Width - all.ActualWidth) < 0.5 && Texts().Contains("Motion older"), label + ": All brings the indicator and the older rows back");
+
+        panel.UpdateLayout();
+        check(Math.Abs(panel.ActualWidth - 340) < 0.5 && panel.ActualHeight <= 390.5, label + ": the popover keeps 340 by at most 390, got " + panel.ActualWidth + "x" + panel.ActualHeight);
+        var markAll = (Button)panel.FindName("MarkAllButton");
+        Click(markAll);
+        check(fake.ReadAll == 1, label + ": Mark all read still reaches the service once");
+        check(markAll.RenderTransform is ScaleTransform && (((ScaleTransform)markAll.RenderTransform).HasAnimatedProperties == allowMotion), label + ": Mark all read presses only when motion is allowed");
+        Spin(200);
+        check(markAll.RenderTransform is ScaleTransform { ScaleX: 1, ScaleY: 1, HasAnimatedProperties: false }, label + ": the press settles at full size");
+
+        panel.FocusFirst();
+        var focusDeadline = DateTime.UtcNow.AddSeconds(2);
+        while (!all.IsKeyboardFocused && DateTime.UtcNow < focusDeadline) Spin(30);
+        check(all.IsKeyboardFocused, label + ": FocusFirst still lands on All");
+
+        Click(bell);
+        Pump(() => !popup.IsOpen);
+        var glyph = (TextBlock)bell.Content;
+        check(glyph.RenderTransform is RotateTransform ring && ring.HasAnimatedProperties == allowMotion, label + ": the bell rings only when motion is allowed");
+        check(bell.RenderTransform is ScaleTransform press && press.HasAnimatedProperties == allowMotion, label + ": the bell presses only when motion is allowed");
+        Spin(320);
+        check(glyph.RenderTransform is RotateTransform { Angle: 0, HasAnimatedProperties: false } && bell.RenderTransform is ScaleTransform { ScaleX: 1, HasAnimatedProperties: false }, label + ": the bell settles upright at full size");
+        check(bell.ActualWidth == 36 && bell.ActualHeight == 36, label + ": the bell keeps its toolbar size");
+
+        // A second open must not stack a second bell handler: one click, one press.
+        OpenPopup(main);
+        Spin(320);
+        check(popup.IsOpen && Math.Abs(slide.X) < 0.5, label + ": reopening keeps the indicator under the active filter");
+        panel.Bind(fake);
+        Click(bell);
+        Pump(() => !popup.IsOpen);
+        check(!popup.IsOpen, label + ": binding twice still lets one bell click close the popup");
         main.RequestExit(); Pump(() => !main.IsVisible);
     }
 
