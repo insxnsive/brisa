@@ -2,6 +2,80 @@
         xmlns:loc="clr-namespace:Brisa.Localization"
         FocusVisualStyle="{x:Null}"
         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+  <UserControl.Resources>
+    <!-- Segmented theme choice: the sliding pill is drawn behind the radios, so the checked
+         state never blinks and the keyboard path stays the native RadioButton one. -->
+    <Style x:Key="ThemeSegment" TargetType="RadioButton">
+      <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Padding" Value="12,2"/>
+      <Setter Property="Foreground" Value="{DynamicResource NativeForeground}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Segment" Background="Transparent" CornerRadius="14" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter Property="FontWeight" Value="SemiBold"/>
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="IsMouseOver" Value="True"/>
+                  <Condition Property="IsChecked" Value="False"/>
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Segment" Property="Background" Value="{DynamicResource NativeIconSurfaceHover}"/>
+              </MultiTrigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Segment" Property="BorderBrush" Value="{DynamicResource NativeForeground}"/>
+                <Setter TargetName="Segment" Property="BorderThickness" Value="1"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Check: the template triggers hold the resting values; CheckMotion only plays the
+         transition between them. -->
+    <Style x:Key="AnimatedCheck" TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource NativeForeground}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Background="Transparent">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border x:Name="Box" Width="20" Height="20" CornerRadius="4" BorderBrush="{DynamicResource NativeStroke}"
+                      BorderThickness="1" Background="Transparent" VerticalAlignment="Center">
+                <Path x:Name="Glyph" Data="M5,10 L8.5,13.5 L15,6.5" Stroke="{DynamicResource AccentButtonForeground}"
+                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0"
+                      RenderTransformOrigin="0.5,0.5">
+                  <Path.RenderTransform><ScaleTransform x:Name="GlyphScale" ScaleX="1" ScaleY="1"/></Path.RenderTransform>
+                </Path>
+              </Border>
+              <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentButtonBackground}"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentButtonBackground}"/>
+                <Setter TargetName="Glyph" Property="Opacity" Value="1"/>
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource NativeForeground}"/>
+                <Setter TargetName="Box" Property="BorderThickness" Value="2"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.5"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </UserControl.Resources>
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -9,19 +83,26 @@
       <Border Style="{StaticResource SettingsSurface}" Padding="16,12">
         <StackPanel>
           <TextBlock FontWeight="SemiBold" Text="{loc:Loc ThemeLabel}"/>
-          <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-            <RadioButton x:Name="SystemTheme" GroupName="Theme" Content="{loc:Loc ThemeSystem}" Margin="0,0,22,0"/>
-            <RadioButton x:Name="LightTheme" GroupName="Theme" Content="{loc:Loc ThemeLight}" Margin="0,0,22,0"/>
-            <RadioButton x:Name="DarkTheme" GroupName="Theme" Content="{loc:Loc ThemeDark}"/>
-          </StackPanel>
+          <Grid x:Name="ThemeTrack" Margin="0,8,0,0" HorizontalAlignment="Left">
+            <Border x:Name="ThemeIndicator" Height="28" CornerRadius="14" Background="{DynamicResource NativeIconSurfacePressed}"
+                    BorderBrush="{DynamicResource NativeStroke}" BorderThickness="1" HorizontalAlignment="Left"
+                    VerticalAlignment="Center" IsHitTestVisible="False" Width="0" RenderTransformOrigin="0.5,0.5">
+              <Border.RenderTransform><TranslateTransform x:Name="ThemeIndicatorTranslate"/></Border.RenderTransform>
+            </Border>
+            <StackPanel x:Name="ThemeSegments" Orientation="Horizontal">
+              <RadioButton x:Name="SystemTheme" GroupName="Theme" Style="{StaticResource ThemeSegment}" Content="{loc:Loc ThemeSystem}" Checked="Theme_Checked"/>
+              <RadioButton x:Name="LightTheme" GroupName="Theme" Style="{StaticResource ThemeSegment}" Content="{loc:Loc ThemeLight}" Checked="Theme_Checked"/>
+              <RadioButton x:Name="DarkTheme" GroupName="Theme" Style="{StaticResource ThemeSegment}" Content="{loc:Loc ThemeDark}" Checked="Theme_Checked"/>
+            </StackPanel>
+          </Grid>
         </StackPanel>
       </Border>
       <Border Style="{StaticResource SettingsSurface}" Margin="0,8,0,0" Padding="16,12">
         <StackPanel>
           <TextBlock FontWeight="SemiBold" Text="{loc:Loc General}" Margin="0,0,0,8"/>
-          <CheckBox x:Name="StartupBox" Content="{loc:Loc StartWithWindows}"/>
-          <CheckBox x:Name="AutoConnectBox" Content="{loc:Loc AutoConnect}" Margin="0,4,0,0"/>
-          <CheckBox x:Name="DetailsBox" Content="{loc:Loc ShowDetails}" Margin="0,4,0,0"/>
+          <CheckBox x:Name="StartupBox" Style="{StaticResource AnimatedCheck}" Content="{loc:Loc StartWithWindows}"/>
+          <CheckBox x:Name="AutoConnectBox" Style="{StaticResource AnimatedCheck}" Content="{loc:Loc AutoConnect}" Margin="0,4,0,0"/>
+          <CheckBox x:Name="DetailsBox" Style="{StaticResource AnimatedCheck}" Content="{loc:Loc ShowDetails}" Margin="0,4,0,0"/>
           <Grid Margin="0,8,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBlock x:Name="LanguageLabel" Text="{loc:Loc LanguageLabel}" VerticalAlignment="Center"/>
@@ -40,7 +121,10 @@
     <Grid Grid.Row="1" Margin="0,12,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Button x:Name="AdvancedButton" Click="Advanced_Click" Content="{loc:Loc Advanced}" ToolTip="{loc:Loc AdvancedTooltip}"/>
-      <Button x:Name="CancelButton" Grid.Column="2" Click="Cancel_Click" Content="{loc:Loc Cancel}" MinWidth="80"/>
+      <TextBlock x:Name="SavedText" Grid.Column="1" Margin="0,0,12,0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                 Foreground="{DynamicResource NativeSecondary}" Opacity="0" Visibility="Collapsed"
+                 AutomationProperties.LiveSetting="Polite"><Run FontFamily="Segoe Fluent Icons" Text="&#xE73E;"/><Run Text=" "/><Run Text="{loc:Loc SettingsSaved}"/></TextBlock>
+      <Button x:Name="CancelButton" Grid.Column="2" Click="Cancel_Click" Content="{loc:Loc SettingsClose}" MinWidth="80"/>
       <Button x:Name="SaveButton" Grid.Column="3" Style="{StaticResource PrimaryAction}" Margin="8,0,0,0" Click="Save_Click" Content="{loc:Loc Save}" IsDefault="True"/>
     </Grid>
   </Grid>

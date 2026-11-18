@@ -25,6 +25,14 @@ public sealed class UiTestBackendClient : IBackendClient
         if (command == "progress")
             return new(true, Stage: _inFlight == "disconnect" ? "stopping-tunnel" : "starting-tunnel");
         Commands.Add(command);
+        if (command == "routePings")
+        {
+            // The isolated fixture answers offline. A delayed mode lets screenshots catch the dots.
+            if (_commandDelay > TimeSpan.Zero) await Task.Delay(800, cancellationToken).ConfigureAwait(false);
+            return new CommandResult(true,
+                Pings: new() { ["CA"] = 120, ["DE"] = 190, ["JP"] = 270, ["NL"] = 200, ["US"] = 130 },
+                Unavailable: []);
+        }
         if (command is "connect" or "disconnect") _inFlight = command;
         if (command is "connect" or "disconnect" && _commandDelay > TimeSpan.Zero) await Task.Delay(_commandDelay, cancellationToken).ConfigureAwait(false);
         _inFlight = "";

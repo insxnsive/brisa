@@ -62,6 +62,12 @@ internal static class Program
             Click((Button)unavailable.FindName("SettingsButton"));
             var failedHost = (ContentControl)unavailable.FindName("PageHost");
             Click((Button)((SettingsView)failedHost.Content).FindName("SaveButton"));
+            Pump(() => failedHost.Content is not SettingsView settings
+                || settings.FindName("SavedText") is TextBlock { IsVisible: true });
+            Check(failedHost.Content is SettingsView savedSettings
+                && savedSettings.FindName("SavedText") is TextBlock { IsVisible: true },
+                "Save stays on Settings and shows Saved when the backend is unavailable");
+            Click((Button)((SettingsView)failedHost.Content).FindName("CancelButton"));
             Pump(() => failedHost.Content is null);
             Check(((TextBlock)unavailable.FindName("DetailText")).Text.Contains("native service"), "returning from Settings preserves actionable terminal-failure details");
             unavailable.RequestExit(); Pump(() => app.Windows.Count == 0);
@@ -202,8 +208,13 @@ internal static class Program
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
             var settings = (UserControl)host.Content;
             ((RadioButton)settings.FindName("LightTheme")).IsChecked = true;
-            Click((Button)settings.FindName("SaveButton")); Pump(() => host.Content is null);
-            Check(store.Current.Theme == AppTheme.Light && home.IsVisible, "Save applies settings and returns Home");
+            Click((Button)settings.FindName("SaveButton"));
+            Pump(() => ((SettingsView)settings).FindName("SavedText") is TextBlock { IsVisible: true });
+            Check(store.Current.Theme == AppTheme.Light && host.Content is SettingsView && !home.IsVisible,
+                "Save applies settings and stays on Settings");
+            Check(((TextBlock)((SettingsView)settings).FindName("SavedText")).IsVisible, "Save confirms with the Saved label");
+            Click((Button)((SettingsView)settings).FindName("CancelButton")); Pump(() => host.Content is null);
+            Check(home.IsVisible, "Close returns Home after a save");
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
             // Advanced é página agora, não diálogo: abre na mesma janela e o Voltar retorna a Settings.
             var settingsPage = (UserControl)host.Content;
@@ -224,9 +235,12 @@ internal static class Program
             var creditText = Flatten(credits).OfType<TextBlock>().Select(t => t.Text).ToList();
             Check(creditText.Any(t => t.Contains("GPL-3.0")), "the GPL notice is still displayed");
             Check(creditText.Any(t => t.Contains("GoLiveBypass")), "the upstream attribution is still displayed");
+            var homeFlashed = false;
+            home.IsVisibleChanged += (_, e) => homeFlashed |= e.NewValue is true;
             Click((Button)main.FindName("BackButton"));
             Pump(() => host.Content is SettingsView);
             Check(host.Content is SettingsView, "going back from Advanced returns to Settings");
+            Check(!homeFlashed, "Advanced back to Settings never shows Home");
             Click((Button)main.FindName("SettingsButton")); Pump(() => host.Content is UserControl);
             var cancelled = (UserControl)host.Content;
             ((RadioButton)cancelled.FindName("DarkTheme")).IsChecked = true;
@@ -419,14 +433,19 @@ internal static class Program
 
             // A3: the already-fixed null selection. Clearing the list and confirming must not
             // throw, and Automatic must stay null rather than becoming an invalid country.
-            var routeWindow = new RouteWindow(a1Main) { Owner = a1Main };
-            routeWindow.Loaded += (_, _) =>
+            string? chosen = "unset";
+            var routeView = new RouteView(null, null, null);
+            var routeHost = new Window { Content = routeView, Width = 440, Height = 520 };
+            routeView.Chosen += (_, args) => chosen = args.Country;
+            routeView.Loaded += (_, _) =>
             {
-                ((ListBox)routeWindow.FindName("CountryList")).SelectedIndex = -1;
-                ((Button)routeWindow.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ((ListBox)routeView.FindName("CountryList")).SelectedIndex = -1;
+                ((Button)routeView.FindName("UseRouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             };
-            var confirmed = routeWindow.ShowDialog();
-            Check(confirmed == true && routeWindow.SelectedCountry is null, "clearing the country list selects Automatic without throwing");
+            routeHost.Show();
+            Pump(() => chosen != "unset");
+            Check(chosen is null, "clearing the country list selects Automatic without throwing");
+            routeHost.Close();
 
             // A4: a verification window that cannot start is reported, not silently cancelled.
             var verification = new MainWindow(new CaptchaBackend(), store)
@@ -533,8 +552,10 @@ internal static class Program
             Check(!store.Current.AutoConnect, "Cancel discards an unsaved AutoConnect toggle");
             Click((Button)settingsMain.FindName("SettingsButton")); Pump(() => settingsHost.Content is SettingsView);
             ((CheckBox)((SettingsView)settingsHost.Content).FindName("AutoConnectBox")).IsChecked = true;
-            Click((Button)((SettingsView)settingsHost.Content).FindName("SaveButton")); Pump(() => settingsHost.Content is null);
+            Click((Button)((SettingsView)settingsHost.Content).FindName("SaveButton"));
+            Pump(() => ((SettingsView)settingsHost.Content).FindName("SavedText") is TextBlock { IsVisible: true });
             Check(store.Current.AutoConnect && new SettingsStore(root, false).Current.AutoConnect, "Save persists AutoConnect to settings.json");
+            Click((Button)((SettingsView)settingsHost.Content).FindName("CancelButton")); Pump(() => settingsHost.Content is null);
             Check(settingsProbe.Commands.Count == 0, "saving AutoConnect in Settings never connects immediately");
             settingsMain.RequestExit(); Pump(() => !settingsMain.IsVisible);
 

@@ -32,7 +32,10 @@ func probePingContext(ctx context.Context, ip string) int {
 		return 999
 	}
 
-	// 1. Try system ICMP ping
+	// 1. In-process ICMP on Windows, then the system ping command as a fallback.
+	if ms, err := fastIcmpPing(ctx, ip); err == nil && ms > 0 {
+		return ms
+	}
 	if ms, err := systemPingContext(ctx, ip); err == nil && ms > 0 {
 		return ms
 	}
@@ -49,6 +52,12 @@ func probePingContext(ctx context.Context, ip string) int {
 
 	return 999
 }
+
+const (
+	candidateProbeTimeout = 700 * time.Millisecond
+	candidateWorkers      = 64
+	pingDeadline          = 6 * time.Second
+)
 
 func systemPing(ip string, timeout time.Duration) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -125,7 +134,7 @@ func ProbeCandidatesPing(servers []api.LogicalServer, maxCandidates int) map[str
 // ProbeCandidatesPing. The callback is used by the GUI and the terminal trace
 // so both callers see the same ping stage and the same counters.
 func ProbeCandidatesPingWithProgress(servers []api.LogicalServer, maxCandidates int, progress PingProgressFunc) map[string]int {
-	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), pingDeadline)
 	defer cancel()
 	return probeCandidatesWithProgress(ctx, servers[:max(0, min(maxCandidates, len(servers)))], probePingContext, progress)
 }
@@ -140,22 +149,89 @@ type pingOutcome struct {
 	elapsedMs int
 }
 
+func locationKey(srv api.LogicalServer) string {
+	return strings.ToUpper(srv.ExitCountry) + "|" + strings.ToLower(strings.TrimSpace(srv.Region)) + "|" + strings.ToLower(strings.TrimSpace(srv.City))
+}
+
+func validPing(ms int) bool { return ms > 0 && ms < 999 }
+
+// probeIPs measures a set of addresses with bounded concurrency. A canceled context stops new
+// probes; one already in flight returns its failure and is still reported.
+func probeIPs(ctx context.Context, ips []string, probe func(context.Context, string) int) map[string]pingOutcome {
+	outcomes := make(map[string]pingOutcome, len(ips))
+	if len(ips) == 0 {
+		return outcomes
+	}
+	jobs := make(chan string)
+	results := make(chan pingOutcome, len(ips))
+	var wg sync.WaitGroup
+	for range min(candidateWorkers, len(ips)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ip := range jobs {
+				if ctx.Err() != nil {
+					continue
+				}
+				probeCtx, cancel := context.WithTimeout(ctx, candidateProbeTimeout)
+				started := time.Now()
+				ms := probe(probeCtx, ip)
+				cancel()
+				results <- pingOutcome{ip: ip, ms: ms, elapsedMs: max(0, int(time.Since(started).Milliseconds()))}
+			}
+		}()
+	}
+	go func() {
+		defer close(results)
+		defer wg.Wait()
+		defer close(jobs)
+	send:
+		for _, ip := range ips {
+			select {
+			case jobs <- ip:
+			case <-ctx.Done():
+				break send
+			}
+		}
+	}()
+	for outcome := range results {
+		outcomes[outcome.ip] = outcome
+	}
+	return outcomes
+}
+
 func probeCandidatesWithProgress(ctx context.Context, servers []api.LogicalServer, probe func(context.Context, string) int, progress PingProgressFunc) map[string]int {
+	results := make(map[string]int)
+	if ctx.Err() != nil {
+		return results
+	}
 	byIP := make(map[string][]string)
-	var ips []string
-	var missing []string
+	groups := make(map[string][2]string)
+	var order, ips, missing []string
 	for _, srv := range servers {
 		phys := GetBestPhysicalServer(&srv)
 		if phys == nil || phys.EntryIP == "" {
 			missing = append(missing, srv.Name)
 			continue
 		}
-		if _, exists := byIP[phys.EntryIP]; !exists {
-			ips = append(ips, phys.EntryIP)
+		ip := phys.EntryIP
+		if _, exists := byIP[ip]; !exists {
+			ips = append(ips, ip)
 		}
-		byIP[phys.EntryIP] = append(byIP[phys.EntryIP], srv.Name)
+		byIP[ip] = append(byIP[ip], srv.Name)
+		key := locationKey(srv)
+		group, exists := groups[key]
+		if !exists {
+			order = append(order, key)
+		}
+		if group[0] == "" {
+			group[0] = ip
+		} else if group[1] == "" && ip != group[0] {
+			group[1] = ip
+		}
+		groups[key] = group
 	}
-	results := make(map[string]int)
+
 	tested, succeeded := 0, 0
 	if progress != nil {
 		progress(PingProgressEvent{Total: len(servers)})
@@ -163,7 +239,7 @@ func probeCandidatesWithProgress(ctx context.Context, servers []api.LogicalServe
 	emit := func(server string, ms, elapsedMs int) {
 		tested++
 		status := "failed"
-		if ms > 0 && ms < 999 {
+		if validPing(ms) {
 			succeeded++
 			status = "success"
 		}
@@ -180,53 +256,50 @@ func probeCandidatesWithProgress(ctx context.Context, servers []api.LogicalServe
 		}
 	}
 
-	// Entries without an endpoint are accounted for as failed routes. Speed
-	// selection normally removes them before this stage, but counting them here
-	// keeps diagnostics truthful for callers that pass raw API data.
+	// Phase A probes the first candidate of every location. Phase B touches the second one only
+	// when the first failed, which roughly halves the normal workload.
+	measured := make(map[string]pingOutcome, len(ips))
+	seen := make(map[string]bool, len(ips))
+	phaseA := make([]string, 0, len(order))
+	for _, key := range order {
+		ip := groups[key][0]
+		if ip != "" && !seen[ip] {
+			seen[ip] = true
+			phaseA = append(phaseA, ip)
+		}
+	}
+	for ip, outcome := range probeIPs(ctx, phaseA, probe) {
+		measured[ip] = outcome
+	}
+	phaseB := make([]string, 0, len(order))
+	for _, key := range order {
+		second := groups[key][1]
+		if second == "" || seen[second] {
+			continue
+		}
+		if outcome, ok := measured[groups[key][0]]; ok && validPing(outcome.ms) {
+			continue
+		}
+		seen[second] = true
+		phaseB = append(phaseB, second)
+	}
+	for ip, outcome := range probeIPs(ctx, phaseB, probe) {
+		measured[ip] = outcome
+	}
+
 	for _, name := range missing {
 		emit(name, 999, 0)
 	}
-	if len(ips) == 0 {
-		return results
-	}
-
-	jobs := make(chan string)
-	outcomes := make(chan pingOutcome, len(ips))
-	var wg sync.WaitGroup
-	for range min(32, len(ips)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for ip := range jobs {
-				if ctx.Err() != nil {
-					continue
-				}
-				probeCtx, cancel := context.WithTimeout(ctx, 1200*time.Millisecond)
-				started := time.Now()
-				ms := probe(probeCtx, ip)
-				cancel()
-				outcomes <- pingOutcome{ip: ip, ms: ms, elapsedMs: max(0, int(time.Since(started).Milliseconds()))}
-			}
-		}()
-	}
-
-	go func() {
-		defer close(outcomes)
-		defer wg.Wait()
-		defer close(jobs)
-	send:
-		for _, ip := range ips {
-			select {
-			case jobs <- ip:
-			case <-ctx.Done():
-				break send
-			}
+	for _, ip := range ips {
+		outcome, ok := measured[ip]
+		ms := 999
+		elapsed := 0
+		if ok {
+			ms, elapsed = outcome.ms, outcome.elapsedMs
 		}
-	}()
-	for outcome := range outcomes {
-		for _, name := range byIP[outcome.ip] {
-			results[name] = outcome.ms
-			emit(name, outcome.ms, outcome.elapsedMs)
+		for _, name := range byIP[ip] {
+			results[name] = ms
+			emit(name, ms, elapsed)
 		}
 	}
 	return results

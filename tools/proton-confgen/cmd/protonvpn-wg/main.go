@@ -771,6 +771,10 @@ func listServers(cfg *config.Config, vpnClient *vpn.Client) error {
 	})
 
 	if cfg.JSONOutput {
+		pings := map[string]int{}
+		if cfg.AutoPing {
+			pings = vpn.ProbeCandidatesPing(filtered, len(filtered))
+		}
 		type serverJSON struct {
 			Name     string   `json:"name"`
 			Country  string   `json:"country"`
@@ -779,6 +783,7 @@ func listServers(cfg *config.Config, vpnClient *vpn.Client) error {
 			Load     int      `json:"load"`
 			Score    float64  `json:"score"`
 			Features []string `json:"features"`
+			PingMs   int      `json:"pingMs"`
 		}
 		list := make([]serverJSON, len(filtered))
 		for i := range filtered {
@@ -790,6 +795,7 @@ func listServers(cfg *config.Config, vpnClient *vpn.Client) error {
 				Load:     filtered[i].Load,
 				Score:    filtered[i].Score,
 				Features: api.GetFeatureNames(filtered[i].Features),
+				PingMs:   pings[filtered[i].Name],
 			}
 		}
 		data, _ := json.Marshal(list)

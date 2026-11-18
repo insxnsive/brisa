@@ -137,6 +137,13 @@
   <data name="TrayStatusFormat" xml:space="preserve"><value>Brisa: {0}</value></data>
   <data name="UseConfFile" xml:space="preserve"><value>Use a WireGuard .conf file instead</value></data>
   <data name="DiscordRestartNote" xml:space="preserve"><value>Discord closes and reopens for a moment when you connect or disconnect.</value></data>
+  <data name="SettingsSaved" xml:space="preserve"><value>Saved</value></data>
+  <data name="SettingsClose" xml:space="preserve"><value>Close</value></data>
+  <data name="RoutePingNoReply" xml:space="preserve"><value>No reply</value></data>
+  <data name="RoutePingUnavailable" xml:space="preserve"><value>Not on your plan</value></data>
+  <data name="RoutePingAutomatic" xml:space="preserve"><value>Best route</value></data>
+  <data name="RoutePingMeasuring" xml:space="preserve"><value>measuring</value></data>
+  <data name="RoutePingMeasuredFormat" xml:space="preserve"><value>{0} ms</value></data>
   <data name="ConnectConfirmDiscordRestart" xml:space="preserve"><value>Are you sure? Brisa will restart Discord</value></data>
   <data name="ServerWithPing" xml:space="preserve"><value>{0}, {1} ms</value></data>
   <data name="ServerOnly" xml:space="preserve"><value>{0}</value></data>
@@ -183,6 +190,9 @@
   <data name="Backend.START_NOT_CONFIRMED" xml:space="preserve"><value>WireSock started, but Brisa could not confirm it is running with Brisa's own profile. Try again.</value></data>
   <data name="Backend.START_REFUSED_UNKNOWN" xml:space="preserve"><value>The Brisa tunnel could not be started. Check WireSock and your VPN profile, then try again.</value></data>
   <data name="Backend.START_FAILED_UNCLASSIFIED" xml:space="preserve"><value>The connection could not be completed. If Discord did not reopen, open it manually. Then go to Settings &gt; Advanced &gt; Generate log and attach the log to a new issue at github.com/insxnsive/brisa/issues.</value></data>
+  <data name="Backend.ROUTE_PINGS_BUSY" xml:space="preserve"><value>The route preview is unavailable while another operation is running.</value></data>
+  <data name="Backend.ROUTE_PINGS_UNAVAILABLE" xml:space="preserve"><value>The route preview is unavailable in this session.</value></data>
+  <data name="Backend.ROUTE_PINGS_FAILED" xml:space="preserve"><value>The route preview could not be measured. Try again.</value></data>
   <data name="Backend.START_STATE_UNRELIABLE" xml:space="preserve"><value>Brisa could not read the WireSock state reliably, so it made no changes. Run Brisa as administrator and try again.</value></data>
   <data name="Backend.TWO_FACTOR_REQUIRED" xml:space="preserve"><value>Enter your Proton two-factor code and try again.</value></data>
   <data name="Backend.TWO_FACTOR_INVALID" xml:space="preserve"><value>The Proton two-factor code was rejected or expired.</value></data>

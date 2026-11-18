@@ -104,31 +104,33 @@ internal static class Program
                     "the Discord traffic graph fits above the route card at minimum size");
                 graphWindow.RequestExit();
                 Spin(200);
-                foreach (var pageName in new[] { "Settings", "Account", "Route", "Advanced" })
+                // Route needs an eligible window: the blocked fixture cannot open the page.
+                var routeMain = new MainWindow(new UiTestBackendClient(new(false, false, true, true, "fixture", null)), store);
+                routeMain.Show(); routeMain.InitializeAsync().GetAwaiter().GetResult();
+                routeMain.Width = routeMain.MinWidth; routeMain.Height = routeMain.MinHeight; routeMain.UpdateLayout();
+                ((Button)routeMain.FindName("RouteButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Spin(250);
+                Check(((ContentControl)routeMain.FindName("PageHost")).Content is RouteView, "Route opens as a page in the same window");
+                Capture(routeMain, theme + "-RouteView");
+                routeMain.RequestExit();
+                Spin(200);
+                foreach (var pageName in new[] { "Settings", "Account", "Advanced" })
                 {
-                    var inline = pageName is "Settings" or "Account" or "Advanced";
-                    Window window;
+                    Window window = main;
                     FrameworkElement view;
-                    if (inline)
+                    // Advanced fica um passo à frente de Settings: abre pelo botão de lá.
+                    if (pageName == "Advanced")
                     {
-                        // Advanced fica um passo à frente de Settings: abre pelo botão de lá.
-                        if (pageName == "Advanced")
-                        {
-                            ((Button)main.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                            main.UpdateLayout();
-                            var settingsView = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
-                            ((Button)settingsView.FindName("AdvancedButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                        }
-                        else ((Button)main.FindName(pageName + "Button")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                        window = main;
-                        view = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
+                        ((Button)main.FindName("SettingsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                        main.UpdateLayout();
+                        var settingsView = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
+                        ((Button)settingsView.FindName("AdvancedButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     }
-                    else
-                    {
-                        window = new RouteWindow(main);
-                        window.Owner = main; window.Show(); view = window;
-                    }
+                    else ((Button)main.FindName(pageName + "Button")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    // Route opens after the quiet scan preempt, so give the page a pass to appear.
+                    if (pageName == "Route") Spin(250);
+                    view = (FrameworkElement)((ContentControl)main.FindName("PageHost")).Content;
                     window.UpdateLayout();
                     if (view is AccountView)
                     {
@@ -287,6 +289,10 @@ internal static class Program
                     }
                     foreach (var control in Descendants(view).OfType<Control>())
                     {
+                        // The Settings motion styles are keyed and intentionally replace the
+                        // Fluent template for the segmented radios and the animated checks.
+                        if (control.Style == (Style?)view.TryFindResource("AnimatedCheck")
+                            || control.Style == (Style?)view.TryFindResource("ThemeSegment")) continue;
                         var key = control switch { PasswordBox => "DefaultPasswordBoxStyle", TextBox => "DefaultTextBoxStyle", ListBox => "DefaultListBoxStyle", CheckBox => "DefaultCheckBoxStyle", RadioButton => "DefaultRadioButtonStyle", _ => null };
                         if (key is not null) Check(MatchesTemplate(control, key), control.GetType().Name + " retains its Fluent template");
                     }
@@ -294,18 +300,14 @@ internal static class Program
                     // página lavada, que não serve para julgar contraste.
                     Spin(320);
                     Capture(window, theme + "-" + view.GetType().Name);
-                    if (inline)
+                    // Advanced devolve a Settings antes de voltar ao início, então precisa de dois Voltar.
+                    var backs = pageName == "Advanced" ? 2 : 1;
+                    for (var i = 0; i < backs; i++)
                     {
-                        // Advanced devolve a Settings antes de voltar ao início, então precisa de dois Voltar.
-                        var backs = pageName == "Advanced" ? 2 : 1;
-                        for (var i = 0; i < backs; i++)
-                        {
-                            ((Button)main.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                        }
-                        Check(((ContentControl)main.FindName("PageHost")).Content is null, "inline Back restores Home");
+                        ((Button)main.FindName("BackButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                     }
-                    else window.Close();
+                    Check(((ContentControl)main.FindName("PageHost")).Content is null, "inline Back restores Home");
                 }
                 foreach (var (phase, message, label) in new[]
                 {
