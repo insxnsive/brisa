@@ -22,7 +22,7 @@ internal static class UxTests
             AccountAndAdvanced(store, check);
             SettingsDraft(store, check);
             SdkBanner(store, check);
-            DiscordNote(store, check);
+            DiscordRestartConfirm(store, check);
             TrayMenu(store, check);
             TrayLimits(store, check);
             RouteWindowChoices(store, check);
@@ -127,23 +127,43 @@ internal static class UxTests
         main.RequestExit(); Pump(() => !main.IsVisible);
     }
 
-    private static void DiscordNote(SettingsStore store, Action<bool, string> check)
+    private static void DiscordRestartConfirm(SettingsStore store, Action<bool, string> check)
     {
-        var backend = new UxBackend(new(false, false, true, true, "fixture", null));
+        // No footer note any more: the Discord traffic graph owns that vertical space.
+        var quietBackend = new UxBackend(new(false, false, true, true, "fixture", null));
+        var quiet = new MainWindow(quietBackend, store, exitWarning: _ => { });
+        quiet.Show(); quiet.InitializeAsync().GetAwaiter().GetResult();
+        check(quiet.FindName("DiscordRestartNote") is null, "Home no longer carries a static Discord restart note");
+        Click((Button)quiet.FindName("PrimaryButton"));
+        Pump(() => quietBackend.Commands.Contains("connect"));
+        check(quietBackend.Commands.Contains("connect"), "a closed Discord connects on the first click");
+        quiet.RequestExit(); Pump(() => !quiet.IsVisible);
+
+        var backend = new UxBackend(new(false, false, true, true, "fixture", null, DiscordRunning: true));
         var main = new MainWindow(backend, store, exitWarning: _ => { });
-        var note = (TextBlock)main.FindName("DiscordRestartNote");
-        main.Show();
-        check(!note.IsVisible, "the Discord note is hidden while the first snapshot is loading");
-        main.InitializeAsync().GetAwaiter().GetResult();
-        check(note.IsVisible, "the Discord note shows on a disconnected Home");
+        main.Show(); main.InitializeAsync().GetAwaiter().GetResult();
+        var primary = (Button)main.FindName("PrimaryButton");
+        check(primary.Content as string == "Connect", "the primary action starts as Connect while Discord is open");
 
-        backend.State = backend.State with { ExternalTunnel = true };
-        main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
-        check(!note.IsVisible, "the Discord note hides on a blocked Home");
+        Click(primary); Pump(() => (primary.Content as string) != "Connect");
+        check(!backend.Commands.Contains("connect"), "the first click only arms the Discord restart confirmation");
+        check(primary.Content as string == "Are you sure? Brisa will restart Discord", "the first click explains the restart");
 
-        backend.State = backend.State with { ExternalTunnel = false, Connected = true, TunnelActive = true, OwnedTunnelPresent = true };
-        main.InitializeAsync(openAccount: false).GetAwaiter().GetResult();
-        check(note.IsVisible, "the Discord note stays visible on a connected Home");
+        var loc = Brisa.Localization.LocalizationManager.Current;
+        loc.Apply(Brisa.Localization.LocalizationManager.PortugueseBrazil);
+        check(primary.Content as string == "Tem certeza? O Brisa vai reiniciar o Discord", "the confirmation follows a live language switch");
+        loc.Apply(Brisa.Localization.LocalizationManager.English);
+        check(primary.Content as string == "Are you sure? Brisa will restart Discord", "switching back restores the English confirmation");
+
+        var page = (ContentControl)main.FindName("PageHost");
+        Click((Button)main.FindName("SettingsButton")); Pump(() => page.Content is SettingsView);
+        Click((Button)main.FindName("BackButton")); Pump(() => page.Content is null && (primary.Content as string) == "Connect");
+        check(primary.Content as string == "Connect", "opening a page resets the confirmation");
+
+        Click(primary); Pump(() => (primary.Content as string) != "Connect");
+        check(!backend.Commands.Contains("connect"), "the first click re-arms the confirmation");
+        Click(primary); Pump(() => backend.Commands.Contains("connect"));
+        check(backend.Commands.Contains("connect"), "the second click connects");
         main.RequestExit(); Pump(() => !main.IsVisible);
     }
 

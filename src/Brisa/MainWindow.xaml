@@ -112,7 +112,6 @@
                Foreground="{DynamicResource NativeDanger}" TextWrapping="Wrap" TextAlignment="Center"><Run Text="{loc:Loc SdkMissing}"/><Hyperlink Foreground="{DynamicResource NativeDanger}" Click="SdkLink_Click"><Run Text="{loc:Loc SdkInstallLink}"/></Hyperlink></TextBlock>
     <StackPanel Grid.Row="2">
       <Button x:Name="PrimaryButton" Style="{StaticResource PrimaryAction}" AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}" IsEnabled="False" MinHeight="40" Click="Primary_Click" Content="{loc:Loc Connect}"/>
-      <TextBlock x:Name="DiscordRestartNote" Style="{StaticResource SecondaryText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" Visibility="Collapsed" Text="{loc:Loc DiscordRestartNote}"/>
     </StackPanel>
     </Grid>
     <ContentControl x:Name="PageHost" Grid.Row="1" Margin="0,20,0,0" Visibility="Collapsed" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>

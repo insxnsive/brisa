@@ -40,6 +40,8 @@ public partial class MainWindow : Window
     private bool _nativeOperationMayBeActive;
     private bool _terminalBackendFailure;
     private bool _sdkSetupFailed;
+    private bool _confirmDiscordRestart;
+    internal Func<bool>? IsDiscordRunning { get; set; }
     private readonly bool _autoRouteScan;
     private readonly bool _autoConnect;
     private bool _routeScanClaimed;
@@ -350,11 +352,16 @@ public partial class MainWindow : Window
             && state.Snapshot is { SdkMissing: true, Stage: not "installing-wiresock", HasOwnedTunnel: false }
             && state.Phase is not (ConnectionPhase.Connected or ConnectionPhase.Limited)
             ? Visibility.Visible : Visibility.Collapsed;
-        // Discord restarts on both actions, so the note is static: it does not depend on
-        // DiscordRunning, which the backend only reports while a tunnel is up.
-        DiscordRestartNote.Visibility = state.Phase is ConnectionPhase.Disconnected or ConnectionPhase.Connected or ConnectionPhase.Unverified
-            ? Visibility.Visible : Visibility.Collapsed;
-        PrimaryButton.Content = state.PrimaryLabel;
+        // Discord restarts on connect and disconnect, so the primary action asks once before it
+        // restarts a client that is already open. The arm is dropped as soon as the state no
+        // longer allows a connect, so a stale confirmation cannot survive a page or a status
+        // change.
+        if (state.Phase != ConnectionPhase.Disconnected || state.RequiresSignIn || !state.PrimaryEnabled
+            || (state.Snapshot is not null && !CheckDiscordOpen()))
+            _confirmDiscordRestart = false;
+        PrimaryButton.Content = _confirmDiscordRestart
+            ? Localization.LocalizationManager.Current["ConnectConfirmDiscordRestart"]
+            : state.PrimaryLabel;
         var busy = state.Phase is ConnectionPhase.Loading or ConnectionPhase.Connecting or ConnectionPhase.Disconnecting or ConnectionPhase.Optimizing;
         SetStatusRing(busy);
         UpdateActionAvailability();
@@ -613,8 +620,47 @@ public partial class MainWindow : Window
             return;
         }
         var command = _state.Snapshot?.HasOwnedTunnel == true ? "disconnect" : "connect";
+        if (command == "connect" && !_confirmDiscordRestart && CheckDiscordOpen())
+        {
+            try
+            {
+                _confirmDiscordRestart = true;
+                PrimaryButton.Content = Localization.LocalizationManager.Current["ConnectConfirmDiscordRestart"];
+                StatusMotion.FadeIn(PrimaryButton, _allowMotion);
+            }
+            finally { EndUiMutation(); _operation.Release(); UpdateActionAvailability(); }
+            return;
+        }
+        _confirmDiscordRestart = false;
         SetState(_state with { Phase = command == "connect" ? ConnectionPhase.Connecting : ConnectionPhase.Disconnecting, DetailKey = null });
         await RunPrimaryMutationAsync(command, scanFirst: false);
+    }
+
+    // A live Discord client turns Connect into a two-click action: the first click explains that
+    // the client will restart. Tests inject the seam; production also checks the process list.
+    private bool CheckDiscordOpen() => IsDiscordRunning?.Invoke()
+        ?? (_state.Snapshot?.DiscordRunning == true || (_backend is BackendClient && IsAnyDiscordProcessRunning()));
+
+    private static bool IsAnyDiscordProcessRunning()
+    {
+        foreach (var name in new[] { "Discord", "DiscordPTB", "DiscordCanary", "Vesktop", "Equibop", "Legcord" })
+        {
+            System.Diagnostics.Process[] processes;
+            try { processes = System.Diagnostics.Process.GetProcessesByName(name); }
+            catch { continue; }
+            try
+            {
+                if (processes.Length > 0) return true;
+            }
+            finally
+            {
+                foreach (var process in processes)
+                {
+                    try { process.Dispose(); } catch { }
+                }
+            }
+        }
+        return false;
     }
 
     internal Action<string?, string?>? CommandFailureNotice { get; init; }
@@ -837,6 +883,7 @@ public partial class MainWindow : Window
     {
         // Any page change invalidates snapshots issued for the previous surface.
         _navigationEpoch++;
+        _confirmDiscordRestart = false;
         PageTransition.Stop(HomeContent);
         _currentPage = page; PageHost.Content = page;
         PageTitle.Text = title;
@@ -1105,6 +1152,7 @@ public partial class MainWindow : Window
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (_canClose) return;
+        _confirmDiscordRestart = false;
         CloseNotifications();
         PageTransition.Stop(PageHost);
         PageTransition.Stop(HomeContent);
