@@ -1,5 +1,16 @@
 # Changes
 
+## 1.0.4
+
+- Home has a bell in the top-left corner. It combines ready updates with notices signed by the project, and the count clears once you open it.
+- Brisa can run its main action from the tray, and the menu shows the current status, opens the window, and adapts to whether you are signed in. The icon comes back after Explorer restarts.
+- On a Limited account the main button offers Restart as administrator instead of failing, an unelevated launch can wake the elevated window, and a relaunch keeps the install and clients you picked.
+- With Connect when Brisa opens turned on alongside Start with Windows, a per-user sign-in task starts Brisa at logon, so the connect no longer waits for a UAC prompt.
+- Route remembers the country you chose and reuses it for the launch scan and auto-connect, and the Route window shows the current route before you optimize.
+- Account sign-in goes straight to .conf import, and the WireSock SDK banner stays hidden until an install attempt fails in that session.
+- Settings keeps unsaved edits when you open Advanced or go back, and links in the light theme are dark enough to read.
+- Connect verification retries inside a short settle window, so a Discord updater restart no longer raises a false unverified route dialog.
+
 ## 1.0.3
 
 - Brisa checks the route once when it opens, when you are signed in and nothing is connected, and moves to a better server if it finds one. The route used to be chosen the first time a profile was generated and reused by every later connect, so one stale pick could sit there for weeks.
