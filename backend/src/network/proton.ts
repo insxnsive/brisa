@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { StringDecoder } from 'string_decoder';
 import type { RouteProbeResult } from './route-proof';
 import type { ProtonRouteMetadata } from './route-failover';
-import { normalizeProtonCertificateFailure } from './proton-certificate';
+import { APP_VERSION_UNSUPPORTED_RE, normalizeProtonCertificateFailure } from './proton-certificate';
 import type { ProtonHumanVerificationMethod } from './proton-captcha';
 import {
   ensureProtonConfgen as ensureProtonConfgenRuntime,
@@ -32,6 +32,7 @@ export type ProtonLoginErrorCode =
   | 'MISSING_EXECUTABLE'
   | 'SESSION_PERSISTENCE'
   | 'CONFIGURATION_ERROR'
+  | 'APP_VERSION_UNSUPPORTED'
   | 'UNKNOWN';
 
 export interface ProtonLoginResult {
@@ -313,8 +314,11 @@ export function runConfgen(options: RunConfgenOptions): Promise<{ code: number |
   });
 }
 
+const APP_VERSION_UNSUPPORTED_MESSAGE = 'A Proton não aceita mais esta versão do Brisa. Atualize o Brisa ou importe um arquivo .conf do WireGuard.';
+
 export function classifyProtonError(error: unknown, stderr = '', stdout = ''): { code: ProtonLoginErrorCode; message: string; retryable: boolean } {
   const raw = `${error instanceof Error ? error.message : String(error)} ${stderr} ${stdout}`.toLowerCase();
+  if (APP_VERSION_UNSUPPORTED_RE.test(raw)) return { code: 'APP_VERSION_UNSUPPORTED', message: APP_VERSION_UNSUPPORTED_MESSAGE, retryable: false };
   if (/captcha_invalid|captcha.*expired|human verification.*(invalid|expired)/.test(raw)) return { code: 'CAPTCHA_INVALID', message: 'A verificação de segurança expirou ou foi recusada. Abra um novo CAPTCHA e tente novamente.', retryable: true };
   if (/captcha_required|captcha verification required|human verification required|code 9001/.test(raw)) return { code: 'CAPTCHA_REQUIRED', message: 'O Proton solicitou uma verificação de segurança. Abra o CAPTCHA e tente novamente.', retryable: true };
   if (/2fa_required|two.?factor|required.*2fa/.test(raw)) return { code: 'TWO_FACTOR_REQUIRED', message: 'Esta conta exige autenticação em duas etapas.', retryable: false };
@@ -395,7 +399,7 @@ function ensureInstallDir(installDir: string) {
  * timeout, helper ausente) que NAO invalida a sessao: a GUI mantem o usuario
  * autenticado e a ativacao continua disponivel com o perfil ja gerado.
  */
-export type ProtonSessionCheckCode = 'INVALID_SESSION' | 'NETWORK_ERROR' | 'TIMEOUT' | 'MISSING_EXECUTABLE' | 'SESSION_PERSISTENCE' | 'UNKNOWN';
+export type ProtonSessionCheckCode = 'INVALID_SESSION' | 'NETWORK_ERROR' | 'TIMEOUT' | 'MISSING_EXECUTABLE' | 'SESSION_PERSISTENCE' | 'APP_VERSION_UNSUPPORTED' | 'UNKNOWN';
 
 export interface ProtonSessionCheckResult {
   valid: boolean;
@@ -631,6 +635,8 @@ function structuredProtonError(code: string): { message: string; retryable: bool
         message: 'A sessão Proton já salva não pôde ser atualizada neste computador. Sua senha não foi verificada e a sessão anterior foi preservada. Feche outras versões do aplicativo e tente novamente.',
         retryable: true,
       };
+    case 'APP_VERSION_UNSUPPORTED':
+      return { message: APP_VERSION_UNSUPPORTED_MESSAGE, retryable: false };
     default:
       return undefined;
   }

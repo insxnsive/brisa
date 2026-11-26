@@ -1,13 +1,31 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 import { WireSockSetupError, wireSockSetupFailure } from "../src/wiresock-setup.mjs";
 import { sanitizeWireGuardConfig, validateWireGuardConfig } from "../src/network/vpn-types.ts";
+import { normalizeProtonCertificateFailure } from "../src/network/proton-certificate.ts";
 import { createDiagnostics } from "../src/diagnostics.mjs";
 import { WireSockStartError } from "../src/wiresock-start-result.mjs";
 
 import { createBackend, validateCommandPayload } from "../src/backend.mjs";
 import { DiscordCompatibilityError, createDiscordSelectionGuard } from "../src/discord-compatibility.mjs";
+
+const protonEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "network", "proton.ts");
+const bundledProton = await build({
+  entryPoints: [protonEntry],
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  write: false,
+  logLevel: "silent",
+  define: { "import.meta.url": JSON.stringify(pathToFileURL(protonEntry).href) },
+});
+const { classifyProtonError } = await import(
+  `data:text/javascript;base64,${Buffer.from(bundledProton.outputFiles[0].text).toString("base64")}`
+);
 
 const goodConfig = `[Interface]\nPrivateKey = ${"A".repeat(43)}=\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = ${"B".repeat(43)}=\nAllowedIPs = 0.0.0.0/0\nEndpoint = vpn.example:51820\n`;
 
@@ -1978,4 +1996,63 @@ test("cancel aborts the preview plan lookup before launching the server list", a
   await backend.execute("cancel", {});
   assert.equal((await preview).code, "CAPTCHA_CANCELLED");
   assert.equal(listed, false);
+});
+
+const APP_VERSION_UNSUPPORTED_EXPECTED_MESSAGE =
+  "Proton no longer accepts this version of Brisa. Update Brisa or import a WireGuard .conf file.";
+
+test("login surfaces APP_VERSION_UNSUPPORTED without echoing untrusted error text", async () => {
+  const { backend } = harness({
+    login: async () => ({ success: false, code: "APP_VERSION_UNSUPPORTED", error: "untrusted server text" }),
+  });
+  const result = await backend.execute("login", { username: "person@example.test", password: "fixture-password-293" });
+  assert.deepEqual(result, {
+    success: false,
+    code: "APP_VERSION_UNSUPPORTED",
+    message: APP_VERSION_UNSUPPORTED_EXPECTED_MESSAGE,
+  });
+  assert.equal(JSON.stringify(result).includes("untrusted server text"), false);
+});
+
+for (const command of ["optimize", "connect"]) {
+  test(`${command} surfaces APP_VERSION_UNSUPPORTED when profile generation is rejected`, async () => {
+    const { backend } = harness({
+      generate: async () => ({ success: false, code: "APP_VERSION_UNSUPPORTED" }),
+    });
+    const result = await backend.execute(command, {});
+    assert.deepEqual(result, {
+      success: false,
+      code: "APP_VERSION_UNSUPPORTED",
+      message: APP_VERSION_UNSUPPORTED_EXPECTED_MESSAGE,
+    });
+  });
+}
+
+test("normalizeProtonCertificateFailure classifies structured and legacy 5003 version rejections", () => {
+  assert.deepEqual(
+    normalizeProtonCertificateFailure({ code: "APP_VERSION_UNSUPPORTED", error: "Client version rejected", retryable: true }, "fallback"),
+    { success: false, code: "APP_VERSION_UNSUPPORTED", error: "Client version rejected", retryable: false },
+  );
+  assert.deepEqual(
+    normalizeProtonCertificateFailure({ error: "authentication failed with code: 5003" }, "fallback"),
+    { success: false, code: "APP_VERSION_UNSUPPORTED", error: "authentication failed with code: 5003", retryable: false },
+  );
+  assert.deepEqual(
+    normalizeProtonCertificateFailure(undefined, "session failed with code: 5005"),
+    { success: false, code: "APP_VERSION_UNSUPPORTED", error: "session failed with code: 5005", retryable: false },
+  );
+  assert.deepEqual(
+    normalizeProtonCertificateFailure({ code: "CAPTCHA_REQUIRED", error: "Verify", captchaUrl: "https://verify.proton.me/?token=abc", retryable: true }, "fallback"),
+    { success: false, code: "CAPTCHA_REQUIRED", error: "Verify", retryable: true, captchaUrl: "https://verify.proton.me/?token=abc" },
+  );
+});
+
+test("classifyProtonError prioritizes APP_VERSION_UNSUPPORTED for structured and legacy 5003 text", () => {
+  const structured = classifyProtonError(new Error("APP_VERSION_UNSUPPORTED: network reset"));
+  assert.equal(structured.code, "APP_VERSION_UNSUPPORTED");
+  assert.equal(structured.retryable, false);
+
+  const legacy = classifyProtonError(new Error("authentication failed with code: 5003"), "timeout");
+  assert.equal(legacy.code, "APP_VERSION_UNSUPPORTED");
+  assert.equal(legacy.retryable, false);
 });

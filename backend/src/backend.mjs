@@ -32,6 +32,7 @@ const FAILURE_MESSAGES = Object.freeze({
   MISSING_EXECUTABLE: "The packaged Proton helper is unavailable.",
   SESSION_PERSISTENCE: "The Proton session could not be saved. Close other Brisa instances and try again.",
   CONFIGURATION_ERROR: "The WireGuard profile could not be generated. Try another route.",
+  APP_VERSION_UNSUPPORTED: "Proton no longer accepts this version of Brisa. Update Brisa or import a WireGuard .conf file.",
   UNKNOWN: "The Proton operation failed. Try again.",
 });
 const safeFailure = code => FAILURE_MESSAGES[code] || "Operation failed. Try again.";
