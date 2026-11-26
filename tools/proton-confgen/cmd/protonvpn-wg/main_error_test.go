@@ -17,6 +17,7 @@ func TestJSONErrorResponseClassifiesAuthenticationFailures(t *testing.T) {
 		{name: "two factor required", err: fmt.Errorf("authentication failed: %w", auth.ErrTwoFactorRequired), code: "TWO_FACTOR_REQUIRED"},
 		{name: "two factor invalid", err: &auth.TwoFactorError{Code: 9100}, code: "TWO_FACTOR_INVALID"},
 		{name: "invalid credentials", err: &auth.InvalidCredentialsError{Code: 8002}, code: "INVALID_CREDENTIALS"},
+		{name: "app version", err: &auth.AppVersionError{Code: auth.CodeAppVersionBad}, code: "APP_VERSION_UNSUPPORTED"},
 		{name: "temporary", err: &auth.TemporarySessionError{Operation: "authentication"}, code: "NETWORK_ERROR"},
 		{name: "session persistence", err: &auth.SessionPersistenceError{Err: errors.New("Access denied")}, code: "SESSION_PERSISTENCE"},
 	}

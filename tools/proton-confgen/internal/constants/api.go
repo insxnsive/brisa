@@ -1,6 +1,8 @@
 // Package constants defines constants used throughout the application.
 package constants
 
+import "runtime"
+
 // API endpoints
 // Paths match the ProtonVPN Linux reference client (python-proton-core/python-proton-vpn-api-core).
 const (
@@ -16,12 +18,39 @@ const (
 	CaptchaPath = "/core/v4/captcha"
 )
 
-// API version headers - can be overridden at build time via ldflags:
-// go build -ldflags "-X .../internal/constants.AppVersion=linux-vpn@X.Y.Z"
+// ClientVersion is the official ProtonVPN Linux client version sent in the app
+// version header. Source: https://raw.githubusercontent.com/ProtonVPN/python-proton-vpn-api-core/stable/versions.yml
+// Proton began rejecting linux-vpn@4.17.2 with HTTP 422 code 5003 on 2026-11-19.
+var ClientVersion = "6.1.2"
+
+// API version headers are filled in init when not overridden at build time via
+// ldflags: -X .../internal/constants.ClientVersion=X.Y.Z
 var (
-	AppVersion = "linux-vpn@4.17.2"
-	UserAgent  = "ProtonVPN/4.17.2 (Linux; Ubuntu)"
+	AppVersion = ""
+	UserAgent  = ""
 )
+
+func init() {
+	if AppVersion == "" {
+		AppVersion = "linux-vpn-gui@" + ClientVersion + "+" + officialArch(runtime.GOARCH)
+	}
+	if UserAgent == "" {
+		UserAgent = "ProtonVPN/" + ClientVersion + " (Linux; ubuntu/26.04)"
+	}
+}
+
+func officialArch(goarch string) string {
+	switch goarch {
+	case "amd64":
+		return "x86-64"
+	case "arm64":
+		return "aarch64"
+	case "arm":
+		return "armv7l"
+	default:
+		return goarch
+	}
+}
 
 // API response codes
 // Reference: proton-python-client/proton/api.py checks for codes 1000 and 1001

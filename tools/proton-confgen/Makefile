@@ -10,8 +10,8 @@ MODULE=protonvpn-wg-confgen
 # status: the `cut` at the end of the pipeline succeeds even when curl fails,
 # so a `||` here would never fire and would stamp an empty version. Proton
 # rejects or human-verifies requests carrying a malformed app version.
-PROTON_VERSION_URL=https://raw.githubusercontent.com/ProtonVPN/proton-vpn-gtk-app/stable/versions.yml
-PROTON_VERSION_FALLBACK=4.17.2
+PROTON_VERSION_URL=https://raw.githubusercontent.com/ProtonVPN/python-proton-vpn-api-core/stable/versions.yml
+PROTON_VERSION_FALLBACK=6.1.2
 PROTON_VERSION ?= $(shell curl -sf "$(PROTON_VERSION_URL)" 2>/dev/null | head -1 | cut -d' ' -f2)
 ifeq ($(strip $(PROTON_VERSION)),)
 PROTON_VERSION=$(PROTON_VERSION_FALLBACK)
@@ -19,8 +19,7 @@ $(warning Could not fetch upstream ProtonVPN version, falling back to $(PROTON_V
 endif
 
 # ldflags to inject version at build time
-LDFLAGS=-ldflags "-X '$(MODULE)/internal/constants.AppVersion=linux-vpn@$(PROTON_VERSION)' \
-                  -X '$(MODULE)/internal/constants.UserAgent=ProtonVPN/$(PROTON_VERSION) (Linux; Ubuntu)'"
+LDFLAGS=-ldflags "-X '$(MODULE)/internal/constants.ClientVersion=$(PROTON_VERSION)'"
 
 # Build the binary
 build:

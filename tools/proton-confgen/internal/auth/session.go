@@ -538,6 +538,11 @@ func RefreshSessionContext(ctx context.Context, httpClient *http.Client, apiURL 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// A rejected app version says nothing about the saved refresh token. Check
+	// it before any status or code branch that can invalidate the session.
+	if err := appVersionRejection(body); err != nil {
+		return nil, err
+	}
 
 	// A gateway/rate-limit response is not evidence that the refresh token is
 	// invalid. Keep the cache so a later attempt can retry it.
@@ -622,14 +627,19 @@ func VerifySessionStatusContext(ctx context.Context, httpClient *http.Client, ap
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// If we get a 401/403, the session is invalid. Other non-2xx responses are
-	// kept as temporary failures because a gateway or rate limiter can produce
-	// them without saying anything about the token.
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return false, &SessionInvalidError{StatusCode: resp.StatusCode}
-	}
-
+	// If the response carries an app version rejection, keep the saved session
+	// intact regardless of the status code. Only a real 401/403 after that
+	// check means the session itself was rejected.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAuthResponseBytes))
+		rejection := appVersionRejection(body)
+		clear(body)
+		if rejection != nil {
+			return false, rejection
+		}
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return false, &SessionInvalidError{StatusCode: resp.StatusCode}
+		}
 		return false, &TemporarySessionError{Err: fmt.Errorf("HTTP %d", resp.StatusCode), Operation: "session verification"}
 	}
 
@@ -682,6 +692,9 @@ func VerifySessionStatusContext(ctx context.Context, httpClient *http.Client, ap
 			}
 			if constants.IsSuccessCode(code) {
 				return true, nil
+			}
+			if isAppVersionCode(code) {
+				return false, &AppVersionError{Code: code}
 			}
 			return false, &SessionInvalidError{Code: code, StatusCode: resp.StatusCode}
 		}

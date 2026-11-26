@@ -37,7 +37,7 @@ cd protonvpn-wg-confgen
 make build          # produces ./build/protonvpn-wg-confgen
 ```
 
-`make build` stamps the binary with the current ProtonVPN Linux client version, fetched from upstream at build time. A plain `go build` falls back to the version compiled into `internal/constants`. Advertising an outdated client version gets rejected by the API with code 5003, so prefer `make build`.
+`make build` stamps the binary with the current ProtonVPN Linux client version, fetched from upstream at build time. A plain `go build` falls back to the version compiled into `internal/constants`. Brisa sends `linux-vpn-gui@X.Y.Z+<arch>` with `User-Agent: ProtonVPN/X.Y.Z (Linux; ubuntu/26.04)`. Advertising an outdated client version gets rejected by the API with code 5001, 5003, or 5005; Brisa reports `APP_VERSION_UNSUPPORTED` and keeps the saved session so it can be retried after an update. Prefer `make build`.
 
 You will need a ProtonVPN account; a free one works, with the tier caveats noted below.
 
@@ -106,7 +106,7 @@ protonvpn-wg-confgen -username <username> -check-plan -json
 
 ### Staged speed selection and terminal trace
 
-The speed selector uses the same four stages as the GoLiveBypass dialog:
+The speed selector uses the same four stages as the Brisa dialog:
 
 1. Measure ping for every eligible route in the regional scan.
 2. Keep the twelve routes with the lowest measured ping (or deterministic fallbacks when ping is blocked).
