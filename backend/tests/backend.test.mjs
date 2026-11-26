@@ -1,13 +1,36 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import childProcess from "node:child_process";
+import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import os from "node:os";
+import path from "node:path";
+import { mock, test } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 import { WireSockSetupError, wireSockSetupFailure } from "../src/wiresock-setup.mjs";
 import { sanitizeWireGuardConfig, validateWireGuardConfig } from "../src/network/vpn-types.ts";
+import { normalizeProtonCertificateFailure } from "../src/network/proton-certificate.ts";
 import { createDiagnostics } from "../src/diagnostics.mjs";
 import { WireSockStartError } from "../src/wiresock-start-result.mjs";
 
 import { createBackend, validateCommandPayload } from "../src/backend.mjs";
 import { DiscordCompatibilityError, createDiscordSelectionGuard } from "../src/discord-compatibility.mjs";
+
+const protonEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "network", "proton.ts");
+const bundledProton = await build({
+  entryPoints: [protonEntry],
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  write: false,
+  logLevel: "silent",
+  define: { "import.meta.url": JSON.stringify(pathToFileURL(protonEntry).href) },
+});
+const { classifyProtonError, generateOptimalProtonConfig, loginProton } = await import(
+  `data:text/javascript;base64,${Buffer.from(bundledProton.outputFiles[0].text).toString("base64")}`
+);
 
 const goodConfig = `[Interface]\nPrivateKey = ${"A".repeat(43)}=\nAddress = 10.0.0.2/32\n[Peer]\nPublicKey = ${"B".repeat(43)}=\nAllowedIPs = 0.0.0.0/0\nEndpoint = vpn.example:51820\n`;
 
@@ -1978,4 +2001,150 @@ test("cancel aborts the preview plan lookup before launching the server list", a
   await backend.execute("cancel", {});
   assert.equal((await preview).code, "CAPTCHA_CANCELLED");
   assert.equal(listed, false);
+});
+
+const APP_VERSION_UNSUPPORTED_EXPECTED_MESSAGE =
+  "Proton no longer accepts this version of Brisa. Update Brisa or import a WireGuard .conf file.";
+const CONTROLLED_CERT_VERSION_ERROR = "Proton no longer accepts this version of Brisa.";
+
+async function withMockedProtonHelper(reply, fn) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brisa-proton-test-"));
+  const helper = path.join(root, "extra", "proton-confgen", process.platform === "win32" ? "proton-confgen.exe" : "proton-confgen");
+  fs.mkdirSync(path.dirname(helper), { recursive: true });
+  fs.writeFileSync(helper, "fixture-helper");
+  const hadResourcesPath = Object.prototype.hasOwnProperty.call(process, "resourcesPath");
+  const prevResourcesPath = process.resourcesPath;
+  Object.defineProperty(process, "resourcesPath", { value: root, configurable: true });
+  mock.method(childProcess, "spawn", () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = Object.assign(new EventEmitter(), { end() {} });
+    child.kill = () => {};
+    queueMicrotask(() => {
+      if (reply.stdout) child.stdout.emit("data", Buffer.from(reply.stdout));
+      if (reply.stderr) child.stderr.emit("data", Buffer.from(reply.stderr));
+      child.emit("close", reply.code ?? 1);
+    });
+    return child;
+  });
+  syncBuiltinESMExports();
+  try {
+    return await fn(path.join(root, "install"));
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    if (hadResourcesPath) {
+      Object.defineProperty(process, "resourcesPath", { value: prevResourcesPath, configurable: true });
+    } else {
+      delete process.resourcesPath;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("login surfaces APP_VERSION_UNSUPPORTED without echoing untrusted error text", async () => {
+  const { backend } = harness({
+    login: async () => ({ success: false, code: "APP_VERSION_UNSUPPORTED", error: "untrusted server text" }),
+  });
+  const result = await backend.execute("login", { username: "person@example.test", password: "fixture-password-293" });
+  assert.deepEqual(result, {
+    success: false,
+    code: "APP_VERSION_UNSUPPORTED",
+    message: APP_VERSION_UNSUPPORTED_EXPECTED_MESSAGE,
+  });
+  assert.equal(JSON.stringify(result).includes("untrusted server text"), false);
+});
+
+for (const command of ["optimize", "connect"]) {
+  test(`${command} surfaces APP_VERSION_UNSUPPORTED when profile generation is rejected`, async () => {
+    const certFailure = {
+      success: false,
+      code: "APP_VERSION_UNSUPPORTED",
+      retryable: false,
+      error: "failed to get VPN certificate: Proton no longer accepts this app version (code 5003); update Brisa",
+    };
+    const { backend } = harness({
+      generate: async () => normalizeProtonCertificateFailure(certFailure, certFailure.error),
+    });
+    const result = await backend.execute(command, {});
+    assert.deepEqual(result, {
+      success: false,
+      code: "APP_VERSION_UNSUPPORTED",
+      message: APP_VERSION_UNSUPPORTED_EXPECTED_MESSAGE,
+    });
+  });
+}
+
+test("normalizeProtonCertificateFailure and generateOptimalProtonConfig keep controlled text on real 5003 helper shapes", async () => {
+  const realShape = {
+    success: false,
+    code: "APP_VERSION_UNSUPPORTED",
+    retryable: false,
+    error: "failed to get VPN certificate: Proton no longer accepts this app version (code 5003); update Brisa",
+  };
+  assert.deepEqual(
+    normalizeProtonCertificateFailure(realShape, "fallback"),
+    { success: false, code: "APP_VERSION_UNSUPPORTED", error: CONTROLLED_CERT_VERSION_ERROR, retryable: false },
+  );
+  const generated = await withMockedProtonHelper(
+    { code: 1, stdout: JSON.stringify(realShape) + "\n" },
+    installDir => generateOptimalProtonConfig(installDir, { username: "person@example.test" }),
+  );
+  assert.deepEqual(generated, {
+    success: false,
+    code: "APP_VERSION_UNSUPPORTED",
+    error: CONTROLLED_CERT_VERSION_ERROR,
+    retryable: false,
+  });
+
+  assert.deepEqual(
+    normalizeProtonCertificateFailure(
+      { error: "authentication failed: failed to get auth info: authentication failed with code: 5003" },
+      "fallback",
+    ),
+    { success: false, code: "APP_VERSION_UNSUPPORTED", error: CONTROLLED_CERT_VERSION_ERROR, retryable: false },
+  );
+  assert.deepEqual(
+    normalizeProtonCertificateFailure({ code: "CAPTCHA_REQUIRED", error: "Verify", captchaUrl: "https://verify.proton.me/?token=abc", retryable: true }, "fallback"),
+    { success: false, code: "CAPTCHA_REQUIRED", error: "Verify", retryable: true, captchaUrl: "https://verify.proton.me/?token=abc" },
+  );
+});
+
+test("unstructured vendor prose never triggers APP_VERSION_UNSUPPORTED", () => {
+  const looseProse = "This version of the app is no longer supported";
+  assert.deepEqual(
+    normalizeProtonCertificateFailure({ error: looseProse }, looseProse),
+    { success: false, error: looseProse },
+  );
+  const classified = classifyProtonError(new Error(looseProse));
+  assert.equal(classified.code, "UNKNOWN");
+});
+
+test("legacy 5003 text matches only when structured code is absent", async () => {
+  const legacyText = "authentication failed: failed to get auth info: authentication failed with code: 5003";
+  const legacyClassified = classifyProtonError(new Error(legacyText), "timeout");
+  assert.equal(legacyClassified.code, "APP_VERSION_UNSUPPORTED");
+  assert.equal(legacyClassified.retryable, false);
+
+  const legacyLogin = await withMockedProtonHelper(
+    { code: 1, stderr: legacyText },
+    installDir => loginProton(installDir, "person@example.test", "fixture-password-293"),
+  );
+  assert.equal(legacyLogin.success, false);
+  assert.equal(legacyLogin.code, "APP_VERSION_UNSUPPORTED");
+  assert.equal(legacyLogin.retryable, false);
+
+  const otherStructured = { success: false, code: "OTHER_CODE", error: "authentication failed with code: 5003" };
+  assert.deepEqual(
+    normalizeProtonCertificateFailure(otherStructured, "fallback"),
+    { success: false, error: "authentication failed with code: 5003" },
+  );
+  const precedenceLogin = await withMockedProtonHelper(
+    { code: 1, stdout: JSON.stringify(otherStructured) + "\n" },
+    installDir => loginProton(installDir, "person@example.test", "fixture-password-293"),
+  );
+  assert.equal(precedenceLogin.success, false);
+  assert.equal(precedenceLogin.code, "UNKNOWN");
+  assert.equal(precedenceLogin.retryable, true);
 });

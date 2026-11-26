@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { StringDecoder } from 'string_decoder';
 import type { RouteProbeResult } from './route-proof';
 import type { ProtonRouteMetadata } from './route-failover';
-import { normalizeProtonCertificateFailure } from './proton-certificate';
+import { APP_VERSION_UNSUPPORTED_RE, normalizeProtonCertificateFailure } from './proton-certificate';
 import type { ProtonHumanVerificationMethod } from './proton-captcha';
 import {
   ensureProtonConfgen as ensureProtonConfgenRuntime,
@@ -32,6 +32,7 @@ export type ProtonLoginErrorCode =
   | 'MISSING_EXECUTABLE'
   | 'SESSION_PERSISTENCE'
   | 'CONFIGURATION_ERROR'
+  | 'APP_VERSION_UNSUPPORTED'
   | 'UNKNOWN';
 
 export interface ProtonLoginResult {
@@ -313,8 +314,11 @@ export function runConfgen(options: RunConfgenOptions): Promise<{ code: number |
   });
 }
 
+const APP_VERSION_UNSUPPORTED_MESSAGE = 'A Proton não aceita mais esta versão do Brisa. Atualize o Brisa ou importe um arquivo .conf do WireGuard.';
+
 export function classifyProtonError(error: unknown, stderr = '', stdout = ''): { code: ProtonLoginErrorCode; message: string; retryable: boolean } {
   const raw = `${error instanceof Error ? error.message : String(error)} ${stderr} ${stdout}`.toLowerCase();
+  if (APP_VERSION_UNSUPPORTED_RE.test(raw)) return { code: 'APP_VERSION_UNSUPPORTED', message: APP_VERSION_UNSUPPORTED_MESSAGE, retryable: false };
   if (/captcha_invalid|captcha.*expired|human verification.*(invalid|expired)/.test(raw)) return { code: 'CAPTCHA_INVALID', message: 'A verificação de segurança expirou ou foi recusada. Abra um novo CAPTCHA e tente novamente.', retryable: true };
   if (/captcha_required|captcha verification required|human verification required|code 9001/.test(raw)) return { code: 'CAPTCHA_REQUIRED', message: 'O Proton solicitou uma verificação de segurança. Abra o CAPTCHA e tente novamente.', retryable: true };
   if (/2fa_required|two.?factor|required.*2fa/.test(raw)) return { code: 'TWO_FACTOR_REQUIRED', message: 'Esta conta exige autenticação em duas etapas.', retryable: false };
@@ -395,7 +399,7 @@ function ensureInstallDir(installDir: string) {
  * timeout, helper ausente) que NAO invalida a sessao: a GUI mantem o usuario
  * autenticado e a ativacao continua disponivel com o perfil ja gerado.
  */
-export type ProtonSessionCheckCode = 'INVALID_SESSION' | 'NETWORK_ERROR' | 'TIMEOUT' | 'MISSING_EXECUTABLE' | 'SESSION_PERSISTENCE' | 'UNKNOWN';
+export type ProtonSessionCheckCode = 'INVALID_SESSION' | 'NETWORK_ERROR' | 'TIMEOUT' | 'MISSING_EXECUTABLE' | 'SESSION_PERSISTENCE' | 'APP_VERSION_UNSUPPORTED' | 'UNKNOWN';
 
 export interface ProtonSessionCheckResult {
   valid: boolean;
@@ -597,11 +601,21 @@ export async function loginProton(
   // O helper Go emite códigos estruturados no JSON (ver jsonErrorResponse).
   // Eles são a fonte da verdade; o regex de texto é só fallback para saída
   // sem JSON (binários antigos) e nunca pode mascarar o código estruturado.
-  const structuredCode = typeof res.json?.code === 'string' ? res.json.code : '';
+  const structuredCode = typeof res.json?.code === 'string' ? res.json.code.trim() : '';
   const structured = structuredProtonError(structuredCode);
   if (structured) {
     logger.warn('proton', 'falha na autenticação ProtonVPN', { codigo_saida: res.code, codigo_estruturado: structuredCode, erro_json: String(res.json?.error || '').slice(0, 300) });
     return { success: false, code: structuredCode as ProtonLoginErrorCode, ...structured, error: structured.message };
+  }
+  if (structuredCode !== '') {
+    logger.warn('proton', 'falha na autenticação ProtonVPN', { codigo_saida: res.code, codigo_estruturado: structuredCode, erro_json: String(res.json?.error || '').slice(0, 300) });
+    return {
+      success: false,
+      code: 'UNKNOWN',
+      message: 'Não foi possível concluir o login ProtonVPN. Tente novamente ou envie um relatório de diagnóstico.',
+      retryable: true,
+      error: 'Falha na autenticação ProtonVPN.',
+    };
   }
 
   const errorMsg = res.json?.error || res.stderr || res.stdout || 'Falha na autenticação ProtonVPN.';
@@ -631,6 +645,8 @@ function structuredProtonError(code: string): { message: string; retryable: bool
         message: 'A sessão Proton já salva não pôde ser atualizada neste computador. Sua senha não foi verificada e a sessão anterior foi preservada. Feche outras versões do aplicativo e tente novamente.',
         retryable: true,
       };
+    case 'APP_VERSION_UNSUPPORTED':
+      return { message: APP_VERSION_UNSUPPORTED_MESSAGE, retryable: false };
     default:
       return undefined;
   }
@@ -772,6 +788,7 @@ export async function generateOptimalProtonConfig(
   const errMsg = res.json?.error || (options.speedTest && res.json?.success
     ? 'A medição não retornou velocidades válidas de download e upload.'
     : undefined) || res.stderr || res.stdout || 'Falha ao selecionar e gerar configuração ProtonVPN.';
+  const normalizedFailure = normalizeProtonCertificateFailure(res.json, errMsg);
   // Sem a mensagem do helper o relato de bug chega sem a causa: o motivo já
   // existe em errMsg e era descartado, deixando só "codigo_saida=1". A linha é
   // normalizada e limitada porque é copiada para o ring buffer e para a issue.
@@ -780,9 +797,11 @@ export async function generateOptimalProtonConfig(
     resposta_json: Boolean(res.json),
     codigo: typeof res.json?.code === 'string' ? res.json.code : undefined,
     medicao_valida: options.speedTest ? measuredResultValid : undefined,
-    erro: errMsg.replace(/\s+/g, ' ').trim().slice(0, 300),
+    erro: normalizedFailure.code === 'APP_VERSION_UNSUPPORTED'
+      ? (normalizedFailure.error || 'Falha ao selecionar e gerar configuração ProtonVPN.')
+      : errMsg.replace(/\s+/g, ' ').trim().slice(0, 300),
   });
-  return normalizeProtonCertificateFailure(res.json, errMsg) as ProtonConfigResult;
+  return normalizedFailure as ProtonConfigResult;
 }
 
 export interface ProtonManualRouteOptions {

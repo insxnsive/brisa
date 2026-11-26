@@ -202,6 +202,7 @@
   <data name="Backend.SESSION_PERSISTENCE" xml:space="preserve"><value>The Proton session could not be saved. Close other Brisa instances and try again.</value></data>
   <data name="Backend.CONFIGURATION_ERROR" xml:space="preserve"><value>The WireGuard profile could not be generated. Try another route.</value></data>
   <data name="Backend.UNKNOWN" xml:space="preserve"><value>The Proton operation failed. Try again.</value></data>
+  <data name="Backend.APP_VERSION_UNSUPPORTED" xml:space="preserve"><value>Proton no longer accepts this version of Brisa. Update Brisa or import a WireGuard .conf file.</value></data>
   <data name="Backend.PROFILE_EMPTY" xml:space="preserve"><value>This WireGuard file is empty.</value></data>
   <data name="Backend.START_CANCELLED" xml:space="preserve"><value>The start was cancelled.</value></data>
   <data name="Backend.WIRESOCK_SETUP_REQUIRED" xml:space="preserve"><value>WireSock setup did not finish. Brisa will guide you through it again. You can also download the SDK from https://wiresock.net/wiresock-sdk</value></data>
