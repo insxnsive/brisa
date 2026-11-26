@@ -2,11 +2,13 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,10 +52,10 @@ func TestAuthInfoAndTwoFAReturnAppVersionError(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/auth/info":
-					w.WriteHeader(http.StatusUnprocessableEntity)
+					w.WriteHeader(http.StatusServiceUnavailable)
 					_, _ = fmt.Fprintf(w, `{"Code":%d}`, code)
 				case "/auth/2fa":
-					w.WriteHeader(http.StatusUnprocessableEntity)
+					w.WriteHeader(http.StatusServiceUnavailable)
 					_, _ = fmt.Fprintf(w, `{"Code":%d}`, code)
 				default:
 					http.NotFound(w, r)
@@ -80,7 +82,7 @@ func TestAuthEndpointReturnsAppVersionError(t *testing.T) {
 					http.NotFound(w, r)
 					return
 				}
-				w.WriteHeader(http.StatusUnprocessableEntity)
+				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = fmt.Fprintf(w, `{"Code":%d}`, code)
 			}))
 			defer server.Close()
@@ -141,6 +143,29 @@ func TestVerifySessionStatusStillRejectsRealUnauthorized(t *testing.T) {
 	valid, err := VerifySessionStatusContext(context.Background(), server.Client(), server.URL, auditSession("access", "refresh", 3600))
 	if valid || !IsSessionInvalid(err) {
 		t.Fatalf("VerifySessionStatusContext() = %v, %T %v; want SessionInvalidError", valid, err, err)
+	}
+}
+
+func TestVerifySessionStatusOversizedNon2xxKeepsSession(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "proton-session.json")
+	if err := NewSessionStore(file).Save(auditSession("access", "refresh", 3600), "audit@example.com", time.Hour); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(strings.Repeat("x", int(maxAuthResponseBytes)+1)))
+	}))
+	defer server.Close()
+
+	client := NewClient(&config.Config{APIURL: server.URL, Username: "audit@example.com", SessionFile: file})
+	_, _, err := client.CheckSession()
+	var protocolErr *ProtocolError
+	if !errors.As(err, &protocolErr) {
+		t.Fatalf("CheckSession() error = %T %v; want ProtocolError", err, err)
+	}
+	if _, statErr := os.Stat(file); statErr != nil {
+		t.Fatalf("saved session removed after oversized response: %v", statErr)
 	}
 }
 

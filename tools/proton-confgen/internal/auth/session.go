@@ -631,11 +631,20 @@ func VerifySessionStatusContext(ctx context.Context, httpClient *http.Client, ap
 	// intact regardless of the status code. Only a real 401/403 after that
 	// check means the session itself was rejected.
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAuthResponseBytes))
-		rejection := appVersionRejection(body)
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxAuthResponseBytes+1))
+		var rejection error
+		if readErr == nil && int64(len(body)) <= maxAuthResponseBytes {
+			rejection = appVersionRejection(body)
+		}
 		clear(body)
 		if rejection != nil {
 			return false, rejection
+		}
+		if readErr != nil {
+			return false, classifyAuthTransportError(ctx, readErr)
+		}
+		if int64(len(body)) > maxAuthResponseBytes {
+			return false, &ProtocolError{Operation: "session verification", StatusCode: resp.StatusCode}
 		}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			return false, &SessionInvalidError{StatusCode: resp.StatusCode}

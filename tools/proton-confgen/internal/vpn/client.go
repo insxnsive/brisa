@@ -56,6 +56,9 @@ func (c *Client) requestCertificate(certReq map[string]any) (*api.VPNInfo, error
 		return nil, &auth.TemporarySessionError{Err: err, Operation: "certificate request"}
 	}
 
+	if auth.IsAppVersionCode(vpnInfo.Code) {
+		return nil, &auth.AppVersionError{Code: vpnInfo.Code}
+	}
 	if vpnInfo.Code == auth.CodeCaptchaRequired {
 		return nil, auth.NewHumanVerificationError(vpnInfo.Details, c.config.APIURL, c.config.HVToken != "")
 	}
@@ -67,9 +70,6 @@ func (c *Client) requestCertificate(certReq map[string]any) (*api.VPNInfo, error
 	}
 
 	if !constants.IsSuccessCode(vpnInfo.Code) {
-		if vpnInfo.Error != "" {
-			return nil, fmt.Errorf("certificate error (code %d): %s", vpnInfo.Code, vpnInfo.Error)
-		}
 		return nil, fmt.Errorf("certificate request failed, code: %d", vpnInfo.Code)
 	}
 
@@ -133,6 +133,9 @@ func (c *Client) GetServers() ([]api.LogicalServer, error) {
 		return nil, err
 	}
 
+	if auth.IsAppVersionCode(response.Code) {
+		return nil, &auth.AppVersionError{Code: response.Code}
+	}
 	if !constants.IsSuccessCode(response.Code) {
 		return nil, fmt.Errorf("API returned error code: %d", response.Code)
 	}
@@ -149,10 +152,10 @@ func (c *Client) GetAccountPlan() (*api.AccountPlan, error) {
 		return nil, err
 	}
 
+	if auth.IsAppVersionCode(response.Code) {
+		return nil, &auth.AppVersionError{Code: response.Code}
+	}
 	if response.Code != 0 && !constants.IsSuccessCode(response.Code) {
-		if response.Error != "" {
-			return nil, fmt.Errorf("account plan error (code %d): %s", response.Code, response.Error)
-		}
 		return nil, fmt.Errorf("account plan request failed, code: %d", response.Code)
 	}
 	if response.VPN == nil || response.VPN.MaxTier == nil {
@@ -185,10 +188,10 @@ func (c *Client) ListCertificates() ([]api.VPNCertificate, error) {
 		if err := c.doJSON(http.MethodGet, u, nil, &page); err != nil {
 			return nil, err
 		}
+		if auth.IsAppVersionCode(page.Code) {
+			return nil, &auth.AppVersionError{Code: page.Code}
+		}
 		if !constants.IsSuccessCode(page.Code) {
-			if page.Error != "" {
-				return nil, fmt.Errorf("list certificates error (code %d): %s", page.Code, page.Error)
-			}
 			return nil, fmt.Errorf("list certificates failed, code: %d", page.Code)
 		}
 

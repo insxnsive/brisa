@@ -142,6 +142,9 @@ func doAuthJSON(ctx context.Context, client *http.Client, req *http.Request, ope
 	if err := ctx.Err(); err != nil {
 		return resp.StatusCode, err
 	}
+	if err := appVersionRejection(body); err != nil {
+		return resp.StatusCode, err
+	}
 	if isTemporaryHTTPStatus(resp.StatusCode) {
 		return resp.StatusCode, &TemporarySessionError{Err: fmt.Errorf("HTTP %d", resp.StatusCode), Operation: operation}
 	}

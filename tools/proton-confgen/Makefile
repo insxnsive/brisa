@@ -12,10 +12,15 @@ MODULE=protonvpn-wg-confgen
 # rejects or human-verifies requests carrying a malformed app version.
 PROTON_VERSION_URL=https://raw.githubusercontent.com/ProtonVPN/python-proton-vpn-api-core/stable/versions.yml
 PROTON_VERSION_FALLBACK=6.1.2
-PROTON_VERSION ?= $(shell curl -sf "$(PROTON_VERSION_URL)" 2>/dev/null | head -1 | cut -d' ' -f2)
+PROTON_VERSION ?= $(shell curl -sf "$(PROTON_VERSION_URL)" 2>/dev/null | sed -n '1s/^version:[[:space:]]*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[[:space:]]*$$/\1/p')
 ifeq ($(strip $(PROTON_VERSION)),)
 PROTON_VERSION=$(PROTON_VERSION_FALLBACK)
 $(warning Could not fetch upstream ProtonVPN version, falling back to $(PROTON_VERSION_FALLBACK))
+endif
+
+PROTON_VERSION_OK := $(shell printf '%s\n' '$(subst ','\'',$(PROTON_VERSION))' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$$')
+ifeq ($(strip $(PROTON_VERSION_OK)),)
+$(error Invalid PROTON_VERSION; expected numeric X.Y.Z)
 endif
 
 # ldflags to inject version at build time

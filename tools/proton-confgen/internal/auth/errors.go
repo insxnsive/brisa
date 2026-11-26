@@ -111,6 +111,13 @@ func IsAppVersionError(err error) bool {
 }
 
 func isAppVersionCode(code int) bool {
+	return IsAppVersionCode(code)
+}
+
+// IsAppVersionCode reports whether a decoded API code means Proton no longer
+// accepts the app version. VPN endpoints can return these codes with varying
+// HTTP statuses.
+func IsAppVersionCode(code int) bool {
 	switch code {
 	case CodeAppVersionMissing, CodeAppVersionBad, CodeAPIVersionInvalid:
 		return true
