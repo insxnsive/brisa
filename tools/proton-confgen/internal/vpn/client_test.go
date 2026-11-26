@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+
+	"github.com/ProtonVPN/go-vpn-lib/ed25519"
 
 	"protonvpn-wg-confgen/internal/auth"
 	"protonvpn-wg-confgen/internal/config"
@@ -138,5 +141,86 @@ func TestRequestCertificateClassifiesTemporaryHTTPStatus(t *testing.T) {
 	_, err := client.requestCertificate(map[string]any{"ClientPublicKey": "synthetic"})
 	if !auth.IsTemporarySessionError(err) {
 		t.Fatalf("requestCertificate() error = %T %v; want TemporarySessionError", err, err)
+	}
+}
+
+func TestAppVersionCodesReachVPNErrorsWithoutVendorProse(t *testing.T) {
+	keyPair, err := ed25519.NewKeyPair()
+	if err != nil {
+		t.Fatalf("NewKeyPair() error = %v", err)
+	}
+	const vendorProse = "vendor-specific secret detail"
+	for _, code := range []int{auth.CodeAppVersionMissing, auth.CodeAppVersionBad, auth.CodeAPIVersionInvalid} {
+		for _, status := range []int{http.StatusUnprocessableEntity, http.StatusOK, http.StatusServiceUnavailable} {
+			t.Run(fmt.Sprintf("code_%d_HTTP_%d", code, status), func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(status)
+					switch {
+					case r.URL.Path == "/vpn/v1/certificate":
+						_, _ = fmt.Fprintf(w, `{"Code":%d,"Error":%q}`, code, vendorProse)
+					case strings.HasPrefix(r.URL.Path, "/vpn/v1/certificate/all"):
+						_, _ = fmt.Fprintf(w, `{"Code":%d,"Error":%q}`, code, vendorProse)
+					case r.URL.Path == "/vpn/v1/logicals":
+						_, _ = fmt.Fprintf(w, `{"Code":%d,"Error":%q}`, code, vendorProse)
+					case r.URL.Path == "/vpn/v2":
+						_, _ = fmt.Fprintf(w, `{"Code":%d,"Error":%q}`, code, vendorProse)
+					default:
+						_, _ = fmt.Fprintf(w, `{"Code":%d,"Error":%q}`, code, vendorProse)
+					}
+				}))
+				defer server.Close()
+				client := NewClient(&config.Config{APIURL: server.URL, Duration: "7d"}, nil)
+
+				checks := map[string]error{}
+				_, checks["certificate"] = client.GetCertificate(keyPair)
+				_, checks["servers"] = client.GetServers()
+				_, checks["plan"] = client.GetAccountPlan()
+				_, checks["certificates"] = client.ListCertificates()
+				for name, err := range checks {
+					if !auth.IsAppVersionError(err) {
+						t.Fatalf("%s error = %T %v; want AppVersionError", name, err, err)
+					}
+					if strings.Contains(err.Error(), vendorProse) {
+						t.Fatalf("%s error echoed vendor prose: %v", name, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestNonVersionVPNErrorsDoNotEchoVendorProse(t *testing.T) {
+	const vendorProse = "vendor-specific secret detail"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		switch r.URL.Path {
+		case "/vpn/v1/certificate":
+			_, _ = fmt.Fprintf(w, `{"Code":8002,"Error":%q}`, vendorProse)
+		case "/vpn/v2":
+			_, _ = fmt.Fprintf(w, `{"Code":8002,"Error":%q}`, vendorProse)
+		case "/vpn/v1/logicals":
+			_, _ = fmt.Fprintf(w, `{"Code":8002,"Error":%q}`, vendorProse)
+		case "/vpn/v1/certificate/all":
+			_, _ = fmt.Fprintf(w, `{"Code":8002,"Error":%q}`, vendorProse)
+		}
+	}))
+	defer server.Close()
+	client := NewClient(&config.Config{APIURL: server.URL, Duration: "7d"}, nil)
+	keyPair, err := ed25519.NewKeyPair()
+	if err != nil {
+		t.Fatalf("NewKeyPair() error = %v", err)
+	}
+
+	checks := map[string]error{}
+	_, checks["certificate"] = client.GetCertificate(keyPair)
+	_, checks["plan"] = client.GetAccountPlan()
+	_, checks["certificates"] = client.ListCertificates()
+	for name, err := range checks {
+		if err == nil {
+			t.Fatalf("%s unexpectedly succeeded", name)
+		}
+		if strings.Contains(err.Error(), vendorProse) {
+			t.Fatalf("%s error echoed vendor prose: %v", name, err)
+		}
 	}
 }

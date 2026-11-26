@@ -110,9 +110,12 @@ Note that the "the API does not allow intervals shorter than 1 day" comment in `
 ### Version Errors
 | Code | Constant | Meaning |
 |------|----------|---------|
+| 5001 | APP_VERSION_MISSING | App version header missing |
 | 5003 | APP_VERSION_BAD | App version no longer supported |
 | 5005 | API_VERSION_INVALID | API version invalid |
 | 5099 | APP_VERSION_NOT_SUPPORTED_FOR_EXTERNAL_ACCOUNTS | App version not supported for external accounts |
+
+Codes 5001, 5003, and 5005 become `APP_VERSION_UNSUPPORTED` in JSON output. Brisa keeps the saved session for these codes; only a real authentication rejection clears it.
 
 ### Other Errors
 | Code | Constant | Meaning |
@@ -136,12 +139,14 @@ All authenticated requests require these headers:
 ```
 Authorization: Bearer <access_token>
 x-pm-uid: <session_uid>
-x-pm-appversion: linux-vpn@X.Y.Z
-User-Agent: ProtonVPN/X.Y.Z (Linux; Ubuntu)
+x-pm-appversion: linux-vpn-gui@X.Y.Z+<arch>
+User-Agent: ProtonVPN/X.Y.Z (Linux; ubuntu/26.04)
 Content-Type: application/json
 ```
 
-**Important**: Using a web client version (like `web-vpn-settings@X.Y.Z`) may trigger CAPTCHA challenges. Always use the Linux client version format.
+`ClientVersion` holds X.Y.Z and is refreshed from `python-proton-vpn-api-core/stable/versions.yml`. The architecture suffix is `x86-64` for amd64, `aarch64` for arm64, and `armv7l` for arm. Proton rejects the retired `linux-vpn@4.17.2` form with code 5003.
+
+**Important**: Using a web client version (like `web-vpn-settings@X.Y.Z`) may trigger CAPTCHA challenges. Always use the Linux GUI client version format.
 
 ## Token Refresh
 

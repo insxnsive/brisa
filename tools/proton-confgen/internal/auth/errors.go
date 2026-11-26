@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -24,6 +25,9 @@ const (
 	CodeAccountDeleted       = 10002 // ACCOUNT_DELETED: Account has been deleted
 	CodeAccountDisabled      = 10003 // ACCOUNT_DISABLED: Account has been disabled
 	CodeMailboxPasswordError = 10013 // Legacy 2-password mode / invalid refresh token (context-dependent)
+	CodeAppVersionMissing    = 5001  // APP_VERSION_MISSING: no supported app version header
+	CodeAppVersionBad        = 5003  // APP_VERSION_BAD: app version is no longer supported
+	CodeAPIVersionInvalid    = 5005  // API_VERSION_INVALID: API version is no longer supported
 )
 
 // Error represents an authentication error with ProtonVPN-specific error code
@@ -84,6 +88,62 @@ func (e *TwoFactorError) Error() string {
 func IsTwoFactorError(err error) bool {
 	var target *TwoFactorError
 	return errors.As(err, &target)
+}
+
+// AppVersionError reports that Proton no longer accepts the app version sent by
+// this build. The saved session may still be valid, so callers must keep it.
+type AppVersionError struct {
+	Code int
+}
+
+func (e *AppVersionError) Error() string {
+	if e == nil || e.Code == 0 {
+		return "Proton no longer accepts this app version; update Brisa"
+	}
+	return fmt.Sprintf("Proton no longer accepts this app version (code %d); update Brisa", e.Code)
+}
+
+// IsAppVersionError reports whether Proton rejected the app version rather than
+// the credentials or the session.
+func IsAppVersionError(err error) bool {
+	var target *AppVersionError
+	return errors.As(err, &target)
+}
+
+func isAppVersionCode(code int) bool {
+	return IsAppVersionCode(code)
+}
+
+// IsAppVersionCode reports whether a decoded API code means Proton no longer
+// accepts the app version. VPN endpoints can return these codes with varying
+// HTTP statuses.
+func IsAppVersionCode(code int) bool {
+	switch code {
+	case CodeAppVersionMissing, CodeAppVersionBad, CodeAPIVersionInvalid:
+		return true
+	default:
+		return false
+	}
+}
+
+func newTwoFactorError(code int) error {
+	if isAppVersionCode(code) {
+		return &AppVersionError{Code: code}
+	}
+	return &TwoFactorError{Code: code}
+}
+
+func appVersionRejection(body []byte) error {
+	var envelope struct {
+		Code int `json:"Code"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil
+	}
+	if isAppVersionCode(envelope.Code) {
+		return &AppVersionError{Code: envelope.Code}
+	}
+	return nil
 }
 
 // SessionInvalidError identifies a cached session rejected by Proton. It is
@@ -159,6 +219,9 @@ func IsSessionPersistenceError(err error) bool {
 }
 
 func newAuthenticationError(code int) error {
+	if isAppVersionCode(code) {
+		return &AppVersionError{Code: code}
+	}
 	switch code {
 	case CodeWrongPassword, CodeWrongPasswordFormat:
 		return &InvalidCredentialsError{Code: code}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +42,39 @@ func TestSessionCheckResponseSeparatesTemporaryFailureFromInvalidSession(t *test
 	if missing["code"] != "INVALID_SESSION" || missing["retryable"] != false {
 		t.Fatalf("sessao ausente = %v, want INVALID_SESSION retryable=false", missing)
 	}
+}
+
+func TestSessionCheckResponseKeepsAppVersionFailureRetryable(t *testing.T) {
+	response := sessionCheckResponse(nil, &auth.AppVersionError{Code: auth.CodeAppVersionBad}, "conta_teste", 0)
+	if response["valid"] != false || response["success"] != false {
+		t.Fatalf("app version failure marked valid: %v", response)
+	}
+	if response["code"] != "APP_VERSION_UNSUPPORTED" {
+		t.Fatalf("code = %v, want APP_VERSION_UNSUPPORTED", response["code"])
+	}
+	if response["retryable"] != true {
+		t.Fatalf("retryable = %v, want true", response["retryable"])
+	}
+	message, _ := response["error"].(string)
+	if !containsAllFold(message, "Brisa", "versão") {
+		t.Fatalf("message = %q; want Brisa version update", message)
+	}
+}
+
+func TestJSONErrorResponseMarksAppVersionNotRetryableOnLogin(t *testing.T) {
+	response := jsonErrorResponse(&auth.AppVersionError{Code: auth.CodeAppVersionMissing})
+	if response["code"] != "APP_VERSION_UNSUPPORTED" || response["retryable"] != false {
+		t.Fatalf("response = %v; want APP_VERSION_UNSUPPORTED retryable=false", response)
+	}
+}
+
+func containsAllFold(value string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(strings.ToLower(value), strings.ToLower(part)) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSessionCheckResponseKeepsValidSessionContract(t *testing.T) {
