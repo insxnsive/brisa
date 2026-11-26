@@ -7,7 +7,7 @@ export type ProtonCertificateErrorCode =
   | "APP_VERSION_UNSUPPORTED";
 
 export const APP_VERSION_UNSUPPORTED_RE =
-  /app_version_unsupported|with code: 50(?:01|03|05)\b|no longer (?:supported|accepts)/i;
+  /\b(?:authentication failed with code: 50(?:01|03|05)|proton no longer accepts this app version(?:\s*\(code 50(?:01|03|05)\))?)\b/i;
 
 export type ProtonCertificateResult = {
   success: boolean;
@@ -32,28 +32,40 @@ export function normalizeProtonCertificateFailure(
     ? fields.error.trim()
     : fallbackError;
   if (fields.code === "APP_VERSION_UNSUPPORTED") {
-    return { success: false, code: "APP_VERSION_UNSUPPORTED", error, retryable: false };
+    return {
+      success: false,
+      code: "APP_VERSION_UNSUPPORTED",
+      error: "Proton no longer accepts this version of Brisa.",
+      retryable: false,
+    };
   }
   const code = fields.code === "CAPTCHA_REQUIRED" || fields.code === "CAPTCHA_INVALID"
     ? fields.code
     : undefined;
-  if (!code) {
-    const raw = `${typeof fields.error === "string" ? fields.error : ""} ${fallbackError}`;
-    if (APP_VERSION_UNSUPPORTED_RE.test(raw)) {
-      return { success: false, code: "APP_VERSION_UNSUPPORTED", error, retryable: false };
-    }
+  if (code) {
+    const captchaUrl = typeof fields.captchaUrl === "string" && fields.captchaUrl.length <= 8192
+      ? fields.captchaUrl
+      : undefined;
+    return {
+      success: false,
+      code,
+      error,
+      retryable: fields.retryable !== false,
+      ...(captchaUrl ? { captchaUrl } : {}),
+    };
+  }
+  if (typeof fields.code === "string" && fields.code.trim() !== "") {
     return { success: false, error };
   }
-
-  const captchaUrl = typeof fields.captchaUrl === "string" && fields.captchaUrl.length <= 8192
-    ? fields.captchaUrl
-    : undefined;
-  return {
-    success: false,
-    code,
-    error,
-    retryable: fields.retryable !== false,
-    ...(captchaUrl ? { captchaUrl } : {}),
-  };
+  const raw = `${typeof fields.error === "string" ? fields.error : ""} ${fallbackError}`;
+  if (APP_VERSION_UNSUPPORTED_RE.test(raw)) {
+    return {
+      success: false,
+      code: "APP_VERSION_UNSUPPORTED",
+      error: "Proton no longer accepts this version of Brisa.",
+      retryable: false,
+    };
+  }
+  return { success: false, error };
 }
 

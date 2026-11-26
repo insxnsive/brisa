@@ -601,11 +601,21 @@ export async function loginProton(
   // O helper Go emite códigos estruturados no JSON (ver jsonErrorResponse).
   // Eles são a fonte da verdade; o regex de texto é só fallback para saída
   // sem JSON (binários antigos) e nunca pode mascarar o código estruturado.
-  const structuredCode = typeof res.json?.code === 'string' ? res.json.code : '';
+  const structuredCode = typeof res.json?.code === 'string' ? res.json.code.trim() : '';
   const structured = structuredProtonError(structuredCode);
   if (structured) {
     logger.warn('proton', 'falha na autenticação ProtonVPN', { codigo_saida: res.code, codigo_estruturado: structuredCode, erro_json: String(res.json?.error || '').slice(0, 300) });
     return { success: false, code: structuredCode as ProtonLoginErrorCode, ...structured, error: structured.message };
+  }
+  if (structuredCode !== '') {
+    logger.warn('proton', 'falha na autenticação ProtonVPN', { codigo_saida: res.code, codigo_estruturado: structuredCode, erro_json: String(res.json?.error || '').slice(0, 300) });
+    return {
+      success: false,
+      code: 'UNKNOWN',
+      message: 'Não foi possível concluir o login ProtonVPN. Tente novamente ou envie um relatório de diagnóstico.',
+      retryable: true,
+      error: 'Falha na autenticação ProtonVPN.',
+    };
   }
 
   const errorMsg = res.json?.error || res.stderr || res.stdout || 'Falha na autenticação ProtonVPN.';
@@ -778,6 +788,7 @@ export async function generateOptimalProtonConfig(
   const errMsg = res.json?.error || (options.speedTest && res.json?.success
     ? 'A medição não retornou velocidades válidas de download e upload.'
     : undefined) || res.stderr || res.stdout || 'Falha ao selecionar e gerar configuração ProtonVPN.';
+  const normalizedFailure = normalizeProtonCertificateFailure(res.json, errMsg);
   // Sem a mensagem do helper o relato de bug chega sem a causa: o motivo já
   // existe em errMsg e era descartado, deixando só "codigo_saida=1". A linha é
   // normalizada e limitada porque é copiada para o ring buffer e para a issue.
@@ -786,9 +797,11 @@ export async function generateOptimalProtonConfig(
     resposta_json: Boolean(res.json),
     codigo: typeof res.json?.code === 'string' ? res.json.code : undefined,
     medicao_valida: options.speedTest ? measuredResultValid : undefined,
-    erro: errMsg.replace(/\s+/g, ' ').trim().slice(0, 300),
+    erro: normalizedFailure.code === 'APP_VERSION_UNSUPPORTED'
+      ? (normalizedFailure.error || 'Falha ao selecionar e gerar configuração ProtonVPN.')
+      : errMsg.replace(/\s+/g, ' ').trim().slice(0, 300),
   });
-  return normalizeProtonCertificateFailure(res.json, errMsg) as ProtonConfigResult;
+  return normalizedFailure as ProtonConfigResult;
 }
 
 export interface ProtonManualRouteOptions {
