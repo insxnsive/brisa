@@ -1,14 +1,16 @@
 # Changes
 
-## 1.0.4
+## 1.0.4-beta.1
 
-- Home has a bell in the top-left corner. It combines ready updates with notices signed by the project, and the count clears once you open it.
+- Proton sign-in works again after Proton stopped accepting the older helper version (code 5003). The helper now sends the current Linux client identifier, and if Proton raises its minimum version again, Brisa says to update or import a .conf file without deleting your saved session.
+- Home has a bell in the top-left corner. It combines ready updates with notices signed by the project, and the unread count clears once you open it.
 - Brisa can run its main action from the tray, and the menu shows the current status, opens the window, and adapts to whether you are signed in. The icon comes back after Explorer restarts.
-- On a Limited account the main button offers Restart as administrator instead of failing, an unelevated launch can wake the elevated window, and a relaunch keeps the install and clients you picked.
-- With Connect when Brisa opens turned on alongside Start with Windows, a per-user sign-in task starts Brisa at logon, so the connect no longer waits for a UAC prompt.
-- Route remembers the country you chose and reuses it for the launch scan and auto-connect, and the Route window shows the current route before you optimize.
-- Account sign-in goes straight to .conf import, and the WireSock SDK banner stays hidden until an install attempt fails in that session.
-- Settings keeps unsaved edits when you open Advanced or go back, and links in the light theme are dark enough to read.
+- Connect asks for a second click when Discord is already open, so you do not restart an active session by accident.
+- On a Limited account the main button offers Restart as administrator instead of failing, an unelevated launch wakes the elevated window, and a relaunch keeps the install and clients you picked.
+- With Connect when Brisa opens turned on alongside Start with Windows, a per-user sign-in task starts Brisa at logon without waiting for a UAC prompt.
+- Choosing a route opens inside the main window with live ping previews for each country, and remembers the country you picked for the launch check and auto-connect. Automatic selection now weights latency ahead of server load and measures pings directly without extra helper processes.
+- Account sign-in links straight to .conf import, and the WireSock SDK banner stays hidden until an install attempt fails in that session.
+- Settings keeps unsaved edits when you open Advanced, and going back returns straight to Settings instead of flashing Home. Links in the light theme are dark enough to read, and returning Home unlocks Connect right away.
 - Connect verification retries inside a short settle window, so a Discord updater restart no longer raises a false unverified route dialog.
 
 ## 1.0.3
