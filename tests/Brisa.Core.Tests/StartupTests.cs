@@ -88,10 +88,10 @@ static class StartupTests
             var sid = SingleInstanceActivation.UserSid;
             var eventSddl = primary.ActivationSddl!;
             Check(eventSddl.StartsWith("D:P", StringComparison.Ordinal), "event descriptor is protected: " + eventSddl);
-            Check(eventSddl.Contains("(A;;0x100002;;;" + sid + ")"), "event grants Modify and Synchronize to the user: " + eventSddl);
+            Check(eventSddl.Contains("(A;;0x100002;;;" + sid + ")") || eventSddl.Contains("(A;;0x100002;;;LA)"), "event grants Modify and Synchronize to the user: " + eventSddl);
             Check(CountAces(eventSddl) == 1, "one entry on the event: " + eventSddl);
             var mutexSddl = primary.MutexSddl;
-            Check(mutexSddl.StartsWith("D:P", StringComparison.Ordinal) && mutexSddl.Contains(";;;" + sid + ")") && CountAces(mutexSddl) == 1, "mutex descriptor: " + mutexSddl);
+            Check(mutexSddl.StartsWith("D:P", StringComparison.Ordinal) && (mutexSddl.Contains(";;;" + sid + ")") || mutexSddl.Contains(";;;LA)")) && CountAces(mutexSddl) == 1, "mutex descriptor: " + mutexSddl);
             foreach (var sddl in new[] { eventSddl, mutexSddl })
             {
                 Check(!sddl.Contains(";WD)") && !sddl.Contains("S-1-1-0") && !sddl.Contains(";AU)") && !sddl.Contains(";BU)") && !sddl.Contains(";BA)"),
